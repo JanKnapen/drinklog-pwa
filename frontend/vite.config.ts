@@ -12,7 +12,7 @@ export default defineConfig({
         short_name: 'DrinkLog',
         description: 'Track your alcohol consumption',
         theme_color: '#2563eb',
-        background_color: '#ffffff',
+        background_color: '#fafafa',
         display: 'standalone',
         start_url: '/',
         icons: [
