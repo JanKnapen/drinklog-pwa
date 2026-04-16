@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Dot } from 'recharts'
 import { useEntries } from '../api/entries'
 import EmptyState from '../components/EmptyState'
 import { groupByDate, getFilterStart } from '../utils'
 import type { FilterPeriod } from '../types'
 
 const PERIODS: { id: FilterPeriod; label: string }[] = [
-  { id: 'today', label: 'Today' },
   { id: 'week', label: 'Week' },
   { id: 'month', label: 'Month' },
   { id: '3m', label: '3M' },
@@ -55,15 +54,13 @@ export default function DataTab() {
       ) : (
         <div className="bg-neutral-100 dark:bg-neutral-800 rounded-2xl p-4 mb-4">
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+            <LineChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
               <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v: number) => v.toFixed(1)} />
               <Tooltip formatter={(v: number) => [`${v.toFixed(1)} units`, 'Units']}
                 contentStyle={{ fontSize: 12, borderRadius: 8, border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }} />
-              <Bar dataKey="units" radius={[4, 4, 0, 0]}>
-                {chartData.map((_, i) => (<Cell key={i} fill="#3b82f6" />))}
-              </Bar>
-            </BarChart>
+              <Line dataKey="units" type="monotone" stroke="#3b82f6" strokeWidth={2} dot={<Dot r={3} fill="#3b82f6" />} activeDot={{ r: 5 }} />
+            </LineChart>
           </ResponsiveContainer>
         </div>
       )}

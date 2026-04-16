@@ -16,7 +16,7 @@ def test_create_enter_ml_entry(client):
     assert d["template_id"] is None
     assert d["custom_name"] is None
     assert d["is_marked"] is False
-    assert abs(d["standard_units"] - 1.65) < 0.001
+    assert abs(d["standard_units"] - 1.1) < 0.001
 
 
 def test_create_new_entry_with_custom_name(client):

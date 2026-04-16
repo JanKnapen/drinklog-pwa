@@ -3,7 +3,7 @@ _Date: 2026-04-15_
 
 ## Overview
 
-DrinkLog is a SwiftUI iOS app (iOS 17+) for tracking alcohol consumption throughout the day. Each drink entry records ml and ABV; units are normalised to "standard drinks" (1 unit = 10ml pure alcohol). No cutoff rules — timestamps are saved as-is.
+DrinkLog is a SwiftUI iOS app (iOS 17+) for tracking alcohol consumption throughout the day. Each drink entry records ml and ABV; units are normalised to "standard drinks" (1 unit = 15ml pure alcohol). No cutoff rules — timestamps are saved as-is.
 
 ---
 
@@ -32,7 +32,7 @@ No `isFavorite` field. "Favourites" is a computed view concept: the top 5 templa
 | timestamp | Date | Saved as-is, no adjustments |
 | isMarked | Bool | false = unconfirmed, true = confirmed |
 
-**Computed:** `standardUnits = (ml × abv / 100) / 10.0`
+**Computed:** `standardUnits = (ml × abv / 100) / 15.0`
 
 **Display name resolution:** `template?.name ?? customName ?? nil` (Enter ml entries show no name)
 

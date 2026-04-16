@@ -1,7 +1,7 @@
 import type { DrinkEntry, FilterPeriod } from './types'
 
 export function standardUnits(ml: number, abv: number): number {
-  return (ml * abv / 100) / 10
+  return (ml * abv / 100) / 15
 }
 
 function toLocalDateKey(isoTimestamp: string): string {

@@ -46,4 +46,4 @@ class DrinkEntry(Base):
 
     @property
     def standard_units(self) -> float:
-        return (self.ml * self.abv / 100.0) / 10.0
+        return (self.ml * self.abv / 100.0) / 15.0

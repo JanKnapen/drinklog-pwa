@@ -3,10 +3,10 @@ import { standardUnits, groupByDate, getFilterStart } from './utils'
 
 describe('standardUnits', () => {
   it('calculates correctly for 330ml at 5%', () => {
-    expect(standardUnits(330, 5)).toBeCloseTo(1.65)
+    expect(standardUnits(330, 5)).toBeCloseTo(1.1)
   })
   it('calculates correctly for 150ml at 13%', () => {
-    expect(standardUnits(150, 13)).toBeCloseTo(1.95)
+    expect(standardUnits(150, 13)).toBeCloseTo(1.3)
   })
   it('returns 0 for 0% ABV', () => {
     expect(standardUnits(500, 0)).toBe(0)
