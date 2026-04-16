@@ -1,0 +1,31 @@
+services:
+  backend:
+    build: ./backend
+    container_name: drinklog-backend
+    environment:
+      - DATABASE_URL=sqlite:////data/drinklog.db
+    volumes:
+      - db_data:/data
+    networks:
+      - internal
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: drinklog-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - internal
+    restart: unless-stopped
+
+volumes:
+  db_data:
+
+networks:
+  internal:
+    driver: bridge
