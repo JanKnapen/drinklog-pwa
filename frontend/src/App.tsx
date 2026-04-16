@@ -17,7 +17,7 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900 pb-16">
+      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900 pb-safe-nav">
         {activeTab === 'home' && <HomeTab />}
         {activeTab === 'log' && <LogTab />}
         {activeTab === 'manage' && <ManageTab />}

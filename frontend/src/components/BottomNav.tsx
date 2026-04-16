@@ -27,7 +27,7 @@ const tabs: { id: Tab; label: string; Icon: typeof HomeIcon; ActiveIcon: typeof 
 
 export default function BottomNav({ activeTab, onTabChange }: Props) {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700">
+    <nav className="fixed bottom-0 left-0 right-0 z-30 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700 pb-safe">
       <div className="flex">
         {tabs.map(({ id, label, Icon, ActiveIcon }) => {
           const active = activeTab === id
