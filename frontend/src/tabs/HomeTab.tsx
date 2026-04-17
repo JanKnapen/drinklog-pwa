@@ -180,7 +180,7 @@ function NewDrinkModal({ open, onClose, templates, onLogged }: {
   return (
     <Modal open={open} onClose={() => { reset(); onClose() }} title="New Drink">
       <div className="flex flex-col gap-3">
-        <Field label="When">
+        <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
@@ -220,7 +220,7 @@ function EnterMlModal({ open, onClose }: { open: boolean; onClose: () => void })
   return (
     <Modal open={open} onClose={onClose} title="Enter Amount">
       <div className="flex flex-col gap-3">
-        <Field label="When">
+        <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         <Field label="Amount (ml)">
@@ -265,7 +265,7 @@ function OtherModal({ open, onClose, templates, onLogged }: {
   return (
     <Modal open={open} onClose={() => { setSearch(''); setTs(new Date()); onClose() }} title="Other Drinks">
       <div className="flex flex-col gap-2">
-        <Field label="When">
+        <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         <input className={inputCls} placeholder="Search drinks…" value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />

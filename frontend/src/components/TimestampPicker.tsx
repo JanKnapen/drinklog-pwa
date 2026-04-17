@@ -1,6 +1,6 @@
 import { useRef, useEffect } from 'react'
 
-const ITEM_H = 36
+const ITEM_H = 28
 
 function DrumColumn({ items, selectedIndex, onChange }: {
   items: string[]
@@ -45,9 +45,9 @@ function DrumColumn({ items, selectedIndex, onChange }: {
 
   return (
     <div className="relative flex-1">
-      {/* Selection indicator */}
+      {/* Capsule selection indicator */}
       <div
-        className="absolute inset-x-0 pointer-events-none z-10 border-y border-neutral-200 dark:border-neutral-700"
+        className="absolute inset-x-1 rounded-lg bg-neutral-100 dark:bg-neutral-700 pointer-events-none z-0"
         style={{ top: ITEM_H, height: ITEM_H }}
       />
       {/* Top fade */}
@@ -63,7 +63,7 @@ function DrumColumn({ items, selectedIndex, onChange }: {
       <div
         ref={ref}
         onScroll={onScroll}
-        className="drum-scroll"
+        className="drum-scroll relative z-[2]"
         style={{
           height: ITEM_H * 3,
           overflowY: 'scroll',
@@ -120,7 +120,7 @@ export default function TimestampPicker({ value, onChange }: {
   }
 
   return (
-    <div className="flex gap-1 rounded-xl bg-neutral-50 dark:bg-neutral-800 overflow-hidden">
+    <div className="flex gap-1">
       <DrumColumn items={MONTHS} selectedIndex={month} onChange={(i) => update('month', i)} />
       <DrumColumn items={days} selectedIndex={day - 1} onChange={(i) => update('day', i)} />
       <DrumColumn items={hours} selectedIndex={hour} onChange={(i) => update('hour', i)} />

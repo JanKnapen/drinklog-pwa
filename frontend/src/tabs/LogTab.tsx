@@ -121,7 +121,11 @@ function EntryRow({ entry, isConfirmed, onEdit, onDelete }: {
   return (
     <div className="flex items-center gap-2 bg-white dark:bg-neutral-800 rounded-xl px-3 py-2.5">
       <div className="flex-1 min-w-0">
-        {displayName && <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">{displayName}</p>}
+        {displayName && (
+          <p className={`text-sm font-medium truncate ${entry.template_id === null ? 'italic text-neutral-500 dark:text-neutral-400' : 'text-neutral-900 dark:text-neutral-100'}`}>
+            {displayName}
+          </p>
+        )}
         <p className="text-xs text-neutral-500 tabular-nums">{entry.ml}ml · {entry.abv.toFixed(1)}% · {time}</p>
       </div>
       <span className="text-sm font-bold text-neutral-900 dark:text-neutral-100 tabular-nums">
@@ -172,7 +176,7 @@ function EditEntryModal({ entry, onClose }: { entry: DrinkEntry; onClose: () => 
   return (
     <Modal open onClose={onClose} title="Edit Entry">
       <div className="flex flex-col gap-3">
-        <Field label="When">
+        <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         {!isTemplateEntry && (
