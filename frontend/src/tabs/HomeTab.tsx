@@ -185,7 +185,7 @@ function NewDrinkModal({ open, onClose, templates, onLogged }: {
         </Field>
         {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
         <Field label="Drink name">
-          <input className={inputCls} placeholder="e.g. Lager, House Wine…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} autoFocus />
+          <input className={inputCls} placeholder="e.g. Lager, House Wine…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
         </Field>
         <Field label="Amount (ml)">
           <input className={inputCls} inputMode="decimal" placeholder="330" value={ml} onChange={(e) => setMl(e.target.value)} />
@@ -224,7 +224,7 @@ function EnterMlModal({ open, onClose }: { open: boolean; onClose: () => void })
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         <Field label="Amount (ml)">
-          <input className={inputCls} inputMode="decimal" placeholder="330" value={ml} onChange={(e) => setMl(e.target.value)} autoFocus />
+          <input className={inputCls} inputMode="decimal" placeholder="330" value={ml} onChange={(e) => setMl(e.target.value)} />
         </Field>
         <Field label="ABV (%)">
           <input className={inputCls} inputMode="decimal" placeholder="5.0" value={abv} onChange={(e) => setAbv(e.target.value)} />
@@ -268,7 +268,7 @@ function OtherModal({ open, onClose, templates, onLogged }: {
         <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
-        <input className={inputCls} placeholder="Search drinks…" value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />
+        <input className={inputCls} placeholder="Search drinks…" value={search} onChange={(e) => setSearch(e.target.value)} />
         {filtered.length === 0 && <p className="text-sm text-neutral-400 py-4 text-center">No drinks found</p>}
         <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
           {filtered.map((t) => (

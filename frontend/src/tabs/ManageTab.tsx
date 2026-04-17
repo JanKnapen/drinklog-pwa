@@ -123,7 +123,7 @@ function TemplateModal({ open, onClose, template, templates }: {
       <div className="flex flex-col gap-3">
         {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
         <Field label="Name">
-          <input className={inputCls} value={name} onChange={(e) => { setName(e.target.value); setError(null) }} autoFocus />
+          <input className={inputCls} value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
         </Field>
         <Field label={`Amount (ml)${mlAbvLocked ? ' — locked' : ''}`}>
           <input className={inputCls + (mlAbvLocked ? ' opacity-50 cursor-not-allowed' : '')}

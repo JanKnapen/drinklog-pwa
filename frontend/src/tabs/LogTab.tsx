@@ -179,7 +179,7 @@ function EditEntryModal({ entry, onClose }: { entry: DrinkEntry; onClose: () => 
           <>
             {hasName && (
               <Field label="Name">
-                <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+                <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} />
               </Field>
             )}
             <Field label="Amount (ml)">
