@@ -44,7 +44,7 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
         <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">DrinkLog</h1>
       </div>
 
-      <div data-dbg-zone="LIST" className="flex-1 min-h-0 overflow-y-auto touch-pan-y scroll-touch px-4 pb-4">
+      <div data-dbg-zone="LIST" className="flex-1 min-h-0 overflow-y-auto touch-pan-y px-4 pb-4">
       <div className="flex flex-col gap-2 mb-6">
         <ActionCard
           title="New"

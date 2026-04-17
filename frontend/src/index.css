@@ -28,9 +28,6 @@
   .h-screen-safe {
     height: calc(100vh - env(safe-area-inset-top, 0px));
   }
-  .scroll-touch {
-    -webkit-overflow-scrolling: touch;
-  }
 }
 
 .drum-scroll::-webkit-scrollbar {
@@ -43,12 +40,11 @@
   touch-action: manipulation;
 }
 
-/* All children of scroll containers: prevent text selection & callout, force pan-y */
+/* All children of scroll containers: prevent text selection & callout */
 [data-dbg-zone="LIST"] * {
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
-  touch-action: pan-y;
 }
 
 /* Text/inline elements: pass touches through so overflow:hidden from truncate never
