@@ -18,15 +18,18 @@ export default function ManageTab() {
   }
 
   return (
-    <div className="px-4 pt-6 pb-4">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Manage</h1>
-        <button onClick={() => setShowAdd(true)}
-          className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-blue-500 active:scale-95 transition-transform">
-          <PlusIcon className="w-5 h-5" />
-        </button>
+    <div className="flex flex-col h-full">
+      <div className="flex-shrink-0 px-4 pt-6 pb-3">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Manage</h1>
+          <button onClick={() => setShowAdd(true)}
+            className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-blue-500 active:scale-95 transition-transform">
+            <PlusIcon className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
       {templates.length === 0 ? (
         <EmptyState message="No drink templates — tap + to add one" />
       ) : (
@@ -52,6 +55,7 @@ export default function ManageTab() {
           ))}
         </div>
       )}
+      </div>
 
       <TemplateModal open={showAdd} onClose={() => setShowAdd(false)} templates={templates} />
       {editing && <TemplateModal open onClose={() => setEditing(null)} template={editing} templates={templates} />}

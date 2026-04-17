@@ -36,7 +36,7 @@ export default function LogTab() {
   }
 
   return (
-    <div className="flex flex-col h-screen-safe pb-16">
+    <div className="flex flex-col h-full">
       <div className="px-4 pt-6 pb-3 bg-neutral-50 dark:bg-neutral-900">
         <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Log</h1>
       </div>

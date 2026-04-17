@@ -35,9 +35,12 @@ export default function DataTab() {
   )[0]
 
   return (
-    <div className="px-4 pt-6 pb-4">
-      <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">Data</h1>
+    <div className="flex flex-col h-full">
+      <div className="flex-shrink-0 px-4 pt-6 pb-3">
+        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Data</h1>
+      </div>
 
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 mb-4">
         {PERIODS.map(({ id, label }) => (
           <button key={id} onClick={() => setPeriod(id)}
@@ -74,6 +77,7 @@ export default function DataTab() {
           value={heaviest ? heaviest.entries.reduce((s, e) => s + e.standard_units, 0).toFixed(1) : '—'}
           subtitle={heaviest ? new Date(heaviest.date + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : undefined}
         />
+      </div>
       </div>
     </div>
   )

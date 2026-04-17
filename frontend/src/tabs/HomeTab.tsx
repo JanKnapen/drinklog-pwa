@@ -40,9 +40,12 @@ export default function HomeTab() {
   }
 
   return (
-    <div className="px-4 pt-6 pb-4">
-      <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100 mb-4">DrinkLog</h1>
+    <div className="flex flex-col h-full">
+      <div className="flex-shrink-0 px-4 pt-6 pb-3">
+        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">DrinkLog</h1>
+      </div>
 
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
       <div className="flex flex-col gap-2 mb-6">
         <ActionCard
           title="New"
@@ -88,6 +91,8 @@ export default function HomeTab() {
         </div>
       )}
 
+      </div>
+
       <NewDrinkModal
         open={modal === 'new'}
         onClose={() => setModal(null)}
@@ -104,6 +109,7 @@ export default function HomeTab() {
       <Toast message={toast} onDismiss={() => setToast(null)} />
     </div>
   )
+
 }
 
 function ActionCard({ title, subtitle, icon, onClick }: {
