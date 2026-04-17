@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import BottomNav, { type Tab } from './components/BottomNav'
-import HomeTab from './tabs/HomeTab'
-import LogTab from './tabs/LogTab'
-import ManageTab from './tabs/ManageTab'
-import DataTab from './tabs/DataTab'
+
+const HomeTab = lazy(() => import('./tabs/HomeTab'))
+const LogTab = lazy(() => import('./tabs/LogTab'))
+const ManageTab = lazy(() => import('./tabs/ManageTab'))
+const DataTab = lazy(() => import('./tabs/DataTab'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,10 +19,12 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <div className="fixed inset-0 bg-neutral-50 dark:bg-neutral-900 pt-safe pb-safe-nav overflow-hidden flex flex-col">
-        {activeTab === 'home' && <HomeTab />}
-        {activeTab === 'log' && <LogTab />}
-        {activeTab === 'manage' && <ManageTab />}
-        {activeTab === 'data' && <DataTab />}
+        <Suspense fallback={<div className="flex-1" />}>
+          {activeTab === 'home' && <HomeTab />}
+          {activeTab === 'log' && <LogTab />}
+          {activeTab === 'manage' && <ManageTab />}
+          {activeTab === 'data' && <DataTab />}
+        </Suspense>
       </div>
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     </QueryClientProvider>
