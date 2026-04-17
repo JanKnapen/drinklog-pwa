@@ -18,10 +18,10 @@ export default function Modal({ open, onClose, title, children }: Props) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center">
+    <div className="fixed inset-0 z-40 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative z-10 bg-white dark:bg-neutral-900 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto shadow-xl">
-        <div className="flex items-center justify-between px-4 pt-4 pb-2 border-b border-neutral-200 dark:border-neutral-700">
+      <div className="relative z-10 bg-white dark:bg-neutral-900 rounded-2xl w-[90%] max-w-[400px] shadow-xl p-6">
+        <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{title}</h2>
           <button
             onClick={onClose}
@@ -30,7 +30,7 @@ export default function Modal({ open, onClose, title, children }: Props) {
             ×
           </button>
         </div>
-        <div className="p-4">{children}</div>
+        {children}
       </div>
     </div>
   )
