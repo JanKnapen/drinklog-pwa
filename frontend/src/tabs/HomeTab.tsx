@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   PlusCircleIcon,
   BeakerIcon,
@@ -8,6 +8,7 @@ import { useTemplates, useUpdateTemplate } from '../api/templates'
 import { useCreateEntry } from '../api/entries'
 import Toast from '../components/Toast'
 import Modal from '../components/Modal'
+import TimestampPicker from '../components/TimestampPicker'
 import { standardUnits } from '../utils'
 import type { DrinkTemplate } from '../types'
 
@@ -160,6 +161,9 @@ function NewDrinkModal({ open, onClose, templates, onLogged }: {
   const [ml, setMl] = useState('')
   const [abv, setAbv] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [ts, setTs] = useState<Date>(() => new Date())
+
+  useEffect(() => { if (open) setTs(new Date()) }, [open])
 
   const isDuplicate = templates.some((t) => t.name.toLowerCase() === name.trim().toLowerCase())
   const isValid = name.trim().length > 0 && !isNaN(parseFloat(ml)) && !isNaN(parseFloat(abv))
@@ -167,15 +171,18 @@ function NewDrinkModal({ open, onClose, templates, onLogged }: {
   function handleSubmit() {
     if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
     createEntry.mutate(
-      { custom_name: name.trim(), ml: parseFloat(ml), abv: parseFloat(abv), timestamp: new Date().toISOString() },
+      { custom_name: name.trim(), ml: parseFloat(ml), abv: parseFloat(abv), timestamp: ts.toISOString() },
       { onSuccess: () => { reset(); onLogged() } },
     )
   }
-  function reset() { setName(''); setMl(''); setAbv(''); setError(null) }
+  function reset() { setName(''); setMl(''); setAbv(''); setError(null); setTs(new Date()) }
 
   return (
     <Modal open={open} onClose={() => { reset(); onClose() }} title="New Drink">
       <div className="flex flex-col gap-3">
+        <Field label="When">
+          <TimestampPicker value={ts} onChange={setTs} />
+        </Field>
         {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
         <Field label="Drink name">
           <input className={inputCls} placeholder="e.g. Lager, House Wine…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} autoFocus />
@@ -197,18 +204,25 @@ function EnterMlModal({ open, onClose }: { open: boolean; onClose: () => void })
   const createEntry = useCreateEntry()
   const [ml, setMl] = useState('')
   const [abv, setAbv] = useState('')
+  const [ts, setTs] = useState<Date>(() => new Date())
+
+  useEffect(() => { if (open) setTs(new Date()) }, [open])
+
   const isValid = !isNaN(parseFloat(ml)) && !isNaN(parseFloat(abv))
 
   function handleSubmit() {
     createEntry.mutate(
-      { ml: parseFloat(ml), abv: parseFloat(abv), timestamp: new Date().toISOString() },
-      { onSuccess: () => { setMl(''); setAbv(''); onClose() } },
+      { ml: parseFloat(ml), abv: parseFloat(abv), timestamp: ts.toISOString() },
+      { onSuccess: () => { setMl(''); setAbv(''); setTs(new Date()); onClose() } },
     )
   }
 
   return (
     <Modal open={open} onClose={onClose} title="Enter Amount">
       <div className="flex flex-col gap-3">
+        <Field label="When">
+          <TimestampPicker value={ts} onChange={setTs} />
+        </Field>
         <Field label="Amount (ml)">
           <input className={inputCls} inputMode="decimal" placeholder="330" value={ml} onChange={(e) => setMl(e.target.value)} autoFocus />
         </Field>
@@ -228,15 +242,20 @@ function OtherModal({ open, onClose, templates, onLogged }: {
   const createEntry = useCreateEntry()
   const updateTemplate = useUpdateTemplate()
   const [search, setSearch] = useState('')
+  const [ts, setTs] = useState<Date>(() => new Date())
+
+  useEffect(() => { if (open) setTs(new Date()) }, [open])
+
   const filtered = templates.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
 
   function logTemplate(t: DrinkTemplate) {
     createEntry.mutate(
-      { template_id: t.id, ml: t.default_ml, abv: t.default_abv, timestamp: new Date().toISOString() },
+      { template_id: t.id, ml: t.default_ml, abv: t.default_abv, timestamp: ts.toISOString() },
       {
         onSuccess: () => {
           updateTemplate.mutate({ id: t.id, usage_count: t.usage_count + 1 })
           setSearch('')
+          setTs(new Date())
           onLogged(t.name)
         },
       },
@@ -244,11 +263,14 @@ function OtherModal({ open, onClose, templates, onLogged }: {
   }
 
   return (
-    <Modal open={open} onClose={() => { setSearch(''); onClose() }} title="Other Drinks">
+    <Modal open={open} onClose={() => { setSearch(''); setTs(new Date()); onClose() }} title="Other Drinks">
       <div className="flex flex-col gap-2">
+        <Field label="When">
+          <TimestampPicker value={ts} onChange={setTs} />
+        </Field>
         <input className={inputCls} placeholder="Search drinks…" value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />
         {filtered.length === 0 && <p className="text-sm text-neutral-400 py-4 text-center">No drinks found</p>}
-        <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
+        <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
           {filtered.map((t) => (
             <button key={t.id} onClick={() => logTemplate(t)}
               className="flex justify-between items-center px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 active:scale-[0.98] transition-transform text-left">

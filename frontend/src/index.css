@@ -25,3 +25,7 @@
     height: calc(100vh - env(safe-area-inset-top, 0px));
   }
 }
+
+.drum-scroll::-webkit-scrollbar {
+  display: none;
+}

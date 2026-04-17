@@ -3,6 +3,7 @@ import { TrashIcon, PencilIcon, CheckCircleIcon } from '@heroicons/react/24/outl
 import { useEntries, useDeleteEntry, useConfirmAll, useUpdateEntry } from '../api/entries'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
+import TimestampPicker from '../components/TimestampPicker'
 import { groupByDate, localMidnightISO, todayKey, standardUnits } from '../utils'
 import type { DrinkEntry } from '../types'
 
@@ -114,7 +115,7 @@ function EntryRow({ entry, isConfirmed, onEdit, onDelete }: {
   entry: DrinkEntry; isConfirmed: boolean; onEdit: () => void; onDelete: () => void
 }) {
   const displayName = entry.template?.name ?? entry.custom_name
-  const canEdit = !isConfirmed && entry.template_id === null
+  const canEdit = !isConfirmed
   const time = new Date(entry.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 
   return (
@@ -144,42 +145,52 @@ function EntryRow({ entry, isConfirmed, onEdit, onDelete }: {
 
 function EditEntryModal({ entry, onClose }: { entry: DrinkEntry; onClose: () => void }) {
   const updateEntry = useUpdateEntry()
+  const isTemplateEntry = entry.template_id !== null
   const hasName = entry.custom_name !== null
   const [name, setName] = useState(entry.custom_name ?? '')
   const [ml, setMl] = useState(String(entry.ml))
   const [abv, setAbv] = useState(String(entry.abv))
-  const [timestamp, setTimestamp] = useState(new Date(entry.timestamp).toISOString().slice(0, 16))
+  const [ts, setTs] = useState<Date>(() => new Date(entry.timestamp))
 
   const mlNum = parseFloat(ml)
   const abvNum = parseFloat(abv)
-  const isValid = !isNaN(mlNum) && !isNaN(abvNum) && (!hasName || name.trim().length > 0)
+  const isValid = isTemplateEntry || (!isNaN(mlNum) && !isNaN(abvNum) && (!hasName || name.trim().length > 0))
 
   function handleSave() {
     const data: Parameters<typeof updateEntry.mutate>[0] = {
-      id: entry.id, ml: mlNum, abv: abvNum, timestamp: new Date(timestamp).toISOString(),
+      id: entry.id,
+      timestamp: ts.toISOString(),
     }
-    if (hasName) data.custom_name = name.trim()
+    if (!isTemplateEntry) {
+      data.ml = mlNum
+      data.abv = abvNum
+      if (hasName) data.custom_name = name.trim()
+    }
     updateEntry.mutate(data, { onSuccess: onClose })
   }
 
   return (
     <Modal open onClose={onClose} title="Edit Entry">
       <div className="flex flex-col gap-3">
-        {hasName && (
-          <Field label="Name">
-            <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-          </Field>
+        <Field label="When">
+          <TimestampPicker value={ts} onChange={setTs} />
+        </Field>
+        {!isTemplateEntry && (
+          <>
+            {hasName && (
+              <Field label="Name">
+                <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+              </Field>
+            )}
+            <Field label="Amount (ml)">
+              <input className={inputCls} inputMode="decimal" value={ml} onChange={(e) => setMl(e.target.value)} />
+            </Field>
+            <Field label="ABV (%)">
+              <input className={inputCls} inputMode="decimal" value={abv} onChange={(e) => setAbv(e.target.value)} />
+            </Field>
+            <UnitPreview ml={ml} abv={abv} />
+          </>
         )}
-        <Field label="Amount (ml)">
-          <input className={inputCls} inputMode="decimal" value={ml} onChange={(e) => setMl(e.target.value)} />
-        </Field>
-        <Field label="ABV (%)">
-          <input className={inputCls} inputMode="decimal" value={abv} onChange={(e) => setAbv(e.target.value)} />
-        </Field>
-        <Field label="Time">
-          <input className={inputCls} type="datetime-local" value={timestamp} onChange={(e) => setTimestamp(e.target.value)} />
-        </Field>
-        <UnitPreview ml={ml} abv={abv} />
         <button onClick={handleSave} disabled={!isValid || updateEntry.isPending} className={primaryBtn}>Save</button>
       </div>
     </Modal>
