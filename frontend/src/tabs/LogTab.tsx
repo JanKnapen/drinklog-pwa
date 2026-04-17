@@ -37,7 +37,7 @@ export default function LogTab() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full">
       <div data-dbg-zone="HEADER" className="flex-shrink-0 px-4 pt-6 pb-3 bg-neutral-50 dark:bg-neutral-900">
         <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Log</h1>
       </div>
@@ -93,10 +93,10 @@ export default function LogTab() {
             Confirm All
           </button>
         )}
-        <div className="flex rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-700">
-          {(['unconfirmed', 'confirmed'] as const).map((f) => (
+        <div className="flex rounded-xl border border-neutral-200 dark:border-neutral-700">
+          {(['unconfirmed', 'confirmed'] as const).map((f, i) => (
             <button key={f} onClick={() => setFilter(f)}
-              className={`flex-1 py-2 text-sm font-medium transition-colors ${
+              className={`flex-1 py-2 text-sm font-medium transition-colors ${i === 0 ? 'rounded-l-xl' : 'rounded-r-xl'} ${
                 filter === f ? 'bg-blue-500 text-white' : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
               }`}
             >

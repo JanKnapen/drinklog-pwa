@@ -21,7 +21,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <DebugOverlay />
-      <div data-dbg-zone="APP" className="fixed inset-0 bg-neutral-50 dark:bg-neutral-900 pt-safe pb-safe-nav overflow-hidden flex flex-col">
+      <div data-dbg-zone="APP" className="fixed inset-0 bg-neutral-50 dark:bg-neutral-900 pt-safe pb-safe-nav flex flex-col">
         <Suspense fallback={<div className="flex-1" />}>
           {activeTab === 'home' && <HomeTab onToast={setToast} />}
           {activeTab === 'log' && <LogTab />}
