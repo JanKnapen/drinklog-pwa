@@ -42,13 +42,13 @@ export default function BottomNav({ activeTab, onTabChange, toast, onDismissToas
             <button
               key={id}
               onClick={() => onTabChange(id)}
-              className={`flex-1 flex flex-col items-center py-2 gap-0.5 text-xs font-medium transition-colors ${
+              className={`flex-1 flex flex-col items-center py-2 gap-0.5 text-xs font-medium transition-colors touch-manipulation ${
                 active
                   ? 'text-blue-500'
                   : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'
               }`}
             >
-              <Ic className="w-6 h-6" />
+              <Ic className="w-6 h-6 overflow-visible" />
               {label}
             </button>
           )
