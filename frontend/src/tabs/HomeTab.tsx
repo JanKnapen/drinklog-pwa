@@ -72,19 +72,20 @@ export default function HomeTab() {
           <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 mb-2 uppercase tracking-wide">
             Quick Log
           </p>
-          <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4">
+          <div className="flex flex-col gap-2">
             {topFive.map((t) => (
               <button
                 key={t.id}
                 onClick={() => logFromTemplate(t)}
-                className="flex-shrink-0 bg-neutral-100 dark:bg-neutral-800 rounded-xl px-3 py-2 text-left active:scale-95 transition-transform"
+                className="w-full flex items-center gap-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl px-4 py-3.5 text-left active:scale-[0.98] transition-transform"
               >
-                <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 whitespace-nowrap">
-                  {t.name}
-                </p>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
-                  {t.default_ml}ml · {t.default_abv.toFixed(1)}%
-                </p>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t.name}</p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
+                    {t.default_ml}ml · {t.default_abv.toFixed(1)}% · {standardUnits(t.default_ml, t.default_abv).toFixed(1)} units
+                  </p>
+                </div>
+                <span className="text-neutral-400 text-sm">&rsaquo;</span>
               </button>
             ))}
           </div>
