@@ -32,9 +32,7 @@ export default function BottomNav({ activeTab, onTabChange, toast, onDismissToas
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-30 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700 pb-safe">
       <div className="absolute bottom-full left-1/2 -translate-x-1/2 pb-3 pointer-events-none">
-        <div className="pointer-events-auto">
-          <Toast message={toast ?? null} onDismiss={onDismissToast ?? (() => {})} />
-        </div>
+        <Toast message={toast ?? null} onDismiss={onDismissToast ?? (() => {})} />
       </div>
       <div className="flex">
         {tabs.map(({ id, label, Icon, ActiveIcon }) => {

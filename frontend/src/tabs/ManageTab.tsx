@@ -29,7 +29,7 @@ export default function ManageTab() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
+      <div className="flex-1 min-h-0 overflow-y-auto touch-pan-y scroll-touch px-4 pb-4">
       {templates.length === 0 ? (
         <EmptyState message="No drink templates — tap + to add one" />
       ) : (
