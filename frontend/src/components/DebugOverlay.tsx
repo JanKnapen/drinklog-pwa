@@ -29,14 +29,33 @@ function getScrollInfo(el: Element): string {
   return 'no-ancestor'
 }
 
+function findScrollContainer(el: Element): Element | null {
+  let cur: Element | null = el
+  while (cur && cur !== document.body) {
+    const oy = getComputedStyle(cur).overflowY
+    if ((oy === 'auto' || oy === 'scroll') && cur.scrollHeight > cur.clientHeight) return cur
+    cur = cur.parentElement
+  }
+  return null
+}
+
 interface Entry { t: number; zone: string; target: string; scroll: string }
 
 export default function DebugOverlay() {
   const [log, setLog] = useState<Entry[]>([])
+  const [gesture, setGesture] = useState('')
 
   useEffect(() => {
-    function onTouch(e: TouchEvent) {
+    let startY = 0
+    let scrollEl: Element | null = null
+    let scrollTopAtStart = 0
+
+    function onTouchStart(e: TouchEvent) {
       const el = e.target as Element
+      startY = e.touches[0].clientY
+      scrollEl = findScrollContainer(el)
+      scrollTopAtStart = scrollEl ? scrollEl.scrollTop : 0
+
       const tag = el.tagName.toLowerCase()
       const cls = [...el.classList].slice(0, 3).join('.')
       setLog(prev => [{
@@ -45,9 +64,29 @@ export default function DebugOverlay() {
         target: cls ? `${tag}.${cls}` : tag,
         scroll: getScrollInfo(el),
       }, ...prev].slice(0, 5))
+      setGesture('waiting...')
     }
-    window.addEventListener('touchstart', onTouch, { passive: true })
-    return () => window.removeEventListener('touchstart', onTouch)
+
+    function onTouchMove(e: TouchEvent) {
+      const dy = Math.round(e.touches[0].clientY - startY)
+      if (Math.abs(dy) < 5) return
+      const scrolled = scrollEl ? Math.round(scrollEl.scrollTop - scrollTopAtStart) : 0
+      setGesture(`dy=${dy} scrolled=${scrolled}`)
+    }
+
+    function onTouchEnd() {
+      const scrolled = scrollEl ? Math.round(scrollEl.scrollTop - scrollTopAtStart) : 0
+      setGesture(g => (g === 'waiting...' ? 'tap (no move)' : g) + ` | END scrolled=${scrolled}`)
+    }
+
+    window.addEventListener('touchstart', onTouchStart, { passive: true })
+    window.addEventListener('touchmove', onTouchMove, { passive: true })
+    window.addEventListener('touchend', onTouchEnd, { passive: true })
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart)
+      window.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('touchend', onTouchEnd)
+    }
   }, [])
 
   return (
@@ -56,8 +95,9 @@ export default function DebugOverlay() {
       background: '#b00', color: '#fff', fontSize: '9px', lineHeight: '1.45',
       padding: '3px 5px', fontFamily: 'monospace', pointerEvents: 'none',
     }}>
+      {gesture && <div style={{ color: '#ff0', marginBottom: 2 }}>▶ {gesture}</div>}
       {log.length === 0
-        ? '▶ touch anywhere...'
+        ? 'touch anywhere...'
         : log.map((e, i) => (
           <div key={i} style={{ opacity: Math.max(0.3, 1 - i * 0.18) }}>
             [{e.t}ms] <b>{e.zone}</b> › {e.target} | {e.scroll}

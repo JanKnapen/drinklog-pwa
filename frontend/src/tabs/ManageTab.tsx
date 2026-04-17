@@ -29,7 +29,7 @@ export default function ManageTab() {
         </div>
       </div>
 
-      <div data-dbg-zone="LIST" className="flex-1 min-h-0 overflow-y-auto touch-pan-y scroll-touch select-none px-4 pb-4">
+      <div data-dbg-zone="LIST" className="flex-1 min-h-0 overflow-y-auto touch-pan-y scroll-touch px-4 pb-4">
       {templates.length === 0 ? (
         <EmptyState message="No drink templates — tap + to add one" />
       ) : (
