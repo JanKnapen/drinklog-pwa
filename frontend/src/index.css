@@ -37,4 +37,5 @@
 [data-dbg-zone="LIST"] span {
   touch-action: pan-y;
   -webkit-touch-callout: none;
+  pointer-events: none;
 }
