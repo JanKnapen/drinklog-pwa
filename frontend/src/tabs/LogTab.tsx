@@ -42,7 +42,7 @@ export default function LogTab() {
         <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Log</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto pb-28">
+      <div className="flex-1 overflow-y-auto overscroll-contain pb-28">
         {filtered.length === 0 ? (
           <EmptyState message={filter === 'confirmed' ? 'No confirmed entries' : 'No unconfirmed entries'} />
         ) : (

@@ -40,7 +40,7 @@ export default function DataTab() {
         <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Data</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
+      <div className="flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 mb-4">
         {PERIODS.map(({ id, label }) => (
           <button key={id} onClick={() => setPeriod(id)}

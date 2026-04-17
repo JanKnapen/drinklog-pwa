@@ -46,7 +46,7 @@ export default function HomeTab() {
         <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">DrinkLog</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
+      <div className="flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
       <div className="flex flex-col gap-2 mb-6">
         <ActionCard
           title="New"

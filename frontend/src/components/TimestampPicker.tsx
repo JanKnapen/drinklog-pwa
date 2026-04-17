@@ -69,6 +69,7 @@ function DrumColumn({ items, selectedIndex, onChange }: {
           overflowY: 'scroll',
           scrollSnapType: 'y mandatory',
           scrollbarWidth: 'none',
+          overscrollBehavior: 'contain',
         }}
       >
         <div style={{ height: ITEM_H }} />
