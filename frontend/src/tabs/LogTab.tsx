@@ -81,7 +81,7 @@ export default function LogTab() {
         )}
       </div>
 
-      <div className="fixed bottom-safe-nav left-0 right-0 px-4 pb-3 flex flex-col gap-2 bg-neutral-50/90 dark:bg-neutral-900/90 backdrop-blur-sm">
+      <div className="fixed bottom-safe-nav left-0 right-0 px-4 pt-3 pb-3 flex flex-col gap-2 bg-neutral-50/90 dark:bg-neutral-900/90 backdrop-blur-sm border-t border-neutral-200 dark:border-neutral-700">
         {filter === 'unconfirmed' && (
           <button
             onClick={() => confirmAll.mutate(localMidnightISO())}
