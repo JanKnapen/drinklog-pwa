@@ -21,18 +21,21 @@ export default function DataTab() {
   const filtered = start ? allEntries.filter((e) => new Date(e.timestamp) >= start) : allEntries
 
   const groups = groupByDate(filtered)
-  const chartData = [...groups].reverse().map(({ date, entries }) => ({
+  const groupsWithTotals = groups.map(({ date, entries }) => ({
     date,
-    units: parseFloat(entries.reduce((s, e) => s + e.standard_units, 0).toFixed(2)),
+    entries,
+    total: entries.reduce((s, e) => s + e.standard_units, 0),
+  }))
+  const chartData = [...groupsWithTotals].reverse().map(({ date, total }) => ({
+    date,
+    units: parseFloat(total.toFixed(2)),
     label: new Date(date + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
   }))
 
   const totalEntries = filtered.length
   const totalUnits = filtered.reduce((s, e) => s + e.standard_units, 0)
-  const avgPerDay = groups.length > 0 ? totalUnits / groups.length : 0
-  const heaviest = [...groups].sort((a, b) =>
-    b.entries.reduce((s, e) => s + e.standard_units, 0) - a.entries.reduce((s, e) => s + e.standard_units, 0)
-  )[0]
+  const avgPerDay = groupsWithTotals.length > 0 ? totalUnits / groupsWithTotals.length : 0
+  const heaviest = [...groupsWithTotals].sort((a, b) => b.total - a.total)[0]
 
   return (
     <div className="flex flex-col h-full">
@@ -74,7 +77,7 @@ export default function DataTab() {
         <SummaryCard title="Avg / Day" value={avgPerDay.toFixed(1)} />
         <SummaryCard
           title="Heaviest Day"
-          value={heaviest ? heaviest.entries.reduce((s, e) => s + e.standard_units, 0).toFixed(1) : '—'}
+          value={heaviest ? heaviest.total.toFixed(1) : '—'}
           subtitle={heaviest ? new Date(heaviest.date + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : undefined}
         />
       </div>

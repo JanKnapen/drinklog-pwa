@@ -4,7 +4,8 @@ import { useEntries, useDeleteEntry, useConfirmAll, useUpdateEntry } from '../ap
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import TimestampPicker from '../components/TimestampPicker'
-import { groupByDate, localMidnightISO, todayKey, standardUnits } from '../utils'
+import { Field, UnitPreview, inputCls, primaryBtn } from '../components/FormFields'
+import { groupByDate, localMidnightISO, todayKey, toLocalDateKey } from '../utils'
 import type { DrinkEntry } from '../types'
 
 export default function LogTab() {
@@ -22,11 +23,7 @@ export default function LogTab() {
 
   const hasEligibleToConfirm = entries
     .filter((e) => !e.is_marked)
-    .some((e) => {
-      const d = new Date(e.timestamp)
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      return key < today
-    })
+    .some((e) => toLocalDateKey(e.timestamp) < today)
 
   function toggleDate(date: string) {
     setExpandedDates((prev) => {
@@ -115,7 +112,6 @@ function EntryRow({ entry, isConfirmed, onEdit, onDelete }: {
   entry: DrinkEntry; isConfirmed: boolean; onEdit: () => void; onDelete: () => void
 }) {
   const displayName = entry.template?.name ?? entry.custom_name
-  const canEdit = !isConfirmed
   const time = new Date(entry.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 
   return (
@@ -133,11 +129,9 @@ function EntryRow({ entry, isConfirmed, onEdit, onDelete }: {
       </span>
       {!isConfirmed && (
         <>
-          {canEdit && (
-            <button onClick={onEdit} className="p-1 text-neutral-400 hover:text-blue-500 transition-colors">
-              <PencilIcon className="w-4 h-4" />
-            </button>
-          )}
+          <button onClick={onEdit} className="p-1 text-neutral-400 hover:text-blue-500 transition-colors">
+            <PencilIcon className="w-4 h-4" />
+          </button>
           <button onClick={onDelete} className="p-1 text-neutral-400 hover:text-red-500 transition-colors">
             <TrashIcon className="w-4 h-4" />
           </button>
@@ -201,25 +195,3 @@ function EditEntryModal({ entry, onClose }: { entry: DrinkEntry; onClose: () => 
   )
 }
 
-const inputCls = 'w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-base text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500'
-const primaryBtn = 'w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-40 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors'
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{label}</label>
-      {children}
-    </div>
-  )
-}
-
-function UnitPreview({ ml, abv }: { ml: string; abv: string }) {
-  const mlNum = parseFloat(ml)
-  const abvNum = parseFloat(abv)
-  if (isNaN(mlNum) || isNaN(abvNum)) return null
-  return (
-    <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
-      Standard units: <span className="font-semibold text-neutral-700 dark:text-neutral-300">{standardUnits(mlNum, abvNum).toFixed(1)}</span>
-    </p>
-  )
-}

@@ -4,7 +4,7 @@ export function standardUnits(ml: number, abv: number): number {
   return (ml * abv / 100) / 15
 }
 
-function toLocalDateKey(isoTimestamp: string): string {
+export function toLocalDateKey(isoTimestamp: string): string {
   const d = new Date(isoTimestamp)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }

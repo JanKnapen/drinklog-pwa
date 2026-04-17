@@ -3,6 +3,7 @@ import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { useTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from '../api/templates'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
+import { Field, inputCls, primaryBtn } from '../components/FormFields'
 import type { DrinkTemplate } from '../types'
 
 export default function ManageTab() {
@@ -140,14 +141,3 @@ function TemplateModal({ open, onClose, template, templates }: {
   )
 }
 
-const inputCls = 'w-full rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-base text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500'
-const primaryBtn = 'w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-40 text-white font-semibold text-sm py-2.5 rounded-xl transition-colors'
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{label}</label>
-      {children}
-    </div>
-  )
-}
