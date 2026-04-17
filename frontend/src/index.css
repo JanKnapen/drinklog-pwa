@@ -3,6 +3,10 @@
 @tailwind utilities;
 
 @layer base {
+  html, body {
+    overflow: hidden;
+    height: 100%;
+  }
   body {
     @apply bg-neutral-50 dark:bg-neutral-900;
   }
@@ -31,6 +35,12 @@
 
 .drum-scroll::-webkit-scrollbar {
   display: none;
+}
+
+/* Non-scrollable zones: process taps immediately, no double-tap delay window */
+[data-dbg-zone="HEADER"],
+[data-dbg-zone="FOOTER"] {
+  touch-action: manipulation;
 }
 
 /* All children of scroll containers: prevent text selection & callout, force pan-y */
