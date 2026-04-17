@@ -6,19 +6,17 @@ import {
 } from '@heroicons/react/24/solid'
 import { useTemplates, useUpdateTemplate } from '../api/templates'
 import { useCreateEntry } from '../api/entries'
-import Toast from '../components/Toast'
 import Modal from '../components/Modal'
 import TimestampPicker from '../components/TimestampPicker'
 import { standardUnits } from '../utils'
 import type { DrinkTemplate } from '../types'
 
-export default function HomeTab() {
+export default function HomeTab({ onToast }: { onToast: (msg: string) => void }) {
   const { data: templates = [] } = useTemplates()
   const createEntry = useCreateEntry()
   const updateTemplate = useUpdateTemplate()
 
   const [modal, setModal] = useState<'new' | 'enter-ml' | 'other' | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
 
   const topFive = [...templates].sort((a, b) => b.usage_count - a.usage_count).slice(0, 5)
 
@@ -33,7 +31,7 @@ export default function HomeTab() {
       {
         onSuccess: () => {
           updateTemplate.mutate({ id: template.id, usage_count: template.usage_count + 1 })
-          setToast(`Logged: ${template.name}`)
+          onToast(`Logged: ${template.name}`)
           setModal(null)
         },
       },
@@ -106,9 +104,8 @@ export default function HomeTab() {
         open={modal === 'other'}
         onClose={() => setModal(null)}
         templates={templates}
-        onLogged={(name) => { setToast(`Logged: ${name}`); setModal(null) }}
+        onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
       />
-      <Toast message={toast} onDismiss={() => setToast(null)} />
     </div>
   )
 

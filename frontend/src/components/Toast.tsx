@@ -15,7 +15,7 @@ export default function Toast({ message, onDismiss, durationMs = 2000 }: Props) 
 
   return (
     <div
-      className={`fixed bottom-safe-nav left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${
+      className={`transition-all duration-300 ${
         message ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
       }`}
     >
