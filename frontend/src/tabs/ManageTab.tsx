@@ -19,7 +19,7 @@ export default function ManageTab() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-shrink-0 px-4 pt-6 pb-3">
+      <div data-dbg-zone="HEADER" className="flex-shrink-0 px-4 pt-6 pb-3">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Manage</h1>
           <button onClick={() => setShowAdd(true)}
@@ -29,7 +29,7 @@ export default function ManageTab() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto touch-pan-y scroll-touch px-4 pb-4">
+      <div data-dbg-zone="LIST" className="flex-1 min-h-0 overflow-y-auto touch-pan-y scroll-touch px-4 pb-4">
       {templates.length === 0 ? (
         <EmptyState message="No drink templates — tap + to add one" />
       ) : (
