@@ -1,9 +1,12 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY frontend/package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    --mount=type=cache,id=frontend-node-modules,target=/app/node_modules \
+    npm install --prefer-offline
 COPY frontend/ .
-RUN npm run build:docker
+RUN --mount=type=cache,id=frontend-node-modules,target=/app/node_modules \
+    npm run build:docker
 
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
