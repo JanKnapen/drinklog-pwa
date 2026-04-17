@@ -3,7 +3,7 @@ WORKDIR /app
 COPY frontend/package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY frontend/ .
-RUN npm run build
+RUN npm run build:docker
 
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
