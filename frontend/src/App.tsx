@@ -1,7 +1,6 @@
 import { useState, lazy, Suspense } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import BottomNav, { type Tab } from './components/BottomNav'
-import Toast from './components/Toast'
 
 const HomeTab = lazy(() => import('./tabs/HomeTab'))
 const LogTab = lazy(() => import('./tabs/LogTab'))
@@ -28,14 +27,7 @@ export default function App() {
           {activeTab === 'data' && <DataTab />}
         </Suspense>
       </div>
-      <div className="fixed bottom-0 left-0 right-0 z-40 pointer-events-none">
-        <div className="relative">
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 pb-3 pointer-events-auto">
-            <Toast message={toast} onDismiss={() => setToast(null)} />
-          </div>
-        </div>
-        <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
-      </div>
+      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} toast={toast} onDismissToast={() => setToast(null)} />
     </QueryClientProvider>
   )
 }

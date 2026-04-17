@@ -10,12 +10,15 @@ import {
   BeakerIcon as BeakerIconSolid,
   ChartBarIcon as ChartIconSolid,
 } from '@heroicons/react/24/solid'
+import Toast from './Toast'
 
 export type Tab = 'home' | 'log' | 'manage' | 'data'
 
 interface Props {
   activeTab: Tab
   onTabChange: (tab: Tab) => void
+  toast?: string | null
+  onDismissToast?: () => void
 }
 
 const tabs: { id: Tab; label: string; Icon: typeof HomeIcon; ActiveIcon: typeof HomeIcon }[] = [
@@ -25,9 +28,14 @@ const tabs: { id: Tab; label: string; Icon: typeof HomeIcon; ActiveIcon: typeof 
   { id: 'data', label: 'Data', Icon: ChartBarIcon, ActiveIcon: ChartIconSolid },
 ]
 
-export default function BottomNav({ activeTab, onTabChange }: Props) {
+export default function BottomNav({ activeTab, onTabChange, toast, onDismissToast }: Props) {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-30 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700 pb-safe">
+      <div className="absolute bottom-full left-1/2 -translate-x-1/2 pb-3 pointer-events-none">
+        <div className="pointer-events-auto">
+          <Toast message={toast ?? null} onDismiss={onDismissToast ?? (() => {})} />
+        </div>
+      </div>
       <div className="flex">
         {tabs.map(({ id, label, Icon, ActiveIcon }) => {
           const active = activeTab === id
