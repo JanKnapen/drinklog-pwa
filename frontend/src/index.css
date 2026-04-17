@@ -24,6 +24,9 @@
   .h-screen-safe {
     height: calc(100vh - env(safe-area-inset-top, 0px));
   }
+  .scroll-touch {
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .drum-scroll::-webkit-scrollbar {
