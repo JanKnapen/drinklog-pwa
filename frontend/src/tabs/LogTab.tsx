@@ -37,16 +37,16 @@ export default function LogTab() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-4 pt-6 pb-3 bg-neutral-50 dark:bg-neutral-900">
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex-shrink-0 px-4 pt-6 pb-3 bg-neutral-50 dark:bg-neutral-900">
         <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Log</h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto overscroll-contain pb-28">
+      <div className="flex-1 overflow-y-auto overscroll-contain touch-pan-y">
         {filtered.length === 0 ? (
           <EmptyState message={filter === 'confirmed' ? 'No confirmed entries' : 'No unconfirmed entries'} />
         ) : (
-          <div className="px-4 flex flex-col gap-2 pt-2">
+          <div className="px-4 flex flex-col gap-2 pt-2 pb-4">
             {groups.map(({ date, entries: dayEntries }) => {
               const isExpanded = expandedDates.has(date)
               const totalUnits = dayEntries.reduce((s, e) => s + e.standard_units, 0)
@@ -82,7 +82,7 @@ export default function LogTab() {
         )}
       </div>
 
-      <div className="fixed bottom-safe-nav left-0 right-0 px-4 pt-3 pb-3 flex flex-col gap-2 bg-neutral-50/90 dark:bg-neutral-900/90 backdrop-blur-sm border-t border-neutral-200 dark:border-neutral-700">
+      <div className="flex-shrink-0 px-4 pt-3 pb-3 flex flex-col gap-2 bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700">
         {filter === 'unconfirmed' && (
           <button
             onClick={() => confirmAll.mutate(localMidnightISO())}
