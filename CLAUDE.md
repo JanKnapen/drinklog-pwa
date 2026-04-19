@@ -45,6 +45,8 @@ Two tables: `DrinkTemplate` and `DrinkEntry`. An entry is either linked to a tem
 
 **Entry editing constraint:** template-linked entries (`template_id != null`) can only have their timestamp changed, not ml/abv/name. This is enforced on both backend (HTTP 400) and frontend (EditEntryModal renders different fields based on `isTemplateEntry`).
 
+**Template name / custom name invariant:** A `DrinkTemplate` name and an unconfirmed `DrinkEntry.custom_name` with the same value cannot coexist — creating or renaming a template is blocked if a pending entry with that name exists (HTTP 409 / frontend inline error), and confirming entries auto-promotes custom names into templates. This means no extra guard is needed when checking a template's own current name against the pending-entry set.
+
 ### Frontend state management
 
 All server state lives in **TanStack Query**. No global client-side state store. The sole app-level state in `App.tsx` is `activeTab` and `toast`.
@@ -86,6 +88,7 @@ These fixes are intentional — do not revert them:
 - Conventional commit messages: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`
 - No `Co-Authored-By` lines in commits
 - **Never commit without explicit user instruction.** Do not commit after completing a task — always wait for the user to say "commit this" or similar before running any `git commit` command.
+- **Before committing:** review whether the changes introduce anything non-obvious that future sessions would need to know (hidden constraints, invariants, intentional workarounds). If so, update CLAUDE.md first. Don't document UI details or anything self-evident from reading the code.
 
 ## Deployment Notes
 
