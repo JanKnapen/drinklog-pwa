@@ -8,6 +8,16 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>DrinkLog</title>
+    <script>
+      (function() {
+        try {
+          var s = JSON.parse(localStorage.getItem('drinklog-settings') || '{}');
+          var theme = s.theme || 'system';
+          var dark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
