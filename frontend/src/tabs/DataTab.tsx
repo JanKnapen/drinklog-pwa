@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Dot } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { useEntries } from '../api/entries'
 import EmptyState from '../components/EmptyState'
 import { groupByDate, getFilterStart, toLocalDateKey } from '../utils'
@@ -89,7 +89,7 @@ export default function DataTab() {
               <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v: number) => v.toFixed(1)} />
               <Tooltip formatter={(v: number) => [`${v.toFixed(1)} units`, 'Units']}
                 contentStyle={{ fontSize: 12, borderRadius: 8, border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }} />
-              <Line dataKey="units" type="monotone" stroke="#3b82f6" strokeWidth={2} dot={<Dot r={3} fill="#3b82f6" />} activeDot={{ r: 5 }} />
+              <Line dataKey="units" type="monotone" stroke="#3b82f6" strokeWidth={2} dot={false} activeDot={{ r: 5 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
