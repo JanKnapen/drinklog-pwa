@@ -85,7 +85,7 @@ These fixes are intentional — do not revert them:
 
 - Conventional commit messages: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`
 - No `Co-Authored-By` lines in commits
-- Commit each feature or fix individually — ask before committing
+- **Never commit without explicit user instruction.** Do not commit after completing a task — always wait for the user to say "commit this" or similar before running any `git commit` command.
 
 ## Deployment Notes
 
