@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Dot } from 'recharts'
 import { useEntries } from '../api/entries'
 import EmptyState from '../components/EmptyState'
-import { groupByDate, getFilterStart } from '../utils'
+import { groupByDate, getFilterStart, toLocalDateKey } from '../utils'
 import type { FilterPeriod } from '../types'
 
 const PERIODS: { id: FilterPeriod; label: string }[] = [
@@ -17,8 +17,8 @@ export default function DataTab() {
   const { data: allEntries = [] } = useEntries()
   const [period, setPeriod] = useState<FilterPeriod>('week')
 
-  const start = getFilterStart(period)
-  const filtered = start ? allEntries.filter((e) => new Date(e.timestamp) >= start) : allEntries
+  const filterStart = getFilterStart(period)
+  const filtered = filterStart ? allEntries.filter((e) => new Date(e.timestamp) >= filterStart) : allEntries
 
   const groups = groupByDate(filtered)
   const groupsWithTotals = groups.map(({ date, entries }) => ({
@@ -26,16 +26,40 @@ export default function DataTab() {
     entries,
     total: entries.reduce((s, e) => s + e.standard_units, 0),
   }))
-  const chartData = [...groupsWithTotals].reverse().map(({ date, total }) => ({
-    date,
-    units: parseFloat(total.toFixed(2)),
-    label: new Date(date + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-  }))
 
   const totalEntries = filtered.length
   const totalUnits = filtered.reduce((s, e) => s + e.standard_units, 0)
-  const avgPerDay = groupsWithTotals.length > 0 ? totalUnits / groupsWithTotals.length : 0
   const heaviest = [...groupsWithTotals].sort((a, b) => b.total - a.total)[0]
+
+  // Chart range: from range start to yesterday (inclusive), zero-filled
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayKey = toLocalDateKey(yesterday.toISOString())
+
+  const rangeStartKey = period === 'all'
+    ? (groups.length > 0 ? groups[groups.length - 1].date : null)
+    : filterStart ? toLocalDateKey(filterStart.toISOString()) : null
+
+  const totalsMap = new Map(groupsWithTotals.map(({ date, total }) => [date, total]))
+
+  const chartData = (() => {
+    if (!rangeStartKey || rangeStartKey > yesterdayKey) return []
+    const result: { date: string; units: number; label: string }[] = []
+    const cur = new Date(rangeStartKey + 'T12:00:00')
+    const end = new Date(yesterdayKey + 'T12:00:00')
+    while (cur <= end) {
+      const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`
+      result.push({
+        date: key,
+        units: parseFloat((totalsMap.get(key) ?? 0).toFixed(2)),
+        label: cur.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      })
+      cur.setDate(cur.getDate() + 1)
+    }
+    return result
+  })()
+
+  const avgPerDay = chartData.length > 0 ? totalUnits / chartData.length : 0
 
   return (
     <div className="flex flex-col h-full">
