@@ -3,41 +3,73 @@ import {
   PlusCircleIcon,
   BeakerIcon,
   ListBulletIcon,
+  ClockIcon,
 } from '@heroicons/react/24/solid'
 import { useTemplates, useUpdateTemplate } from '../api/templates'
-import { useCreateEntry } from '../api/entries'
+import { useEntries, useCreateEntry } from '../api/entries'
 import Modal from '../components/Modal'
 import TimestampPicker from '../components/TimestampPicker'
 import { Field, UnitPreview, inputCls, primaryBtn } from '../components/FormFields'
-import { standardUnits } from '../utils'
-import type { DrinkTemplate } from '../types'
+import { standardUnits, toLocalDateKey, todayKey } from '../utils'
+import type { DrinkTemplate, DrinkEntry } from '../types'
 
 export default function HomeTab({ onToast }: { onToast: (msg: string) => void }) {
   const { data: templates = [] } = useTemplates()
+  const { data: entries = [] } = useEntries()
   const createEntry = useCreateEntry()
   const updateTemplate = useUpdateTemplate()
 
-  const [modal, setModal] = useState<'new' | 'enter-ml' | 'other' | null>(null)
+  const [modal, setModal] = useState<'new' | 'enter-ml' | 'other' | 'pending' | null>(null)
 
-  const topFive = [...templates].sort((a, b) => b.usage_count - a.usage_count).slice(0, 5)
+  // Today's top 2 templates by log count, tiebreak by most recent entry
+  const today = todayKey()
+  const statsMap = new Map<string, { template: DrinkTemplate; count: number; lastTs: string }>()
+  for (const entry of entries) {
+    if (toLocalDateKey(entry.timestamp) !== today || !entry.template_id) continue
+    const tmpl = templates.find((t) => t.id === entry.template_id)
+    if (!tmpl) continue
+    const s = statsMap.get(entry.template_id)
+    if (!s) {
+      statsMap.set(entry.template_id, { template: tmpl, count: 1, lastTs: entry.timestamp })
+    } else {
+      s.count++
+      if (entry.timestamp > s.lastTs) s.lastTs = entry.timestamp
+    }
+  }
+  const todayTopTwo = [...statsMap.values()]
+    .sort((a, b) => b.count - a.count || b.lastTs.localeCompare(a.lastTs))
+    .slice(0, 2)
+
+  // Unconfirmed custom_name entries, deduplicated by name (keep most recent per name)
+  const pendingMap = new Map<string, DrinkEntry>()
+  for (const entry of entries) {
+    if (entry.template_id !== null || entry.is_marked || !entry.custom_name) continue
+    const existing = pendingMap.get(entry.custom_name)
+    if (!existing || entry.timestamp > existing.timestamp) pendingMap.set(entry.custom_name, entry)
+  }
+  const pendingDrinks = [...pendingMap.values()].sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+
+  // Alltime: exclude today's top templates, count = 5 minus slots used by today/pending sections
+  const todayIds = new Set(todayTopTwo.map((s) => s.template.id))
+  const alltimeCount = 5 - todayTopTwo.length - (pendingDrinks.length > 0 ? 1 : 0)
+  const alltimeItems = [...templates]
+    .filter((t) => !todayIds.has(t.id))
+    .sort((a, b) => b.usage_count - a.usage_count)
+    .slice(0, alltimeCount)
 
   function logFromTemplate(template: DrinkTemplate) {
     createEntry.mutate(
-      {
-        template_id: template.id,
-        ml: template.default_ml,
-        abv: template.default_abv,
-        timestamp: new Date().toISOString(),
-      },
+      { template_id: template.id, ml: template.default_ml, abv: template.default_abv, timestamp: new Date().toISOString() },
       {
         onSuccess: () => {
           updateTemplate.mutate({ id: template.id, usage_count: template.usage_count + 1 })
           onToast(`Logged: ${template.name}`)
-          setModal(null)
         },
       },
     )
   }
+
+  const showQuickLog = alltimeItems.length > 0 || todayTopTwo.length > 0 || pendingDrinks.length > 0
 
   return (
     <div className="flex flex-col h-full">
@@ -67,31 +99,43 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
         />
       </div>
 
-      {topFive.length > 0 && (
+      {showQuickLog && (
         <div>
           <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 mb-2 uppercase tracking-wide">
             Quick Log
           </p>
           <div className="flex flex-col gap-2">
-            {topFive.map((t) => (
+            {alltimeItems.map((t) => (
+              <TemplateButton key={t.id} template={t} onClick={() => logFromTemplate(t)} />
+            ))}
+
+            {todayTopTwo.length > 0 && (
+              <>
+                <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500 mt-1 px-1">Today</p>
+                {todayTopTwo.map(({ template }) => (
+                  <TemplateButton key={template.id} template={template} onClick={() => logFromTemplate(template)} />
+                ))}
+              </>
+            )}
+
+            {pendingDrinks.length > 0 && (
               <button
-                key={t.id}
-                onClick={() => logFromTemplate(t)}
+                onClick={() => setModal('pending')}
                 className="w-full flex items-center gap-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl px-4 py-3.5 text-left active:scale-[0.98] transition-transform"
               >
+                <ClockIcon className="w-6 h-6 text-blue-500 flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t.name}</p>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
-                    {t.default_ml}ml · {t.default_abv.toFixed(1)}% · {standardUnits(t.default_ml, t.default_abv).toFixed(1)} units
+                  <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">New drinks</p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {pendingDrinks.length} unconfirmed
                   </p>
                 </div>
                 <span className="text-neutral-400 text-sm">&rsaquo;</span>
               </button>
-            ))}
+            )}
           </div>
         </div>
       )}
-
       </div>
 
       <NewDrinkModal
@@ -107,9 +151,31 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
         templates={templates}
         onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
       />
+      <PendingDrinksModal
+        open={modal === 'pending'}
+        onClose={() => setModal(null)}
+        drinks={pendingDrinks}
+        onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
+      />
     </div>
   )
+}
 
+function TemplateButton({ template, onClick }: { template: DrinkTemplate; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl px-4 py-3.5 text-left active:scale-[0.98] transition-transform"
+    >
+      <div className="flex-1">
+        <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{template.name}</p>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
+          {template.default_ml}ml · {template.default_abv.toFixed(1)}% · {standardUnits(template.default_ml, template.default_abv).toFixed(1)} units
+        </p>
+      </div>
+      <span className="text-neutral-400 text-sm">&rsaquo;</span>
+    </button>
+  )
 }
 
 function ActionCard({ title, subtitle, icon, onClick }: {
@@ -254,6 +320,46 @@ function OtherModal({ open, onClose, templates, onLogged }: {
                 <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{t.name}</p>
                 <p className="text-xs text-neutral-500 tabular-nums">
                   {t.default_ml}ml · {t.default_abv.toFixed(1)}% · {standardUnits(t.default_ml, t.default_abv).toFixed(1)} units
+                </p>
+              </div>
+              <span className="text-blue-500 text-lg">+</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function PendingDrinksModal({ open, onClose, drinks, onLogged }: {
+  open: boolean; onClose: () => void; drinks: DrinkEntry[]; onLogged: (name: string) => void
+}) {
+  const createEntry = useCreateEntry()
+  const [ts, setTs] = useState<Date>(() => new Date())
+
+  useEffect(() => { if (open) setTs(new Date()) }, [open])
+
+  function logDrink(entry: DrinkEntry) {
+    createEntry.mutate(
+      { custom_name: entry.custom_name!, ml: entry.ml, abv: entry.abv, timestamp: ts.toISOString() },
+      { onSuccess: () => { setTs(new Date()); onLogged(entry.custom_name!) } },
+    )
+  }
+
+  return (
+    <Modal open={open} onClose={() => { setTs(new Date()); onClose() }} title="New Drinks">
+      <div className="flex flex-col gap-2">
+        <Field label="When (month · day · hour)">
+          <TimestampPicker value={ts} onChange={setTs} />
+        </Field>
+        <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+          {drinks.map((entry) => (
+            <button key={entry.id} onClick={() => logDrink(entry)}
+              className="flex justify-between items-center px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 active:scale-[0.98] transition-transform text-left">
+              <div>
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{entry.custom_name}</p>
+                <p className="text-xs text-neutral-500 tabular-nums">
+                  {entry.ml}ml · {entry.abv.toFixed(1)}% · {standardUnits(entry.ml, entry.abv).toFixed(1)} units
                 </p>
               </div>
               <span className="text-blue-500 text-lg">+</span>
