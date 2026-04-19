@@ -204,20 +204,23 @@ function NewDrinkModal({ open, onClose, templates, onLogged }: {
   const [abv, setAbv] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [ts, setTs] = useState<Date>(() => new Date())
+  const [count, setCount] = useState(1)
 
   useEffect(() => { if (open) setTs(new Date()) }, [open])
 
   const isDuplicate = templates.some((t) => t.name.toLowerCase() === name.trim().toLowerCase())
   const isValid = name.trim().length > 0 && !isNaN(parseFloat(ml)) && !isNaN(parseFloat(abv))
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
-    createEntry.mutate(
-      { custom_name: name.trim(), ml: parseFloat(ml), abv: parseFloat(abv), timestamp: ts.toISOString() },
-      { onSuccess: () => { reset(); onLogged() } },
-    )
+    const timestamp = ts.toISOString()
+    for (let i = 0; i < count; i++) {
+      await createEntry.mutateAsync({ custom_name: name.trim(), ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
+    }
+    reset()
+    onLogged()
   }
-  function reset() { setName(''); setMl(''); setAbv(''); setError(null); setTs(new Date()) }
+  function reset() { setName(''); setMl(''); setAbv(''); setError(null); setTs(new Date()); setCount(1) }
 
   return (
     <Modal open={open} onClose={() => { reset(); onClose() }} title="New Drink">
@@ -236,7 +239,10 @@ function NewDrinkModal({ open, onClose, templates, onLogged }: {
           <input className={inputCls} inputMode="decimal" placeholder="5.0" value={abv} onChange={(e) => setAbv(e.target.value)} />
         </Field>
         <UnitPreview ml={ml} abv={abv} />
-        <button onClick={handleSubmit} disabled={!isValid} className={primaryBtn}>Log</button>
+        <div className="flex gap-2">
+          <Stepper value={count} onChange={setCount} />
+          <button onClick={handleSubmit} disabled={!isValid} className={primaryBtn + ' flex-1'}>Log</button>
+        </div>
       </div>
     </Modal>
   )
@@ -285,32 +291,35 @@ function OtherModal({ open, onClose, templates, onLogged }: {
   const updateTemplate = useUpdateTemplate()
   const [search, setSearch] = useState('')
   const [ts, setTs] = useState<Date>(() => new Date())
+  const [count, setCount] = useState(1)
 
   useEffect(() => { if (open) setTs(new Date()) }, [open])
 
   const filtered = templates.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
 
-  function logTemplate(t: DrinkTemplate) {
-    createEntry.mutate(
-      { template_id: t.id, ml: t.default_ml, abv: t.default_abv, timestamp: ts.toISOString() },
-      {
-        onSuccess: () => {
-          updateTemplate.mutate({ id: t.id, usage_count: t.usage_count + 1 })
-          setSearch('')
-          setTs(new Date())
-          onLogged(t.name)
-        },
-      },
-    )
+  async function logTemplate(t: DrinkTemplate) {
+    const timestamp = ts.toISOString()
+    for (let i = 0; i < count; i++) {
+      await createEntry.mutateAsync({ template_id: t.id, ml: t.default_ml, abv: t.default_abv, timestamp })
+    }
+    updateTemplate.mutate({ id: t.id, usage_count: t.usage_count + count })
+    setSearch('')
+    setTs(new Date())
+    setCount(1)
+    onLogged(t.name)
   }
 
   return (
-    <Modal open={open} onClose={() => { setSearch(''); setTs(new Date()); onClose() }} title="Other Drinks">
+    <Modal open={open} onClose={() => { setSearch(''); setTs(new Date()); setCount(1); onClose() }} title="Other Drinks">
       <div className="flex flex-col gap-2">
         <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         <input className={inputCls} placeholder="Search drinks…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-neutral-500 dark:text-neutral-400">Quantity</span>
+          <Stepper value={count} onChange={setCount} />
+        </div>
         {filtered.length === 0 && <p className="text-sm text-neutral-400 py-4 text-center">No drinks found</p>}
         <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
           {filtered.map((t) => (
@@ -336,22 +345,30 @@ function PendingDrinksModal({ open, onClose, drinks, onLogged }: {
 }) {
   const createEntry = useCreateEntry()
   const [ts, setTs] = useState<Date>(() => new Date())
+  const [count, setCount] = useState(1)
 
   useEffect(() => { if (open) setTs(new Date()) }, [open])
 
-  function logDrink(entry: DrinkEntry) {
-    createEntry.mutate(
-      { custom_name: entry.custom_name!, ml: entry.ml, abv: entry.abv, timestamp: ts.toISOString() },
-      { onSuccess: () => { setTs(new Date()); onLogged(entry.custom_name!) } },
-    )
+  async function logDrink(entry: DrinkEntry) {
+    const timestamp = ts.toISOString()
+    for (let i = 0; i < count; i++) {
+      await createEntry.mutateAsync({ custom_name: entry.custom_name!, ml: entry.ml, abv: entry.abv, timestamp })
+    }
+    setTs(new Date())
+    setCount(1)
+    onLogged(entry.custom_name!)
   }
 
   return (
-    <Modal open={open} onClose={() => { setTs(new Date()); onClose() }} title="New Drinks">
+    <Modal open={open} onClose={() => { setTs(new Date()); setCount(1); onClose() }} title="New Drinks">
       <div className="flex flex-col gap-2">
         <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-neutral-500 dark:text-neutral-400">Quantity</span>
+          <Stepper value={count} onChange={setCount} />
+        </div>
         <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
           {drinks.map((entry) => (
             <button key={entry.id} onClick={() => logDrink(entry)}
@@ -368,5 +385,17 @@ function PendingDrinksModal({ open, onClose, drinks, onLogged }: {
         </div>
       </div>
     </Modal>
+  )
+}
+
+function Stepper({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  return (
+    <div className="flex items-center bg-neutral-100 dark:bg-neutral-800 rounded-xl flex-shrink-0">
+      <button onClick={() => onChange(Math.max(1, value - 1))}
+        className="px-3 py-2 text-lg font-semibold text-neutral-700 dark:text-neutral-300 active:scale-90 transition-transform">−</button>
+      <span className="w-6 text-center text-sm font-semibold tabular-nums text-neutral-900 dark:text-neutral-100">{value}</span>
+      <button onClick={() => onChange(value + 1)}
+        className="px-3 py-2 text-lg font-semibold text-neutral-700 dark:text-neutral-300 active:scale-90 transition-transform">+</button>
+    </div>
   )
 }
