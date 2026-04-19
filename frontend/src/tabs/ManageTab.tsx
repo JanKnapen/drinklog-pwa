@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PencilIcon, TrashIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
 import { useTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from '../api/templates'
 import { useEntries } from '../api/entries'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import { Field, inputCls, primaryBtn } from '../components/FormFields'
 import type { DrinkTemplate } from '../types'
+import { useSettings } from '../contexts/SettingsContext'
 
 export default function ManageTab() {
   const { data: templates = [] } = useTemplates()
@@ -19,6 +20,7 @@ export default function ManageTab() {
   const [editing, setEditing] = useState<DrinkTemplate | null>(null)
   const [deleting, setDeleting] = useState<DrinkTemplate | null>(null)
   const deleteTemplate = useDeleteTemplate()
+  const { openSettings } = useSettings()
 
   function handleDelete() {
     if (!deleting) return
@@ -30,10 +32,18 @@ export default function ManageTab() {
       <div data-dbg-zone="HEADER" className="flex-shrink-0 px-4 pt-6 pb-3">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Manage</h1>
-          <button onClick={() => setShowAdd(true)}
-            className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-blue-500 active:scale-95 transition-transform">
-            <PlusIcon className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setShowAdd(true)}
+              className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-blue-500 active:scale-95 transition-transform">
+              <PlusIcon className="w-5 h-5" />
+            </button>
+            <button
+              onClick={openSettings}
+              className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 active:scale-95 transition-transform"
+            >
+              <Cog6ToothIcon className="w-6 h-6" />
+            </button>
+          </div>
         </div>
       </div>
 

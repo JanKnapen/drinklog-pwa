@@ -5,6 +5,7 @@ import {
   ListBulletIcon,
   ClockIcon,
 } from '@heroicons/react/24/solid'
+import { Cog6ToothIcon } from '@heroicons/react/24/outline'
 import { useTemplates, useUpdateTemplate } from '../api/templates'
 import { useEntries, useCreateEntry } from '../api/entries'
 import Modal from '../components/Modal'
@@ -12,12 +13,14 @@ import TimestampPicker from '../components/TimestampPicker'
 import { Field, UnitPreview, inputCls, primaryBtn } from '../components/FormFields'
 import { standardUnits, toLocalDateKey, todayKey } from '../utils'
 import type { DrinkTemplate, DrinkEntry } from '../types'
+import { useSettings } from '../contexts/SettingsContext'
 
 export default function HomeTab({ onToast }: { onToast: (msg: string) => void }) {
   const { data: templates = [] } = useTemplates()
   const { data: entries = [] } = useEntries()
   const createEntry = useCreateEntry()
   const updateTemplate = useUpdateTemplate()
+  const { openSettings } = useSettings()
 
   const [modal, setModal] = useState<'new' | 'enter-ml' | 'other' | 'pending' | null>(null)
 
@@ -74,7 +77,15 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
   return (
     <div className="flex flex-col h-full">
       <div data-dbg-zone="HEADER" className="flex-shrink-0 px-4 pt-6 pb-3">
-        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">DrinkLog</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">DrinkLog</h1>
+          <button
+            onClick={openSettings}
+            className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 active:scale-95 transition-transform"
+          >
+            <Cog6ToothIcon className="w-6 h-6" />
+          </button>
+        </div>
       </div>
 
       <div data-dbg-zone="LIST" className="flex-1 min-h-0 overflow-y-auto touch-pan-y px-4 pb-4">

@@ -4,6 +4,8 @@ import { useEntries } from '../api/entries'
 import EmptyState from '../components/EmptyState'
 import { groupByDate, getFilterStart, toLocalDateKey } from '../utils'
 import type { FilterPeriod } from '../types'
+import { Cog6ToothIcon } from '@heroicons/react/24/outline'
+import { useSettings } from '../contexts/SettingsContext'
 
 const PERIODS: { id: FilterPeriod; label: string }[] = [
   { id: 'week', label: 'Week' },
@@ -16,6 +18,7 @@ const PERIODS: { id: FilterPeriod; label: string }[] = [
 export default function DataTab() {
   const { data: allEntries = [] } = useEntries()
   const [period, setPeriod] = useState<FilterPeriod>('week')
+  const { openSettings } = useSettings()
 
   const filterStart = getFilterStart(period)
   const filtered = filterStart ? allEntries.filter((e) => new Date(e.timestamp) >= filterStart) : allEntries
@@ -64,7 +67,15 @@ export default function DataTab() {
   return (
     <div className="flex flex-col h-full">
       <div data-dbg-zone="HEADER" className="flex-shrink-0 px-4 pt-6 pb-3">
-        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Data</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Data</h1>
+          <button
+            onClick={openSettings}
+            className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 active:scale-95 transition-transform"
+          >
+            <Cog6ToothIcon className="w-6 h-6" />
+          </button>
+        </div>
       </div>
 
       <div data-dbg-zone="LIST" className="flex-1 min-h-0 overflow-y-auto touch-pan-y px-4 pb-4">

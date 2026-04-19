@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { TrashIcon, PencilIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
+import { TrashIcon, PencilIcon, CheckCircleIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
 import { useEntries, useDeleteEntry, useConfirmAll, useUpdateEntry } from '../api/entries'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
@@ -7,11 +7,13 @@ import TimestampPicker from '../components/TimestampPicker'
 import { Field, UnitPreview, inputCls, primaryBtn } from '../components/FormFields'
 import { groupByDate, localMidnightISO, todayKey, toLocalDateKey } from '../utils'
 import type { DrinkEntry } from '../types'
+import { useSettings } from '../contexts/SettingsContext'
 
 export default function LogTab() {
   const { data: entries = [] } = useEntries()
   const deleteEntry = useDeleteEntry()
   const confirmAll = useConfirmAll()
+  const { openSettings } = useSettings()
 
   const [filter, setFilter] = useState<'unconfirmed' | 'confirmed'>('unconfirmed')
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set([todayKey()]))
@@ -36,7 +38,15 @@ export default function LogTab() {
   return (
     <div className="flex flex-col h-full">
       <div data-dbg-zone="HEADER" className="flex-shrink-0 px-4 pt-6 pb-3 bg-neutral-50 dark:bg-neutral-900">
-        <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Log</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">Log</h1>
+          <button
+            onClick={openSettings}
+            className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 active:scale-95 transition-transform"
+          >
+            <Cog6ToothIcon className="w-6 h-6" />
+          </button>
+        </div>
       </div>
 
       <div data-dbg-zone="LIST" className="flex-1 min-h-0 overflow-y-auto touch-pan-y">
