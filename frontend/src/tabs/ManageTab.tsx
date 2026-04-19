@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/outline'
 import { useTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from '../api/templates'
+import { useEntries } from '../api/entries'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import { Field, inputCls, primaryBtn } from '../components/FormFields'
@@ -8,6 +9,12 @@ import type { DrinkTemplate } from '../types'
 
 export default function ManageTab() {
   const { data: templates = [] } = useTemplates()
+  const { data: entries = [] } = useEntries()
+  const pendingCustomNames = new Set(
+    entries
+      .filter((e) => e.template_id === null && !e.is_marked && e.custom_name !== null)
+      .map((e) => e.custom_name!.toLowerCase())
+  )
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<DrinkTemplate | null>(null)
   const [deleting, setDeleting] = useState<DrinkTemplate | null>(null)
@@ -58,8 +65,8 @@ export default function ManageTab() {
       )}
       </div>
 
-      <TemplateModal open={showAdd} onClose={() => setShowAdd(false)} templates={templates} />
-      {editing && <TemplateModal open onClose={() => setEditing(null)} template={editing} templates={templates} />}
+      <TemplateModal open={showAdd} onClose={() => setShowAdd(false)} templates={templates} pendingCustomNames={pendingCustomNames} />
+      {editing && <TemplateModal open onClose={() => setEditing(null)} template={editing} templates={templates} pendingCustomNames={pendingCustomNames} />}
 
       {deleting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -86,8 +93,8 @@ export default function ManageTab() {
   )
 }
 
-function TemplateModal({ open, onClose, template, templates }: {
-  open: boolean; onClose: () => void; template?: DrinkTemplate; templates: DrinkTemplate[]
+function TemplateModal({ open, onClose, template, templates, pendingCustomNames }: {
+  open: boolean; onClose: () => void; template?: DrinkTemplate; templates: DrinkTemplate[]; pendingCustomNames: Set<string>
 }) {
   const createTemplate = useCreateTemplate()
   const updateTemplate = useUpdateTemplate()
@@ -106,6 +113,10 @@ function TemplateModal({ open, onClose, template, templates }: {
     const trimmed = name.trim()
     const isDuplicate = templates.some((t) => t.name.toLowerCase() === trimmed.toLowerCase() && t.id !== template?.id)
     if (isDuplicate) { setError(`"${trimmed}" already exists`); return }
+    if (pendingCustomNames.has(trimmed.toLowerCase())) {
+      setError(`"${trimmed}" has an unconfirmed entry — confirm it first`)
+      return
+    }
     if (isEdit) {
       const data: Parameters<typeof updateTemplate.mutate>[0] = { id: template.id, name: trimmed }
       if (!mlAbvLocked) { data.default_ml = mlNum; data.default_abv = abvNum }

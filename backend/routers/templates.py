@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import DrinkTemplate
+from models import DrinkTemplate, DrinkEntry
 from schemas import DrinkTemplateCreate, DrinkTemplateUpdate, DrinkTemplateResponse
 
 router = APIRouter(tags=["templates"])
@@ -17,6 +17,8 @@ def list_templates(db: Session = Depends(get_db)):
 def create_template(data: DrinkTemplateCreate, db: Session = Depends(get_db)):
     if db.query(DrinkTemplate).filter(DrinkTemplate.name == data.name).first():
         raise HTTPException(status_code=409, detail="A template with this name already exists")
+    if db.query(DrinkEntry).filter(DrinkEntry.custom_name == data.name, DrinkEntry.is_marked == False).first():
+        raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
     template = DrinkTemplate(**data.model_dump())
     db.add(template)
     db.commit()
@@ -36,6 +38,10 @@ def update_template(template_id: str, data: DrinkTemplateUpdate, db: Session = D
         ).first()
         if conflict:
             raise HTTPException(status_code=409, detail="A template with this name already exists")
+        if db.query(DrinkEntry).filter(
+            DrinkEntry.custom_name == data.name, DrinkEntry.is_marked == False
+        ).first():
+            raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
         template.name = data.name
 
     if data.usage_count is not None:
