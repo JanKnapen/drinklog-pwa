@@ -20,10 +20,10 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   .pb-safe-nav {
-    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 4.5rem;
   }
   .bottom-safe-nav {
-    bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+    bottom: 4.5rem;
   }
   .h-screen-safe {
     height: calc(100vh - env(safe-area-inset-top, 0px));
