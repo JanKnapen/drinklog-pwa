@@ -79,6 +79,16 @@ Query keys: `['entries']`, `['templates']`, `['caffeine-entries']`, `['caffeine-
 - Modals are rendered inside the tab component that owns them (not portaled), using `Modal` from `components/Modal.tsx`.
 - Toast notifications bubble up via `onToast` prop from `HomeTab` → `App` → `BottomNav` → `Toast`.
 
+### Home tab quick-log button logic
+
+The quick-log section shows exactly 5 buttons total, filled in this order:
+
+1. **"Most used"** — templates ranked by all-time `usage_count`, most-recently-used as tiebreaker (max 5)
+2. **"Today"** — templates logged today via an existing template (max 2)
+3. **"New drinks"** — a single button if any entry today used a free-text `custom_name` (max 1)
+
+The Today and New drinks buttons consume slots from the 5-button total, pushing out lower-ranked Most used buttons.
+
 ## iOS Safari Scroll/Touch Quirks
 
 These fixes are intentional — do not revert them:
