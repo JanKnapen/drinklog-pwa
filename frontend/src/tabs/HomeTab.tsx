@@ -6,34 +6,33 @@ import {
   ClockIcon,
 } from '@heroicons/react/24/solid'
 import { Cog6ToothIcon } from '@heroicons/react/24/outline'
-import { useTemplates, useUpdateTemplate } from '../api/templates'
-import { useEntries, useCreateEntry } from '../api/entries'
 import Modal from '../components/Modal'
 import TimestampPicker from '../components/TimestampPicker'
 import { Field, UnitPreview, inputCls, primaryBtn } from '../components/FormFields'
-import { standardUnits, toLocalDateKey, todayKey } from '../utils'
-import type { DrinkTemplate, DrinkEntry } from '../types'
+import { toLocalDateKey, todayKey } from '../utils'
+import type { TrackerTemplate, TrackerEntry } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
+import { useModuleAdapter } from '../hooks/useModuleAdapter'
+import { useCreateEntry } from '../api/entries'
+import { useCreateCaffeineEntry } from '../api/caffeine-entries'
 
 export default function HomeTab({ onToast }: { onToast: (msg: string) => void }) {
-  const { data: templates = [] } = useTemplates()
-  const { data: entries = [] } = useEntries()
-  const createEntry = useCreateEntry()
-  const updateTemplate = useUpdateTemplate()
+  const adapter = useModuleAdapter()
   const { openSettings } = useSettings()
+  const { templates, entries, activeModule } = adapter
 
-  const [modal, setModal] = useState<'new' | 'enter-ml' | 'other' | 'pending' | null>(null)
+  const [modal, setModal] = useState<'new' | 'enter' | 'other' | 'pending' | null>(null)
 
   // Today's top 2 templates by log count, tiebreak by most recent entry
   const today = todayKey()
-  const statsMap = new Map<string, { template: DrinkTemplate; count: number; lastTs: string }>()
+  const statsMap = new Map<string, { template: TrackerTemplate; count: number; lastTs: string }>()
   for (const entry of entries) {
-    if (toLocalDateKey(entry.timestamp) !== today || !entry.template_id) continue
-    const tmpl = templates.find((t) => t.id === entry.template_id)
+    if (toLocalDateKey(entry.timestamp) !== today || !entry.templateId) continue
+    const tmpl = templates.find((t) => t.id === entry.templateId)
     if (!tmpl) continue
-    const s = statsMap.get(entry.template_id)
+    const s = statsMap.get(entry.templateId)
     if (!s) {
-      statsMap.set(entry.template_id, { template: tmpl, count: 1, lastTs: entry.timestamp })
+      statsMap.set(entry.templateId, { template: tmpl, count: 1, lastTs: entry.timestamp })
     } else {
       s.count++
       if (entry.timestamp > s.lastTs) s.lastTs = entry.timestamp
@@ -44,15 +43,15 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
     .slice(0, 2)
 
   // Unconfirmed custom_name entries, deduplicated by name (keep most recent per name)
-  const pendingMap = new Map<string, DrinkEntry>()
+  const pendingMap = new Map<string, TrackerEntry>()
   for (const entry of entries) {
-    if (entry.template_id !== null || entry.is_marked || !entry.custom_name) continue
-    const existing = pendingMap.get(entry.custom_name)
-    if (!existing || entry.timestamp > existing.timestamp) pendingMap.set(entry.custom_name, entry)
+    if (entry.templateId !== null || entry.isMarked || !entry.customName) continue
+    const existing = pendingMap.get(entry.customName)
+    if (!existing || entry.timestamp > existing.timestamp) pendingMap.set(entry.customName, entry)
   }
   const pendingDrinks = [...pendingMap.values()].sort((a, b) => b.timestamp.localeCompare(a.timestamp))
 
-  // Alltime: exclude today's top templates, count = 5 minus slots used by today/pending sections
+  // Alltime: exclude today's top templates, fill up to 5 total slots
   const todayIds = new Set(todayTopTwo.map((s) => s.template.id))
   const alltimeCount = 5 - todayTopTwo.length - (pendingDrinks.length > 0 ? 1 : 0)
   const alltimeItems = [...templates]
@@ -60,25 +59,16 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
     .sort((a, b) => b.usage_count - a.usage_count)
     .slice(0, alltimeCount)
 
-  function logFromTemplate(template: DrinkTemplate) {
-    createEntry.mutate(
-      { template_id: template.id, ml: template.default_ml, abv: template.default_abv, timestamp: new Date().toISOString() },
-      {
-        onSuccess: () => {
-          updateTemplate.mutate({ id: template.id, usage_count: template.usage_count + 1 })
-          onToast(`Logged: ${template.name}`)
-        },
-      },
-    )
-  }
-
   const showQuickLog = alltimeItems.length > 0 || todayTopTwo.length > 0 || pendingDrinks.length > 0
 
   return (
     <div className="flex flex-col h-full">
       <div data-dbg-zone="HEADER" className="flex-shrink-0 px-4 pt-6 pb-3">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">DrinkLog</h1>
+          <div className="flex items-baseline gap-2">
+            <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">DrinkLog</h1>
+            <span className="text-sm text-neutral-400 dark:text-neutral-500">{activeModule}</span>
+          </div>
           <button
             onClick={openSettings}
             className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 active:scale-95 transition-transform"
@@ -89,90 +79,105 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
       </div>
 
       <div data-dbg-zone="LIST" className="flex-1 min-h-0 overflow-y-auto touch-pan-y px-4 pb-4">
-      <div className="flex flex-col gap-2 mb-6">
-        <ActionCard
-          title="New"
-          subtitle="Create a new drink type"
-          icon={<PlusCircleIcon className="w-6 h-6 text-blue-500" />}
-          onClick={() => setModal('new')}
-        />
-        <ActionCard
-          title="Enter ml"
-          subtitle="Quick amount, no name"
-          icon={<BeakerIcon className="w-6 h-6 text-blue-500" />}
-          onClick={() => setModal('enter-ml')}
-        />
-        <ActionCard
-          title="Other"
-          subtitle="Pick from your drinks"
-          icon={<ListBulletIcon className="w-6 h-6 text-blue-500" />}
-          onClick={() => setModal('other')}
-        />
-      </div>
-
-      {showQuickLog && (
-        <div>
-          <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 mb-2 uppercase tracking-wide">
-            Quick Log
-          </p>
-          <div className="flex flex-col gap-2">
-            {alltimeItems.map((t) => (
-              <TemplateButton key={t.id} template={t} onClick={() => logFromTemplate(t)} />
-            ))}
-
-            {todayTopTwo.length > 0 && (
-              <>
-                <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500 mt-1 px-1">Today</p>
-                {todayTopTwo.map(({ template }) => (
-                  <TemplateButton key={template.id} template={template} onClick={() => logFromTemplate(template)} />
-                ))}
-              </>
-            )}
-
-            {pendingDrinks.length > 0 && (
-              <button
-                onClick={() => setModal('pending')}
-                className="w-full flex items-center gap-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl px-4 py-3.5 text-left active:scale-[0.98] transition-transform"
-              >
-                <ClockIcon className="w-6 h-6 text-blue-500 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">New drinks</p>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    {pendingDrinks.length} unconfirmed
-                  </p>
-                </div>
-                <span className="text-neutral-400 text-sm">&rsaquo;</span>
-              </button>
-            )}
-          </div>
+        <div className="flex flex-col gap-2 mb-6">
+          <ActionCard
+            title="New"
+            subtitle={activeModule === 'caffeine' ? 'Create a new caffeine drink' : 'Create a new drink type'}
+            icon={<PlusCircleIcon className="w-6 h-6 text-blue-500" />}
+            onClick={() => setModal('new')}
+          />
+          <ActionCard
+            title={activeModule === 'caffeine' ? 'Enter mg' : 'Enter ml'}
+            subtitle="Quick amount, no name"
+            icon={<BeakerIcon className="w-6 h-6 text-blue-500" />}
+            onClick={() => setModal('enter')}
+          />
+          <ActionCard
+            title="Other"
+            subtitle="Pick from your drinks"
+            icon={<ListBulletIcon className="w-6 h-6 text-blue-500" />}
+            onClick={() => setModal('other')}
+          />
         </div>
-      )}
+
+        {showQuickLog && (
+          <div>
+            <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 mb-2 uppercase tracking-wide">
+              Quick Log
+            </p>
+            <div className="flex flex-col gap-2">
+              {alltimeItems.map((t) => (
+                <TemplateButton key={t.id} template={t} onClick={() => adapter.logFromTemplate(t)} />
+              ))}
+
+              {todayTopTwo.length > 0 && (
+                <>
+                  <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500 mt-1 px-1">Today</p>
+                  {todayTopTwo.map(({ template }) => (
+                    <TemplateButton key={template.id} template={template} onClick={() => adapter.logFromTemplate(template)} />
+                  ))}
+                </>
+              )}
+
+              {pendingDrinks.length > 0 && (
+                <button
+                  onClick={() => setModal('pending')}
+                  className="w-full flex items-center gap-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl px-4 py-3.5 text-left active:scale-[0.98] transition-transform"
+                >
+                  <ClockIcon className="w-6 h-6 text-blue-500 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">New drinks</p>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      {pendingDrinks.length} unconfirmed
+                    </p>
+                  </div>
+                  <span className="text-neutral-400 text-sm">&rsaquo;</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
-      <NewDrinkModal
-        open={modal === 'new'}
-        onClose={() => setModal(null)}
-        templates={templates}
-        onLogged={() => setModal(null)}
-      />
-      <EnterMlModal open={modal === 'enter-ml'} onClose={() => setModal(null)} />
+      {activeModule === 'alcohol' ? (
+        <NewAlcoholModal
+          open={modal === 'new'}
+          onClose={() => setModal(null)}
+          templates={templates}
+          onLogged={() => setModal(null)}
+        />
+      ) : (
+        <NewCaffeineModal
+          open={modal === 'new'}
+          onClose={() => setModal(null)}
+          templates={templates}
+          onLogged={() => setModal(null)}
+        />
+      )}
+      {activeModule === 'alcohol' ? (
+        <EnterAlcoholModal open={modal === 'enter'} onClose={() => setModal(null)} />
+      ) : (
+        <EnterCaffeineModal open={modal === 'enter'} onClose={() => setModal(null)} />
+      )}
       <OtherModal
         open={modal === 'other'}
         onClose={() => setModal(null)}
         templates={templates}
+        onLog={(t, count, timestamp) => adapter.logFromTemplateWithOptions(t, count, timestamp)}
         onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
       />
       <PendingDrinksModal
         open={modal === 'pending'}
         onClose={() => setModal(null)}
-        drinks={pendingDrinks}
+        entries={pendingDrinks}
+        onLog={(e, count, timestamp) => adapter.logFromPendingEntry(e, count, timestamp)}
         onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
       />
     </div>
   )
 }
 
-function TemplateButton({ template, onClick }: { template: DrinkTemplate; onClick: () => void }) {
+function TemplateButton({ template, onClick }: { template: TrackerTemplate; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -180,9 +185,7 @@ function TemplateButton({ template, onClick }: { template: DrinkTemplate; onClic
     >
       <div className="flex-1">
         <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{template.name}</p>
-        <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">
-          {template.default_ml}ml · {template.default_abv.toFixed(1)}% · {standardUnits(template.default_ml, template.default_abv).toFixed(1)} units
-        </p>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">{template.displayInfo}</p>
       </div>
       <span className="text-neutral-400 text-sm">&rsaquo;</span>
     </button>
@@ -205,9 +208,9 @@ function ActionCard({ title, subtitle, icon, onClick }: {
   )
 }
 
-
-function NewDrinkModal({ open, onClose, templates, onLogged }: {
-  open: boolean; onClose: () => void; templates: DrinkTemplate[]; onLogged: () => void
+// NewAlcoholModal — uses useCreateEntry directly (module-specific modal, adapter bypass acceptable)
+function NewAlcoholModal({ open, onClose, templates, onLogged }: {
+  open: boolean; onClose: () => void; templates: TrackerTemplate[]; onLogged: () => void
 }) {
   const createEntry = useCreateEntry()
   const [name, setName] = useState('')
@@ -234,7 +237,7 @@ function NewDrinkModal({ open, onClose, templates, onLogged }: {
   function reset() { setName(''); setMl(''); setAbv(''); setError(null); setTs(new Date()); setCount(1) }
 
   return (
-    <Modal open={open} onClose={() => { reset(); onClose() }} title="New Drink">
+    <Modal open={open} onClose={() => { reset(); onClose() }} title="New Alcohol Drink">
       <div className="flex flex-col gap-3">
         <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
@@ -259,7 +262,56 @@ function NewDrinkModal({ open, onClose, templates, onLogged }: {
   )
 }
 
-function EnterMlModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+// NewCaffeineModal — uses useCreateCaffeineEntry directly (module-specific modal)
+export function NewCaffeineModal({ open, onClose, templates, onLogged }: {
+  open: boolean; onClose: () => void; templates: TrackerTemplate[]; onLogged: () => void
+}) {
+  const createEntry = useCreateCaffeineEntry()
+  const [name, setName] = useState('')
+  const [mg, setMg] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [ts, setTs] = useState<Date>(() => new Date())
+  const [count, setCount] = useState(1)
+
+  useEffect(() => { if (open) setTs(new Date()) }, [open])
+
+  const isDuplicate = templates.some((t) => t.name.toLowerCase() === name.trim().toLowerCase())
+  const isValid = name.trim().length > 0 && !isNaN(parseFloat(mg))
+
+  async function handleSubmit() {
+    if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
+    const timestamp = ts.toISOString()
+    for (let i = 0; i < count; i++) {
+      await createEntry.mutateAsync({ custom_name: name.trim(), mg: parseFloat(mg), timestamp })
+    }
+    reset()
+    onLogged()
+  }
+  function reset() { setName(''); setMg(''); setError(null); setTs(new Date()); setCount(1) }
+
+  return (
+    <Modal open={open} onClose={() => { reset(); onClose() }} title="New Caffeine Drink">
+      <div className="flex flex-col gap-3">
+        <Field label="When (month · day · hour)">
+          <TimestampPicker value={ts} onChange={setTs} />
+        </Field>
+        {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
+        <Field label="Drink name">
+          <input className={inputCls} placeholder="e.g. Coffee, Energy Drink…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
+        </Field>
+        <Field label="Caffeine (mg)">
+          <input className={inputCls} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
+        </Field>
+        <div className="flex gap-2">
+          <Stepper value={count} onChange={setCount} />
+          <button onClick={handleSubmit} disabled={!isValid} className={primaryBtn + ' flex-1'}>Log</button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function EnterAlcoholModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const createEntry = useCreateEntry()
   const [ml, setMl] = useState('')
   const [abv, setAbv] = useState('')
@@ -295,11 +347,44 @@ function EnterMlModal({ open, onClose }: { open: boolean; onClose: () => void })
   )
 }
 
-function OtherModal({ open, onClose, templates, onLogged }: {
-  open: boolean; onClose: () => void; templates: DrinkTemplate[]; onLogged: (name: string) => void
+export function EnterCaffeineModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const createEntry = useCreateCaffeineEntry()
+  const [mg, setMg] = useState('')
+  const [ts, setTs] = useState<Date>(() => new Date())
+
+  useEffect(() => { if (open) setTs(new Date()) }, [open])
+
+  const isValid = !isNaN(parseFloat(mg))
+
+  function handleSubmit() {
+    createEntry.mutate(
+      { mg: parseFloat(mg), timestamp: ts.toISOString() },
+      { onSuccess: () => { setMg(''); setTs(new Date()); onClose() } },
+    )
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Enter Amount">
+      <div className="flex flex-col gap-3">
+        <Field label="When (month · day · hour)">
+          <TimestampPicker value={ts} onChange={setTs} />
+        </Field>
+        <Field label="Caffeine (mg)">
+          <input className={inputCls} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
+        </Field>
+        <button onClick={handleSubmit} disabled={!isValid} className={primaryBtn}>Log</button>
+      </div>
+    </Modal>
+  )
+}
+
+function OtherModal({ open, onClose, templates, onLog, onLogged }: {
+  open: boolean
+  onClose: () => void
+  templates: TrackerTemplate[]
+  onLog: (t: TrackerTemplate, count: number, timestamp: string) => Promise<void>
+  onLogged: (name: string) => void
 }) {
-  const createEntry = useCreateEntry()
-  const updateTemplate = useUpdateTemplate()
   const [search, setSearch] = useState('')
   const [ts, setTs] = useState<Date>(() => new Date())
   const [count, setCount] = useState(1)
@@ -308,12 +393,8 @@ function OtherModal({ open, onClose, templates, onLogged }: {
 
   const filtered = templates.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
 
-  async function logTemplate(t: DrinkTemplate) {
-    const timestamp = ts.toISOString()
-    for (let i = 0; i < count; i++) {
-      await createEntry.mutateAsync({ template_id: t.id, ml: t.default_ml, abv: t.default_abv, timestamp })
-    }
-    updateTemplate.mutate({ id: t.id, usage_count: t.usage_count + count })
+  async function logTemplate(t: TrackerTemplate) {
+    await onLog(t, count, ts.toISOString())
     setSearch('')
     setTs(new Date())
     setCount(1)
@@ -338,9 +419,7 @@ function OtherModal({ open, onClose, templates, onLogged }: {
               className="flex justify-between items-center px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 active:scale-[0.98] transition-transform text-left">
               <div>
                 <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{t.name}</p>
-                <p className="text-xs text-neutral-500 tabular-nums">
-                  {t.default_ml}ml · {t.default_abv.toFixed(1)}% · {standardUnits(t.default_ml, t.default_abv).toFixed(1)} units
-                </p>
+                <p className="text-xs text-neutral-500 tabular-nums">{t.displayInfo}</p>
               </div>
               <span className="text-blue-500 text-lg">+</span>
             </button>
@@ -351,23 +430,23 @@ function OtherModal({ open, onClose, templates, onLogged }: {
   )
 }
 
-function PendingDrinksModal({ open, onClose, drinks, onLogged }: {
-  open: boolean; onClose: () => void; drinks: DrinkEntry[]; onLogged: (name: string) => void
+function PendingDrinksModal({ open, onClose, entries, onLog, onLogged }: {
+  open: boolean
+  onClose: () => void
+  entries: TrackerEntry[]
+  onLog: (e: TrackerEntry, count: number, timestamp: string) => Promise<void>
+  onLogged: (name: string) => void
 }) {
-  const createEntry = useCreateEntry()
   const [ts, setTs] = useState<Date>(() => new Date())
   const [count, setCount] = useState(1)
 
   useEffect(() => { if (open) setTs(new Date()) }, [open])
 
-  async function logDrink(entry: DrinkEntry) {
-    const timestamp = ts.toISOString()
-    for (let i = 0; i < count; i++) {
-      await createEntry.mutateAsync({ custom_name: entry.custom_name!, ml: entry.ml, abv: entry.abv, timestamp })
-    }
+  async function logDrink(entry: TrackerEntry) {
+    await onLog(entry, count, ts.toISOString())
     setTs(new Date())
     setCount(1)
-    onLogged(entry.custom_name!)
+    onLogged(entry.customName!)
   }
 
   return (
@@ -381,14 +460,12 @@ function PendingDrinksModal({ open, onClose, drinks, onLogged }: {
           <Stepper value={count} onChange={setCount} />
         </div>
         <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
-          {drinks.map((entry) => (
+          {entries.map((entry) => (
             <button key={entry.id} onClick={() => logDrink(entry)}
               className="flex justify-between items-center px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 active:scale-[0.98] transition-transform text-left">
               <div>
-                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{entry.custom_name}</p>
-                <p className="text-xs text-neutral-500 tabular-nums">
-                  {entry.ml}ml · {entry.abv.toFixed(1)}% · {standardUnits(entry.ml, entry.abv).toFixed(1)} units
-                </p>
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{entry.customName}</p>
+                <p className="text-xs text-neutral-500 tabular-nums">{entry.displayInfo}</p>
               </div>
               <span className="text-blue-500 text-lg">+</span>
             </button>

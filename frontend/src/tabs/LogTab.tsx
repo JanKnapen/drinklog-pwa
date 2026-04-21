@@ -1,30 +1,31 @@
 import { useState } from 'react'
 import { TrashIcon, PencilIcon, CheckCircleIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
-import { useEntries, useDeleteEntry, useConfirmAll, useUpdateEntry } from '../api/entries'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import TimestampPicker from '../components/TimestampPicker'
 import { Field, UnitPreview, inputCls, primaryBtn } from '../components/FormFields'
 import { groupByDate, localMidnightISO, todayKey, toLocalDateKey } from '../utils'
-import type { DrinkEntry } from '../types'
+import type { TrackerEntry, DrinkEntry, CaffeineEntry } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
+import { useModuleAdapter } from '../hooks/useModuleAdapter'
+import { useEntries, useUpdateEntry } from '../api/entries'
+import { useCaffeineEntries, useUpdateCaffeineEntry } from '../api/caffeine-entries'
 
 export default function LogTab() {
-  const { data: entries = [] } = useEntries()
-  const deleteEntry = useDeleteEntry()
-  const confirmAll = useConfirmAll()
+  const adapter = useModuleAdapter()
   const { openSettings } = useSettings()
+  const { entries, activeModule } = adapter
 
   const [filter, setFilter] = useState<'unconfirmed' | 'confirmed'>('unconfirmed')
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set([todayKey()]))
-  const [editingEntry, setEditingEntry] = useState<DrinkEntry | null>(null)
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null)
 
-  const filtered = entries.filter((e) => e.is_marked === (filter === 'confirmed'))
+  const filtered = entries.filter((e) => e.isMarked === (filter === 'confirmed'))
   const groups = groupByDate(filtered)
   const today = todayKey()
 
   const hasEligibleToConfirm = entries
-    .filter((e) => !e.is_marked)
+    .filter((e) => !e.isMarked)
     .some((e) => toLocalDateKey(e.timestamp) < today)
 
   function toggleDate(date: string) {
@@ -34,6 +35,8 @@ export default function LogTab() {
       return next
     })
   }
+
+  const midnight = new Date(localMidnightISO())
 
   return (
     <div className="flex flex-col h-full">
@@ -56,7 +59,7 @@ export default function LogTab() {
           <div className="px-4 flex flex-col gap-2 pt-2 pb-4">
             {groups.map(({ date, entries: dayEntries }) => {
               const isExpanded = expandedDates.has(date)
-              const totalUnits = dayEntries.reduce((s, e) => s + e.standard_units, 0)
+              const totalValue = dayEntries.reduce((s, e) => s + e.value, 0)
               const label = new Date(date + 'T12:00:00').toLocaleDateString(undefined, {
                 weekday: 'long', day: 'numeric', month: 'short',
               })
@@ -65,7 +68,7 @@ export default function LogTab() {
                   <button onClick={() => toggleDate(date)} className="w-full flex justify-between items-center py-2">
                     <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{label}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-neutral-500 tabular-nums">{totalUnits.toFixed(1)} units</span>
+                      <span className="text-xs text-neutral-500 tabular-nums">{totalValue.toFixed(1)} units</span>
                       <span className="text-neutral-400 text-sm">{isExpanded ? '▲' : '▼'}</span>
                     </div>
                   </button>
@@ -76,8 +79,8 @@ export default function LogTab() {
                           key={entry.id}
                           entry={entry}
                           isConfirmed={filter === 'confirmed'}
-                          onEdit={() => setEditingEntry(entry)}
-                          onDelete={() => deleteEntry.mutate(entry.id)}
+                          onEdit={() => setEditingEntryId(entry.id)}
+                          onDelete={() => adapter.deleteEntry(entry.id)}
                         />
                       ))}
                     </div>
@@ -92,8 +95,8 @@ export default function LogTab() {
       <div data-dbg-zone="FOOTER" className="flex-shrink-0 px-4 pt-3 pb-3 flex flex-col gap-2 bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700">
         {filter === 'unconfirmed' && (
           <button
-            onClick={() => confirmAll.mutate(localMidnightISO())}
-            disabled={!hasEligibleToConfirm || confirmAll.isPending}
+            onClick={() => adapter.confirmAll(midnight)}
+            disabled={!hasEligibleToConfirm}
             className="flex items-center justify-center gap-2 bg-blue-500 disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white disabled:text-neutral-400 font-semibold text-sm py-2.5 rounded-full transition-colors"
           >
             <CheckCircleIcon className="w-5 h-5" />
@@ -113,29 +116,33 @@ export default function LogTab() {
         </div>
       </div>
 
-      {editingEntry && <EditEntryModal entry={editingEntry} onClose={() => setEditingEntry(null)} />}
+      {editingEntryId && activeModule === 'alcohol' && (
+        <EditAlcoholEntry entryId={editingEntryId} onClose={() => setEditingEntryId(null)} />
+      )}
+      {editingEntryId && activeModule === 'caffeine' && (
+        <EditCaffeineEntry entryId={editingEntryId} onClose={() => setEditingEntryId(null)} />
+      )}
     </div>
   )
 }
 
 function EntryRow({ entry, isConfirmed, onEdit, onDelete }: {
-  entry: DrinkEntry; isConfirmed: boolean; onEdit: () => void; onDelete: () => void
+  entry: TrackerEntry; isConfirmed: boolean; onEdit: () => void; onDelete: () => void
 }) {
-  const displayName = entry.template?.name ?? entry.custom_name
   const time = new Date(entry.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 
   return (
     <div className="flex items-center gap-2 bg-white dark:bg-neutral-800 rounded-xl px-3 py-2.5">
       <div className="flex-1 min-w-0">
-        {displayName && (
-          <p className={`text-sm font-medium truncate ${entry.template_id === null ? 'text-neutral-500 dark:text-neutral-400' : 'text-neutral-900 dark:text-neutral-100'}`}>
-            {displayName}
+        {entry.name && (
+          <p className={`text-sm font-medium truncate ${entry.templateId === null ? 'text-neutral-500 dark:text-neutral-400' : 'text-neutral-900 dark:text-neutral-100'}`}>
+            {entry.name}
           </p>
         )}
-        <p className="text-xs text-neutral-500 tabular-nums">{entry.ml}ml · {entry.abv.toFixed(1)}% · {time}</p>
+        <p className="text-xs text-neutral-500 tabular-nums">{entry.displayInfo} · {time}</p>
       </div>
       <span className="text-sm font-bold text-neutral-900 dark:text-neutral-100 tabular-nums">
-        {entry.standard_units.toFixed(1)}<span className="text-xs font-normal text-neutral-400 ml-0.5">u</span>
+        {entry.value.toFixed(1)}<span className="text-xs font-normal text-neutral-400 ml-0.5">u</span>
       </span>
       {!isConfirmed && (
         <>
@@ -151,7 +158,16 @@ function EntryRow({ entry, isConfirmed, onEdit, onDelete }: {
   )
 }
 
-function EditEntryModal({ entry, onClose }: { entry: DrinkEntry; onClose: () => void }) {
+// Edit modals fetch their own raw data by ID (adapter bypass explicitly allowed for edit modals)
+
+function EditAlcoholEntry({ entryId, onClose }: { entryId: string; onClose: () => void }) {
+  const { data: entries = [] } = useEntries()
+  const entry = entries.find((e) => e.id === entryId)
+  if (!entry) return null
+  return <EditAlcoholEntryForm entry={entry} onClose={onClose} />
+}
+
+function EditAlcoholEntryForm({ entry, onClose }: { entry: DrinkEntry; onClose: () => void }) {
   const updateEntry = useUpdateEntry()
   const isTemplateEntry = entry.template_id !== null
   const hasName = entry.custom_name !== null
@@ -165,10 +181,7 @@ function EditEntryModal({ entry, onClose }: { entry: DrinkEntry; onClose: () => 
   const isValid = isTemplateEntry || (!isNaN(mlNum) && !isNaN(abvNum) && (!hasName || name.trim().length > 0))
 
   function handleSave() {
-    const data: Parameters<typeof updateEntry.mutate>[0] = {
-      id: entry.id,
-      timestamp: ts.toISOString(),
-    }
+    const data: Parameters<typeof updateEntry.mutate>[0] = { id: entry.id, timestamp: ts.toISOString() }
     if (!isTemplateEntry) {
       data.ml = mlNum
       data.abv = abvNum
@@ -205,3 +218,53 @@ function EditEntryModal({ entry, onClose }: { entry: DrinkEntry; onClose: () => 
   )
 }
 
+export function EditCaffeineEntry({ entryId, onClose }: { entryId: string; onClose: () => void }) {
+  const { data: entries = [] } = useCaffeineEntries()
+  const entry = entries.find((e) => e.id === entryId)
+  if (!entry) return null
+  return <EditCaffeineEntryForm entry={entry} onClose={onClose} />
+}
+
+function EditCaffeineEntryForm({ entry, onClose }: { entry: CaffeineEntry; onClose: () => void }) {
+  const updateEntry = useUpdateCaffeineEntry()
+  const isTemplateEntry = entry.template_id !== null
+  const hasName = entry.custom_name !== null
+  const [name, setName] = useState(entry.custom_name ?? '')
+  const [mg, setMg] = useState(String(entry.mg))
+  const [ts, setTs] = useState<Date>(() => new Date(entry.timestamp))
+
+  const mgNum = parseFloat(mg)
+  const isValid = isTemplateEntry || (!isNaN(mgNum) && (!hasName || name.trim().length > 0))
+
+  function handleSave() {
+    const data: Parameters<typeof updateEntry.mutate>[0] = { id: entry.id, timestamp: ts.toISOString() }
+    if (!isTemplateEntry) {
+      data.mg = mgNum
+      if (hasName) data.custom_name = name.trim()
+    }
+    updateEntry.mutate(data, { onSuccess: onClose })
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Edit Entry">
+      <div className="flex flex-col gap-3">
+        <Field label="When (month · day · hour)">
+          <TimestampPicker value={ts} onChange={setTs} />
+        </Field>
+        {!isTemplateEntry && (
+          <>
+            {hasName && (
+              <Field label="Name">
+                <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} />
+              </Field>
+            )}
+            <Field label="Caffeine (mg)">
+              <input className={inputCls} inputMode="decimal" value={mg} onChange={(e) => setMg(e.target.value)} />
+            </Field>
+          </>
+        )}
+        <button onClick={handleSave} disabled={!isValid || updateEntry.isPending} className={primaryBtn}>Save</button>
+      </div>
+    </Modal>
+  )
+}

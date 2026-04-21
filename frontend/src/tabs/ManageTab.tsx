@@ -1,31 +1,33 @@
 import { useState } from 'react'
 import { PlusIcon, PencilIcon, TrashIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
-import { useTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from '../api/templates'
-import { useEntries } from '../api/entries'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import { Field, inputCls, primaryBtn } from '../components/FormFields'
-import type { DrinkTemplate } from '../types'
+import type { TrackerTemplate } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
+import { useModuleAdapter } from '../hooks/useModuleAdapter'
+import { useTemplates, useCreateTemplate, useUpdateTemplate } from '../api/templates'
+import { useEntries } from '../api/entries'
+import { useCaffeineTemplates, useCreateCaffeineTemplate, useUpdateCaffeineTemplate } from '../api/caffeine-templates'
+import { useCaffeineEntries } from '../api/caffeine-entries'
 
 export default function ManageTab() {
-  const { data: templates = [] } = useTemplates()
-  const { data: entries = [] } = useEntries()
-  const pendingCustomNames = new Set(
-    entries
-      .filter((e) => e.template_id === null && !e.is_marked && e.custom_name !== null)
-      .map((e) => e.custom_name!.toLowerCase())
-  )
-  const [showAdd, setShowAdd] = useState(false)
-  const [editing, setEditing] = useState<DrinkTemplate | null>(null)
-  const [deleting, setDeleting] = useState<DrinkTemplate | null>(null)
-  const deleteTemplate = useDeleteTemplate()
+  const adapter = useModuleAdapter()
   const { openSettings } = useSettings()
+  const { templates, activeModule } = adapter
+
+  const [showAdd, setShowAdd] = useState(false)
+  const [editing, setEditing] = useState<TrackerTemplate | null>(null)
+  const [deleting, setDeleting] = useState<TrackerTemplate | null>(null)
 
   function handleDelete() {
     if (!deleting) return
-    deleteTemplate.mutate(deleting.id, { onSuccess: () => setDeleting(null) })
+    adapter.deleteTemplate(deleting.id).then(() => setDeleting(null))
   }
+
+  const emptyMsg = activeModule === 'caffeine'
+    ? 'No caffeine templates — tap + to add one'
+    : 'No drink templates — tap + to add one'
 
   return (
     <div className="flex flex-col h-full">
@@ -48,35 +50,44 @@ export default function ManageTab() {
       </div>
 
       <div data-dbg-zone="LIST" className="flex-1 min-h-0 overflow-y-auto touch-pan-y px-4 pb-4">
-      {templates.length === 0 ? (
-        <EmptyState message="No drink templates — tap + to add one" />
-      ) : (
-        <div className="flex flex-col gap-2">
-          {[...templates].sort((a, b) => b.usage_count - a.usage_count).map((t) => (
-            <div key={t.id} className="flex items-center gap-2 bg-neutral-100 dark:bg-neutral-800 rounded-xl px-3 py-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">{t.name}</p>
-                <p className="text-xs text-neutral-500 tabular-nums">
-                  {t.default_ml}ml · {t.default_abv.toFixed(1)}%
-                  {t.entry_count > 0 && ` · ${t.entry_count} ${t.entry_count === 1 ? 'entry' : 'entries'}`}
-                </p>
-              </div>
-              <button onClick={() => setEditing(t)} className="p-1.5 text-neutral-400 hover:text-blue-500 transition-colors">
-                <PencilIcon className="w-4 h-4" />
-              </button>
-              {t.entry_count === 0 && (
-                <button onClick={() => setDeleting(t)} className="p-1.5 text-neutral-400 hover:text-red-500 transition-colors">
-                  <TrashIcon className="w-4 h-4" />
+        {templates.length === 0 ? (
+          <EmptyState message={emptyMsg} />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {[...templates].sort((a, b) => b.usage_count - a.usage_count).map((t) => (
+              <div key={t.id} className="flex items-center gap-2 bg-neutral-100 dark:bg-neutral-800 rounded-xl px-3 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">{t.name}</p>
+                  <p className="text-xs text-neutral-500 tabular-nums">
+                    {t.displayInfo}
+                    {t.entryCount > 0 && ` · ${t.entryCount} ${t.entryCount === 1 ? 'entry' : 'entries'}`}
+                  </p>
+                </div>
+                <button onClick={() => setEditing(t)} className="p-1.5 text-neutral-400 hover:text-blue-500 transition-colors">
+                  <PencilIcon className="w-4 h-4" />
                 </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+                {t.entryCount === 0 && (
+                  <button onClick={() => setDeleting(t)} className="p-1.5 text-neutral-400 hover:text-red-500 transition-colors">
+                    <TrashIcon className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      <TemplateModal open={showAdd} onClose={() => setShowAdd(false)} templates={templates} pendingCustomNames={pendingCustomNames} />
-      {editing && <TemplateModal open onClose={() => setEditing(null)} template={editing} templates={templates} pendingCustomNames={pendingCustomNames} />}
+      {activeModule === 'alcohol' ? (
+        <>
+          <EditAlcoholTemplate open={showAdd} templateId={undefined} onClose={() => setShowAdd(false)} />
+          {editing && <EditAlcoholTemplate open templateId={editing.id} onClose={() => setEditing(null)} />}
+        </>
+      ) : (
+        <>
+          <EditCaffeineTemplate open={showAdd} templateId={undefined} onClose={() => setShowAdd(false)} />
+          {editing && <EditCaffeineTemplate open templateId={editing.id} onClose={() => setEditing(null)} />}
+        </>
+      )}
 
       {deleting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -103,11 +114,22 @@ export default function ManageTab() {
   )
 }
 
-function TemplateModal({ open, onClose, template, templates, pendingCustomNames }: {
-  open: boolean; onClose: () => void; template?: DrinkTemplate; templates: DrinkTemplate[]; pendingCustomNames: Set<string>
+// Self-contained alcohol template modal — fetches own data (adapter bypass allowed for edit modals)
+function EditAlcoholTemplate({ open, templateId, onClose }: {
+  open: boolean; templateId: string | undefined; onClose: () => void
 }) {
+  const { data: templates = [] } = useTemplates()
+  const { data: entries = [] } = useEntries()
   const createTemplate = useCreateTemplate()
   const updateTemplate = useUpdateTemplate()
+
+  const template = templateId ? templates.find((t) => t.id === templateId) : undefined
+  const pendingCustomNames = new Set(
+    entries
+      .filter((e) => e.template_id === null && !e.is_marked && e.custom_name !== null)
+      .map((e) => e.custom_name!.toLowerCase())
+  )
+
   const [name, setName] = useState(template?.name ?? '')
   const [ml, setMl] = useState(template ? String(template.default_ml) : '')
   const [abv, setAbv] = useState(template ? String(template.default_abv) : '')
@@ -162,3 +184,65 @@ function TemplateModal({ open, onClose, template, templates, pendingCustomNames 
   )
 }
 
+export function EditCaffeineTemplate({ open, templateId, onClose }: {
+  open: boolean; templateId: string | undefined; onClose: () => void
+}) {
+  const { data: templates = [] } = useCaffeineTemplates()
+  const { data: entries = [] } = useCaffeineEntries()
+  const createTemplate = useCreateCaffeineTemplate()
+  const updateTemplate = useUpdateCaffeineTemplate()
+
+  const template = templateId ? templates.find((t) => t.id === templateId) : undefined
+  const pendingCustomNames = new Set(
+    entries
+      .filter((e) => e.template_id === null && !e.is_marked && e.custom_name !== null)
+      .map((e) => e.custom_name!.toLowerCase())
+  )
+
+  const [name, setName] = useState(template?.name ?? '')
+  const [mg, setMg] = useState(template ? String(template.default_mg) : '')
+  const [error, setError] = useState<string | null>(null)
+
+  const isEdit = !!template
+  const mgLocked = isEdit && template.confirmed_entry_count > 0
+  const mgNum = parseFloat(mg)
+  const isValid = name.trim().length > 0 && (mgLocked || !isNaN(mgNum))
+
+  function handleSave() {
+    const trimmed = name.trim()
+    const isDuplicate = templates.some((t) => t.name.toLowerCase() === trimmed.toLowerCase() && t.id !== template?.id)
+    if (isDuplicate) { setError(`"${trimmed}" already exists`); return }
+    if (pendingCustomNames.has(trimmed.toLowerCase())) {
+      setError(`"${trimmed}" has an unconfirmed entry — confirm it first`)
+      return
+    }
+    if (isEdit) {
+      const data: { id: string; name: string; default_mg?: number } = { id: template.id, name: trimmed }
+      if (!mgLocked) data.default_mg = mgNum
+      updateTemplate.mutate(data, { onSuccess: () => { reset(); onClose() } })
+    } else {
+      createTemplate.mutate(
+        { name: trimmed, default_mg: mgNum },
+        { onSuccess: () => { reset(); onClose() } },
+      )
+    }
+  }
+  function reset() { setName(''); setMg(''); setError(null) }
+
+  return (
+    <Modal open={open} onClose={() => { reset(); onClose() }} title={isEdit ? 'Edit Template' : 'New Template'}>
+      <div className="flex flex-col gap-3">
+        {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
+        <Field label="Name">
+          <input className={inputCls} value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
+        </Field>
+        <Field label={`Caffeine (mg)${mgLocked ? ' — locked' : ''}`}>
+          <input className={inputCls + (mgLocked ? ' opacity-50 cursor-not-allowed' : '')}
+            inputMode="decimal" value={mg} onChange={(e) => setMg(e.target.value)} disabled={mgLocked} />
+        </Field>
+        {mgLocked && <p className="text-xs text-neutral-400">Caffeine amount is locked because this template has confirmed entries.</p>}
+        <button onClick={handleSave} disabled={!isValid} className={primaryBtn}>Save</button>
+      </div>
+    </Modal>
+  )
+}

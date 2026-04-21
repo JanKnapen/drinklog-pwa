@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import Base, engine
-from routers import templates, entries
+from routers import templates, entries, caffeine_templates, caffeine_entries
 
 Base.metadata.create_all(bind=engine)
 
@@ -23,3 +23,5 @@ app.add_middleware(
 
 app.include_router(templates.router, prefix="/api")
 app.include_router(entries.router, prefix="/api")
+app.include_router(caffeine_templates.router, prefix="/api")
+app.include_router(caffeine_entries.router, prefix="/api")

@@ -1,7 +1,11 @@
-import type { DrinkEntry, FilterPeriod } from './types'
+import type { FilterPeriod } from './types'
 
 export function standardUnits(ml: number, abv: number): number {
   return (ml * abv / 100) / 15
+}
+
+export function caffeineUnits(mg: number): number {
+  return mg / 80.0
 }
 
 export function toLocalDateKey(isoTimestamp: string): string {
@@ -9,8 +13,8 @@ export function toLocalDateKey(isoTimestamp: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export function groupByDate(entries: DrinkEntry[]): { date: string; entries: DrinkEntry[] }[] {
-  const map = new Map<string, DrinkEntry[]>()
+export function groupByDate<T extends { timestamp: string }>(entries: T[]): { date: string; entries: T[] }[] {
+  const map = new Map<string, T[]>()
   for (const entry of entries) {
     const key = toLocalDateKey(entry.timestamp)
     if (!map.has(key)) map.set(key, [])

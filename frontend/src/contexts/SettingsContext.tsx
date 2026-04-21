@@ -1,9 +1,11 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 
 export type Theme = 'light' | 'dark' | 'system'
+export type ActiveModule = 'alcohol' | 'caffeine'
 
 export interface Settings {
   theme: Theme
+  activeModule: ActiveModule
 }
 
 interface SettingsContextValue {
@@ -15,7 +17,7 @@ interface SettingsContextValue {
 }
 
 const STORAGE_KEY = 'drinklog-settings'
-const DEFAULT_SETTINGS: Settings = { theme: 'system' }
+const DEFAULT_SETTINGS: Settings = { theme: 'system', activeModule: 'alcohol' }
 
 export function loadSettings(): Settings {
   try {
