@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import type { IScannerControls } from '@zxing/browser'
+import { BarcodeFormat, DecodeHintType } from '@zxing/library'
 
 interface Props {
   onScan: (code: string) => void
@@ -20,7 +21,16 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
 
   useEffect(() => {
     let active = true
-    const reader = new BrowserMultiFormatReader()
+    const hints = new Map()
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+      BarcodeFormat.EAN_13,
+      BarcodeFormat.EAN_8,
+      BarcodeFormat.UPC_A,
+      BarcodeFormat.UPC_E,
+      BarcodeFormat.CODE_128,
+    ])
+    hints.set(DecodeHintType.TRY_HARDER, true)
+    const reader = new BrowserMultiFormatReader(hints)
     dbg('Reader created')
 
     function startScanning(constraints: MediaStreamConstraints) {
@@ -33,9 +43,8 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
             scannedRef.current = true
             controlsRef.current?.stop()
             onScan(result.getText())
-          } else if (err) {
-            const name = err.name
-            if (name !== 'NotFoundException') dbg(`cb err: ${name}: ${err.message}`)
+          } else if (err && !err.message.includes('No MultiFormat')) {
+            dbg(`cb err: ${err.name}: ${err.message}`)
           }
         })
         .then((controls) => { controlsRef.current = controls; dbg('Controls ready') })
