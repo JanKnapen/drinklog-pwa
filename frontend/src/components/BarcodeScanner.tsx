@@ -83,7 +83,7 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
 
     function startZxing(constraints: MediaStreamConstraints) {
       dbg('Using ZXing (BarcodeDetector unavailable)')
-      const reader = new BrowserMultiFormatReader(makeHints(), 100)
+      const reader = new BrowserMultiFormatReader(makeHints(), { delayBetweenScanAttempts: 100 })
       reader
         .decodeFromConstraints(constraints, videoRef.current!, (result, err) => {
           if (!active || scannedRef.current) return
