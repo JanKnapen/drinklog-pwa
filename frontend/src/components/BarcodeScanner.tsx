@@ -19,15 +19,15 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
 
     function startScanning(constraints: MediaStreamConstraints) {
       reader
-        .decodeFromConstraints(constraints, videoRef.current!, (result, _err, controls) => {
-          if (!active) return
-          controlsRef.current = controls
-          if (result && !scannedRef.current) {
+        .decodeFromConstraints(constraints, videoRef.current!, (result) => {
+          if (!active || scannedRef.current) return
+          if (result) {
             scannedRef.current = true
-            controls.stop()
+            controlsRef.current?.stop()
             onScan(result.getText())
           }
         })
+        .then((controls) => { controlsRef.current = controls })
         .catch((err: unknown) => {
           if (!active) return
           const name = err instanceof Error ? err.name : ''
