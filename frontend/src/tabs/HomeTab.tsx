@@ -107,14 +107,14 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
             </p>
             <div className="flex flex-col gap-2">
               {alltimeItems.map((t) => (
-                <TemplateButton key={t.id} template={t} onClick={() => adapter.logFromTemplate(t)} />
+                <TemplateButton key={t.id} template={t} onClick={() => { adapter.logFromTemplate(t); onToast(`Logged: ${t.name}`) }} />
               ))}
 
               {todayTopTwo.length > 0 && (
                 <>
                   <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500 mt-1 px-1">Today</p>
                   {todayTopTwo.map(({ template }) => (
-                    <TemplateButton key={template.id} template={template} onClick={() => adapter.logFromTemplate(template)} />
+                    <TemplateButton key={template.id} template={template} onClick={() => { adapter.logFromTemplate(template); onToast(`Logged: ${template.name}`) }} />
                   ))}
                 </>
               )}
@@ -144,20 +144,20 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
           open={modal === 'new'}
           onClose={() => setModal(null)}
           templates={templates}
-          onLogged={() => setModal(null)}
+          onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
         />
       ) : (
         <NewCaffeineModal
           open={modal === 'new'}
           onClose={() => setModal(null)}
           templates={templates}
-          onLogged={() => setModal(null)}
+          onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
         />
       )}
       {activeModule === 'alcohol' ? (
-        <EnterAlcoholModal open={modal === 'enter'} onClose={() => setModal(null)} />
+        <EnterAlcoholModal open={modal === 'enter'} onClose={() => setModal(null)} onLogged={(val) => { onToast(`Logged: ${val}`); setModal(null) }} />
       ) : (
-        <EnterCaffeineModal open={modal === 'enter'} onClose={() => setModal(null)} />
+        <EnterCaffeineModal open={modal === 'enter'} onClose={() => setModal(null)} onLogged={(val) => { onToast(`Logged: ${val}`); setModal(null) }} />
       )}
       <OtherModal
         open={modal === 'other'}
@@ -210,7 +210,7 @@ function ActionCard({ title, subtitle, icon, onClick }: {
 
 // NewAlcoholModal — uses useCreateEntry directly (module-specific modal, adapter bypass acceptable)
 function NewAlcoholModal({ open, onClose, templates, onLogged }: {
-  open: boolean; onClose: () => void; templates: TrackerTemplate[]; onLogged: () => void
+  open: boolean; onClose: () => void; templates: TrackerTemplate[]; onLogged: (name: string) => void
 }) {
   const createEntry = useCreateEntry()
   const [name, setName] = useState('')
@@ -231,8 +231,9 @@ function NewAlcoholModal({ open, onClose, templates, onLogged }: {
     for (let i = 0; i < count; i++) {
       await createEntry.mutateAsync({ custom_name: name.trim(), ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
     }
+    const logged = name.trim()
     reset()
-    onLogged()
+    onLogged(logged)
   }
   function reset() { setName(''); setMl(''); setAbv(''); setError(null); setTs(new Date()); setCount(1) }
 
@@ -264,7 +265,7 @@ function NewAlcoholModal({ open, onClose, templates, onLogged }: {
 
 // NewCaffeineModal — uses useCreateCaffeineEntry directly (module-specific modal)
 export function NewCaffeineModal({ open, onClose, templates, onLogged }: {
-  open: boolean; onClose: () => void; templates: TrackerTemplate[]; onLogged: () => void
+  open: boolean; onClose: () => void; templates: TrackerTemplate[]; onLogged: (name: string) => void
 }) {
   const createEntry = useCreateCaffeineEntry()
   const [name, setName] = useState('')
@@ -284,8 +285,9 @@ export function NewCaffeineModal({ open, onClose, templates, onLogged }: {
     for (let i = 0; i < count; i++) {
       await createEntry.mutateAsync({ custom_name: name.trim(), mg: parseFloat(mg), timestamp })
     }
+    const logged = name.trim()
     reset()
-    onLogged()
+    onLogged(logged)
   }
   function reset() { setName(''); setMg(''); setError(null); setTs(new Date()); setCount(1) }
 
@@ -311,7 +313,7 @@ export function NewCaffeineModal({ open, onClose, templates, onLogged }: {
   )
 }
 
-function EnterAlcoholModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function EnterAlcoholModal({ open, onClose, onLogged }: { open: boolean; onClose: () => void; onLogged: (val: string) => void }) {
   const createEntry = useCreateEntry()
   const [ml, setMl] = useState('')
   const [abv, setAbv] = useState('')
@@ -322,9 +324,10 @@ function EnterAlcoholModal({ open, onClose }: { open: boolean; onClose: () => vo
   const isValid = !isNaN(parseFloat(ml)) && !isNaN(parseFloat(abv))
 
   function handleSubmit() {
+    const val = `${ml}ml`
     createEntry.mutate(
       { ml: parseFloat(ml), abv: parseFloat(abv), timestamp: ts.toISOString() },
-      { onSuccess: () => { setMl(''); setAbv(''); setTs(new Date()); onClose() } },
+      { onSuccess: () => { setMl(''); setAbv(''); setTs(new Date()); onLogged(val) } },
     )
   }
 
@@ -347,7 +350,7 @@ function EnterAlcoholModal({ open, onClose }: { open: boolean; onClose: () => vo
   )
 }
 
-export function EnterCaffeineModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function EnterCaffeineModal({ open, onClose, onLogged }: { open: boolean; onClose: () => void; onLogged: (val: string) => void }) {
   const createEntry = useCreateCaffeineEntry()
   const [mg, setMg] = useState('')
   const [ts, setTs] = useState<Date>(() => new Date())
@@ -357,9 +360,10 @@ export function EnterCaffeineModal({ open, onClose }: { open: boolean; onClose: 
   const isValid = !isNaN(parseFloat(mg))
 
   function handleSubmit() {
+    const val = `${mg}mg`
     createEntry.mutate(
       { mg: parseFloat(mg), timestamp: ts.toISOString() },
-      { onSuccess: () => { setMg(''); setTs(new Date()); onClose() } },
+      { onSuccess: () => { setMg(''); setTs(new Date()); onLogged(val) } },
     )
   }
 
