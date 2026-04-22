@@ -12,34 +12,45 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
   const controlsRef = useRef<IScannerControls | null>(null)
   const scannedRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
+  const [debugLines, setDebugLines] = useState<string[]>([])
+
+  function dbg(msg: string) {
+    setDebugLines((prev) => [...prev.slice(-6), msg])
+  }
 
   useEffect(() => {
     let active = true
     const reader = new BrowserMultiFormatReader()
+    dbg('Reader created')
 
     function startScanning(constraints: MediaStreamConstraints) {
+      dbg(`Starting: ${JSON.stringify(constraints)}`)
       reader
-        .decodeFromConstraints(constraints, videoRef.current!, (result) => {
+        .decodeFromConstraints(constraints, videoRef.current!, (result, err) => {
           if (!active || scannedRef.current) return
           if (result) {
+            dbg(`✓ Got result: ${result.getText()}`)
             scannedRef.current = true
             controlsRef.current?.stop()
             onScan(result.getText())
+          } else if (err) {
+            const name = err.name
+            if (name !== 'NotFoundException') dbg(`cb err: ${name}: ${err.message}`)
           }
         })
-        .then((controls) => { controlsRef.current = controls })
+        .then((controls) => { controlsRef.current = controls; dbg('Controls ready') })
         .catch((err: unknown) => {
           if (!active) return
-          const name = err instanceof Error ? err.name : ''
+          const name = err instanceof Error ? err.name : String(err)
+          dbg(`Start failed: ${name}`)
           if (name === 'OverconstrainedError' || name === 'NotFoundError') {
-            // rear camera constraint failed — retry with any camera
             startScanning({ video: true })
           } else if (name === 'SecurityError' || !window.isSecureContext) {
             setError('Camera requires HTTPS. Access the app via https:// or enable Tailscale HTTPS certificates.')
           } else if (name === 'NotAllowedError') {
             setError('Camera permission denied. Allow camera access in your browser settings and try again.')
           } else {
-            setError('Camera unavailable. Make sure no other app is using it.')
+            setError(`Camera unavailable: ${name}`)
           }
         })
     }
@@ -78,6 +89,9 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
             </div>
           </div>
           <p className="mt-4 text-sm text-neutral-300">Point at a barcode</p>
+          <div className="mt-3 w-full max-w-sm px-4 font-mono text-xs text-green-400 space-y-0.5">
+            {debugLines.map((line, i) => <p key={i}>{line}</p>)}
+          </div>
           <button
             onClick={onClose}
             className="mt-6 px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-xl active:scale-95 transition-transform"
