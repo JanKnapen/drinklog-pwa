@@ -1,11 +1,11 @@
 import type { FilterPeriod } from './types'
 
-export function standardUnits(ml: number, abv: number): number {
-  return (ml * abv / 100) / 15
+export function standardUnits(ml: number, abv: number, divisor = 15): number {
+  return (ml * abv / 100) / divisor
 }
 
-export function caffeineUnits(mg: number): number {
-  return mg / 80.0
+export function caffeineUnits(mg: number, divisor = 80): number {
+  return mg / divisor
 }
 
 export function toLocalDateKey(isoTimestamp: string): string {

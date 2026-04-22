@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import String, Float, Integer, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
+from config import ALCOHOL_UNIT_DIVISOR, CAFFEINE_UNIT_DIVISOR
 
 
 class DrinkTemplate(Base):
@@ -46,7 +47,7 @@ class DrinkEntry(Base):
 
     @property
     def standard_units(self) -> float:
-        return (self.ml * self.abv / 100.0) / 15.0
+        return (self.ml * self.abv / 100.0) / ALCOHOL_UNIT_DIVISOR
 
 
 class CaffeineTemplate(Base):
@@ -88,4 +89,4 @@ class CaffeineEntry(Base):
 
     @property
     def caffeine_units(self) -> float:
-        return self.mg / 80.0
+        return self.mg / CAFFEINE_UNIT_DIVISOR

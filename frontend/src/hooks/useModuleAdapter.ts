@@ -15,6 +15,7 @@ import {
   useConfirmAllCaffeineEntries,
 } from '../api/caffeine-entries'
 import { standardUnits, caffeineUnits } from '../utils'
+import { useAppConfig } from '../api/config'
 import type { TrackerTemplate, TrackerEntry } from '../types'
 
 export interface ModuleAdapter {
@@ -36,6 +37,7 @@ export interface ModuleAdapter {
 export function useModuleAdapter(): ModuleAdapter {
   const { settings } = useSettings()
   const activeModule = settings.activeModule
+  const config = useAppConfig()
 
   // All hooks called unconditionally (React rules)
   const { data: drinkTemplates = [] } = useTemplates()
@@ -65,7 +67,7 @@ export function useModuleAdapter(): ModuleAdapter {
       usage_count: t.usage_count,
       entryCount: t.entry_count,
       confirmedEntryCount: t.confirmed_entry_count,
-      displayInfo: `${t.default_mg}mg · ${caffeineUnits(t.default_mg).toFixed(1)}u`,
+      displayInfo: `${t.default_mg}mg · ${caffeineUnits(t.default_mg, config.caffeine_unit_divisor).toFixed(1)}u`,
     }))
 
     const entries: TrackerEntry[] = caffeineEntries.map((e) => ({
@@ -125,7 +127,7 @@ export function useModuleAdapter(): ModuleAdapter {
     usage_count: t.usage_count,
     entryCount: t.entry_count,
     confirmedEntryCount: t.confirmed_entry_count,
-    displayInfo: `${t.default_ml}ml · ${t.default_abv.toFixed(1)}% · ${standardUnits(t.default_ml, t.default_abv).toFixed(1)}u`,
+    displayInfo: `${t.default_ml}ml · ${t.default_abv.toFixed(1)}% · ${standardUnits(t.default_ml, t.default_abv, config.alcohol_unit_divisor).toFixed(1)}u`,
   }))
 
   const entries: TrackerEntry[] = drinkEntries.map((e) => ({
