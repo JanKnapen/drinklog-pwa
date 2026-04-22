@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { useSettings } from '../contexts/SettingsContext'
 import { useTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from '../api/templates'
 import { useEntries, useCreateEntry, useDeleteEntry, useUpdateEntry, useConfirmAll } from '../api/entries'
@@ -21,6 +22,7 @@ import type { TrackerTemplate, TrackerEntry } from '../types'
 export interface ModuleAdapter {
   templates: TrackerTemplate[]
   entries: TrackerEntry[]
+  isEntriesFetched: boolean
   activeModule: 'alcohol' | 'caffeine'
   moduleTitle: string
   logFromTemplate: (t: TrackerTemplate) => void
@@ -41,7 +43,7 @@ export function useModuleAdapter(): ModuleAdapter {
 
   // All hooks called unconditionally (React rules)
   const { data: drinkTemplates = [] } = useTemplates()
-  const { data: drinkEntries = [] } = useEntries()
+  const { data: drinkEntries = [], isFetched: drinkEntriesFetched } = useEntries()
   const createDrinkEntry = useCreateEntry()
   const updateDrinkTemplate = useUpdateTemplate()
   const deleteDrinkEntry = useDeleteEntry()
@@ -51,7 +53,7 @@ export function useModuleAdapter(): ModuleAdapter {
   const deleteDrinkTemplate = useDeleteTemplate()
 
   const { data: caffeineTemplates = [] } = useCaffeineTemplates()
-  const { data: caffeineEntries = [] } = useCaffeineEntries()
+  const { data: caffeineEntries = [], isFetched: caffeineEntriesFetched } = useCaffeineEntries()
   const createCaffeineEntry = useCreateCaffeineEntry()
   const updateCaffeineTemplate = useUpdateCaffeineTemplate()
   const deleteCaffeineEntry = useDeleteCaffeineEntry()
@@ -60,30 +62,53 @@ export function useModuleAdapter(): ModuleAdapter {
   const createCaffeineTemplate = useCreateCaffeineTemplate()
   const deleteCaffeineTemplate = useDeleteCaffeineTemplate()
 
+  // Memoize mapped arrays so consumers only see a new reference when underlying data changes,
+  // not on every render (avoids spurious effect triggers in HomeTab snapshot logic)
+  const alcoholTemplatesMapped = useMemo((): TrackerTemplate[] => drinkTemplates.map((t) => ({
+    id: t.id,
+    name: t.name,
+    usage_count: t.usage_count,
+    entryCount: t.entry_count,
+    confirmedEntryCount: t.confirmed_entry_count,
+    displayInfo: `${t.default_ml}ml · ${t.default_abv.toFixed(1)}% · ${standardUnits(t.default_ml, t.default_abv, config.alcohol_unit_divisor).toFixed(1)}u`,
+  })), [drinkTemplates, config.alcohol_unit_divisor])
+
+  const alcoholEntriesMapped = useMemo((): TrackerEntry[] => drinkEntries.map((e) => ({
+    id: e.id,
+    templateId: e.template_id,
+    customName: e.custom_name,
+    name: e.template?.name ?? e.custom_name,
+    timestamp: e.timestamp,
+    isMarked: e.is_marked,
+    value: e.standard_units,
+    displayInfo: `${e.ml}ml · ${e.abv.toFixed(1)}% · ${e.standard_units.toFixed(1)} units`,
+  })), [drinkEntries])
+
+  const caffeineTemplatesMapped = useMemo((): TrackerTemplate[] => caffeineTemplates.map((t) => ({
+    id: t.id,
+    name: t.name,
+    usage_count: t.usage_count,
+    entryCount: t.entry_count,
+    confirmedEntryCount: t.confirmed_entry_count,
+    displayInfo: `${t.default_mg}mg · ${caffeineUnits(t.default_mg, config.caffeine_unit_divisor).toFixed(1)}u`,
+  })), [caffeineTemplates, config.caffeine_unit_divisor])
+
+  const caffeineEntriesMapped = useMemo((): TrackerEntry[] => caffeineEntries.map((e) => ({
+    id: e.id,
+    templateId: e.template_id,
+    customName: e.custom_name,
+    name: e.template?.name ?? e.custom_name,
+    timestamp: e.timestamp,
+    isMarked: e.is_marked,
+    value: e.caffeine_units,
+    displayInfo: `${e.mg}mg · ${e.caffeine_units.toFixed(1)} units`,
+  })), [caffeineEntries])
+
   if (activeModule === 'caffeine') {
-    const templates: TrackerTemplate[] = caffeineTemplates.map((t) => ({
-      id: t.id,
-      name: t.name,
-      usage_count: t.usage_count,
-      entryCount: t.entry_count,
-      confirmedEntryCount: t.confirmed_entry_count,
-      displayInfo: `${t.default_mg}mg · ${caffeineUnits(t.default_mg, config.caffeine_unit_divisor).toFixed(1)}u`,
-    }))
-
-    const entries: TrackerEntry[] = caffeineEntries.map((e) => ({
-      id: e.id,
-      templateId: e.template_id,
-      customName: e.custom_name,
-      name: e.template?.name ?? e.custom_name,
-      timestamp: e.timestamp,
-      isMarked: e.is_marked,
-      value: e.caffeine_units,
-      displayInfo: `${e.mg}mg · ${e.caffeine_units.toFixed(1)} units`,
-    }))
-
     return {
-      templates,
-      entries,
+      templates: caffeineTemplatesMapped,
+      entries: caffeineEntriesMapped,
+      isEntriesFetched: caffeineEntriesFetched,
       activeModule: 'caffeine',
       moduleTitle: 'CaffeineLog',
       logFromTemplate: (t) => {
@@ -121,29 +146,10 @@ export function useModuleAdapter(): ModuleAdapter {
   }
 
   // Alcohol (default)
-  const templates: TrackerTemplate[] = drinkTemplates.map((t) => ({
-    id: t.id,
-    name: t.name,
-    usage_count: t.usage_count,
-    entryCount: t.entry_count,
-    confirmedEntryCount: t.confirmed_entry_count,
-    displayInfo: `${t.default_ml}ml · ${t.default_abv.toFixed(1)}% · ${standardUnits(t.default_ml, t.default_abv, config.alcohol_unit_divisor).toFixed(1)}u`,
-  }))
-
-  const entries: TrackerEntry[] = drinkEntries.map((e) => ({
-    id: e.id,
-    templateId: e.template_id,
-    customName: e.custom_name,
-    name: e.template?.name ?? e.custom_name,
-    timestamp: e.timestamp,
-    isMarked: e.is_marked,
-    value: e.standard_units,
-    displayInfo: `${e.ml}ml · ${e.abv.toFixed(1)}% · ${e.standard_units.toFixed(1)} units`,
-  }))
-
   return {
-    templates,
-    entries,
+    templates: alcoholTemplatesMapped,
+    entries: alcoholEntriesMapped,
+    isEntriesFetched: drinkEntriesFetched,
     activeModule: 'alcohol',
     moduleTitle: 'DrinkLog',
     logFromTemplate: (t) => {

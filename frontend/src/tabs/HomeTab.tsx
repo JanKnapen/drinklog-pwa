@@ -25,7 +25,7 @@ interface QuickLogSnapshot {
 export default function HomeTab({ onToast }: { onToast: (msg: string) => void }) {
   const adapter = useModuleAdapter()
   const { openSettings } = useSettings()
-  const { templates, entries, activeModule } = adapter
+  const { templates, entries, isEntriesFetched, activeModule } = adapter
 
   const [modal, setModal] = useState<'new' | 'enter' | 'other' | 'pending' | null>(null)
   const [snapshot, setSnapshot] = useState<QuickLogSnapshot>({ todayTopTwo: [], alltimeItems: [], pendingDrinks: [] })
@@ -33,8 +33,6 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
   // Keep refs current so refreshSnapshot always reads latest data without being a dep
   const templatesRef = useRef(templates)
   const entriesRef = useRef(entries)
-  useEffect(() => { templatesRef.current = templates }, [templates])
-  useEffect(() => { entriesRef.current = entries }, [entries])
 
   const refreshSnapshot = useCallback(() => {
     const tmpl = templatesRef.current
@@ -72,19 +70,19 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
     setSnapshot({ todayTopTwo, alltimeItems, pendingDrinks })
   }, [])
 
-  // Refresh when module switches
+  useEffect(() => { templatesRef.current = templates }, [templates])
+  useEffect(() => { entriesRef.current = entries }, [entries])
+
+  // Refresh on module switch (uses whatever is in refs at that point)
   useEffect(() => {
     refreshSnapshot()
   }, [activeModule, refreshSnapshot])
 
-  // Snapshot once when data first arrives (refs are empty on mount if cache is cold)
-  const dataLoadedRef = useRef(false)
+  // Refresh once entries have definitively loaded — catches the case where templates
+  // arrive from cache before entries, leaving today/pending absent from the snapshot
   useEffect(() => {
-    if (!dataLoadedRef.current && (templates.length > 0 || entries.length > 0)) {
-      dataLoadedRef.current = true
-      refreshSnapshot()
-    }
-  }, [templates, entries, refreshSnapshot])
+    if (isEntriesFetched) refreshSnapshot()
+  }, [isEntriesFetched, refreshSnapshot])
 
   const { todayTopTwo, alltimeItems, pendingDrinks } = snapshot
   const showQuickLog = alltimeItems.length > 0 || todayTopTwo.length > 0 || pendingDrinks.length > 0
@@ -171,27 +169,27 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
           open={modal === 'new'}
           onClose={() => setModal(null)}
           templates={templates}
-          onLogged={(name) => { refreshSnapshot(); onToast(`Logged: ${name}`); setModal(null) }}
+          onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
         />
       ) : (
         <NewCaffeineModal
           open={modal === 'new'}
           onClose={() => setModal(null)}
           templates={templates}
-          onLogged={(name) => { refreshSnapshot(); onToast(`Logged: ${name}`); setModal(null) }}
+          onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
         />
       )}
       {activeModule === 'alcohol' ? (
-        <EnterAlcoholModal open={modal === 'enter'} onClose={() => setModal(null)} onLogged={(val) => { refreshSnapshot(); onToast(`Logged: ${val}`); setModal(null) }} />
+        <EnterAlcoholModal open={modal === 'enter'} onClose={() => setModal(null)} onLogged={(val) => { onToast(`Logged: ${val}`); setModal(null) }} />
       ) : (
-        <EnterCaffeineModal open={modal === 'enter'} onClose={() => setModal(null)} onLogged={(val) => { refreshSnapshot(); onToast(`Logged: ${val}`); setModal(null) }} />
+        <EnterCaffeineModal open={modal === 'enter'} onClose={() => setModal(null)} onLogged={(val) => { onToast(`Logged: ${val}`); setModal(null) }} />
       )}
       <OtherModal
         open={modal === 'other'}
         onClose={() => setModal(null)}
         templates={templates}
         onLog={(t, count, timestamp) => adapter.logFromTemplateWithOptions(t, count, timestamp)}
-        onLogged={(name) => { refreshSnapshot(); onToast(`Logged: ${name}`); setModal(null) }}
+        onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
       />
       <PendingDrinksModal
         open={modal === 'pending'}
