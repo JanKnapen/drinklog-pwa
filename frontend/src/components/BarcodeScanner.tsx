@@ -84,13 +84,25 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
     function startZxing(constraints: MediaStreamConstraints) {
       dbg('Using ZXing (BarcodeDetector unavailable)')
       const reader = new BrowserMultiFormatReader(makeHints(), { delayBetweenScanAttempts: 100 })
+      let lastCode = ''
+      let streak = 0
       reader
         .decodeFromConstraints(constraints, videoRef.current!, (result, err) => {
           if (!active || scannedRef.current) return
           if (result) {
-            scannedRef.current = true
-            controlsRef.current?.stop()
-            onScan(result.getText())
+            const code = result.getText()
+            if (code === lastCode) {
+              streak++
+            } else {
+              lastCode = code
+              streak = 1
+            }
+            dbg(`read: ${code} (${streak}/2)`)
+            if (streak >= 2) {
+              scannedRef.current = true
+              controlsRef.current?.stop()
+              onScan(code)
+            }
           } else if (err && !err.message.includes('No MultiFormat')) {
             dbg(`err: ${err.name}`)
           }
@@ -125,8 +137,8 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
       startZxing({
         video: {
           facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
         },
       })
     }
