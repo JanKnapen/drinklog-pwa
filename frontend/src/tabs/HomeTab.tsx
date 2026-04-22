@@ -15,7 +15,9 @@ import type { TrackerTemplate, TrackerEntry } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
 import { useModuleAdapter } from '../hooks/useModuleAdapter'
 import { useCreateEntry } from '../api/entries'
+import { useCreateTemplate, useUpdateTemplate } from '../api/templates'
 import { useCreateCaffeineEntry } from '../api/caffeine-entries'
+import { useCreateCaffeineTemplate, useUpdateCaffeineTemplate } from '../api/caffeine-templates'
 import { lookupBarcode, type BarcodeResult } from '../api/barcode'
 
 interface QuickLogSnapshot {
@@ -31,6 +33,7 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
 
   const [modal, setModal] = useState<'new' | 'enter' | 'other' | 'pending' | 'scanner' | 'scan-match' | null>(null)
   const [scanPrefill, setScanPrefill] = useState<BarcodeResult | null>(null)
+  const [scanCode, setScanCode] = useState<string | null>(null)
   const [scanMatchTemplate, setScanMatchTemplate] = useState<TrackerTemplate | null>(null)
   const [snapshot, setSnapshot] = useState<QuickLogSnapshot>({ todayTopTwo: [], alltimeItems: [], pendingDrinks: [] })
 
@@ -99,9 +102,11 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
           setModal('scan-match')
           return
         }
+        // Template in DB but not in frontend cache — treat as new, prefill with local data
       }
-      if (result.source === 'off' && result.name) {
+      if ((result.source === 'off' || result.source === 'local') && result.name) {
         setScanPrefill(result)
+        setScanCode(code)
         setModal('new')
         return
       }
@@ -203,18 +208,20 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
       {activeModule === 'alcohol' ? (
         <NewAlcoholModal
           open={modal === 'new'}
-          onClose={() => { setScanPrefill(null); setModal(null) }}
+          onClose={() => { setScanPrefill(null); setScanCode(null); setModal(null) }}
           templates={templates}
           prefill={scanPrefill}
-          onLogged={(name) => { setScanPrefill(null); onToast(`Logged: ${name}`); setModal(null) }}
+          barcode={scanCode}
+          onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(`Logged: ${name}`); setModal(null) }}
         />
       ) : (
         <NewCaffeineModal
           open={modal === 'new'}
-          onClose={() => { setScanPrefill(null); setModal(null) }}
+          onClose={() => { setScanPrefill(null); setScanCode(null); setModal(null) }}
           templates={templates}
           prefill={scanPrefill}
-          onLogged={(name) => { setScanPrefill(null); onToast(`Logged: ${name}`); setModal(null) }}
+          barcode={scanCode}
+          onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(`Logged: ${name}`); setModal(null) }}
         />
       )}
       {activeModule === 'alcohol' ? (
@@ -282,11 +289,13 @@ function ActionCard({ title, subtitle, icon, onClick }: {
 }
 
 // NewAlcoholModal — uses useCreateEntry directly (module-specific modal, adapter bypass acceptable)
-function NewAlcoholModal({ open, onClose, templates, prefill, onLogged }: {
+function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged }: {
   open: boolean; onClose: () => void; templates: TrackerTemplate[]
-  prefill?: BarcodeResult | null; onLogged: (name: string) => void
+  prefill?: BarcodeResult | null; barcode?: string | null; onLogged: (name: string) => void
 }) {
   const createEntry = useCreateEntry()
+  const createTemplate = useCreateTemplate()
+  const updateTemplate = useUpdateTemplate()
   const [name, setName] = useState('')
   const [ml, setMl] = useState('')
   const [abv, setAbv] = useState('')
@@ -308,7 +317,8 @@ function NewAlcoholModal({ open, onClose, templates, prefill, onLogged }: {
     }
   }, [open, prefill])
 
-  const isDuplicate = templates.some((t) => t.name.toLowerCase() === name.trim().toLowerCase())
+  const duplicateTemplate = templates.find((t) => t.name.toLowerCase() === name.trim().toLowerCase())
+  const isDuplicate = !!duplicateTemplate
   const isValid = name.trim().length > 0 && !isNaN(parseFloat(ml)) && !isNaN(parseFloat(abv))
 
   const mlMissing = prefill && prefill.ml == null
@@ -316,10 +326,28 @@ function NewAlcoholModal({ open, onClose, templates, prefill, onLogged }: {
   const dashedCls = ' border-dashed border-2 border-neutral-400 dark:border-neutral-500'
 
   async function handleSubmit() {
-    if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
     const timestamp = ts.toISOString()
-    for (let i = 0; i < count; i++) {
-      await createEntry.mutateAsync({ custom_name: name.trim(), ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
+    if (barcode) {
+      // Scan flow: create/reuse a template so the barcode is persisted for future lookups
+      let templateId: string
+      if (isDuplicate && duplicateTemplate) {
+        templateId = duplicateTemplate.id
+        updateTemplate.mutate({ id: templateId, barcode })
+      } else {
+        const t = await createTemplate.mutateAsync({
+          name: name.trim(), default_ml: parseFloat(ml), default_abv: parseFloat(abv), barcode,
+        })
+        templateId = t.id
+      }
+      for (let i = 0; i < count; i++) {
+        await createEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
+      }
+      await updateTemplate.mutateAsync({ id: templateId, usage_count: (duplicateTemplate?.usage_count ?? 0) + count })
+    } else {
+      if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
+      for (let i = 0; i < count; i++) {
+        await createEntry.mutateAsync({ custom_name: name.trim(), ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
+      }
     }
     const logged = name.trim()
     setName(''); setMl(''); setAbv(''); setError(null); setTs(new Date()); setCount(1)
@@ -353,11 +381,13 @@ function NewAlcoholModal({ open, onClose, templates, prefill, onLogged }: {
 }
 
 // NewCaffeineModal — uses useCreateCaffeineEntry directly (module-specific modal)
-export function NewCaffeineModal({ open, onClose, templates, prefill, onLogged }: {
+export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, onLogged }: {
   open: boolean; onClose: () => void; templates: TrackerTemplate[]
-  prefill?: BarcodeResult | null; onLogged: (name: string) => void
+  prefill?: BarcodeResult | null; barcode?: string | null; onLogged: (name: string) => void
 }) {
   const createEntry = useCreateCaffeineEntry()
+  const createTemplate = useCreateCaffeineTemplate()
+  const updateTemplate = useUpdateCaffeineTemplate()
   const [name, setName] = useState('')
   const [mg, setMg] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -377,17 +407,35 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, onLogged }
     }
   }, [open, prefill])
 
-  const isDuplicate = templates.some((t) => t.name.toLowerCase() === name.trim().toLowerCase())
+  const duplicateTemplate = templates.find((t) => t.name.toLowerCase() === name.trim().toLowerCase())
+  const isDuplicate = !!duplicateTemplate
   const isValid = name.trim().length > 0 && !isNaN(parseFloat(mg))
 
   const mgMissing = prefill && prefill.mg == null
   const dashedCls = ' border-dashed border-2 border-neutral-400 dark:border-neutral-500'
 
   async function handleSubmit() {
-    if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
     const timestamp = ts.toISOString()
-    for (let i = 0; i < count; i++) {
-      await createEntry.mutateAsync({ custom_name: name.trim(), mg: parseFloat(mg), timestamp })
+    if (barcode) {
+      let templateId: string
+      if (isDuplicate && duplicateTemplate) {
+        templateId = duplicateTemplate.id
+        updateTemplate.mutate({ id: templateId, barcode })
+      } else {
+        const t = await createTemplate.mutateAsync({
+          name: name.trim(), default_mg: parseFloat(mg), barcode,
+        })
+        templateId = t.id
+      }
+      for (let i = 0; i < count; i++) {
+        await createEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp })
+      }
+      await updateTemplate.mutateAsync({ id: templateId, usage_count: (duplicateTemplate?.usage_count ?? 0) + count })
+    } else {
+      if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
+      for (let i = 0; i < count; i++) {
+        await createEntry.mutateAsync({ custom_name: name.trim(), mg: parseFloat(mg), timestamp })
+      }
     }
     const logged = name.trim()
     setName(''); setMg(''); setError(null); setTs(new Date()); setCount(1)

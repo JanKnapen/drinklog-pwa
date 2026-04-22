@@ -14,7 +14,7 @@ export function useTemplates() {
 export function useCreateTemplate() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { name: string; default_ml: number; default_abv: number }) =>
+    mutationFn: (data: { name: string; default_ml: number; default_abv: number; barcode?: string }) =>
       apiFetch<DrinkTemplate>('/api/templates', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -35,6 +35,7 @@ export function useUpdateTemplate() {
       default_ml?: number
       default_abv?: number
       usage_count?: number
+      barcode?: string
     }) =>
       apiFetch<DrinkTemplate>(`/api/templates/${id}`, {
         method: 'PUT',

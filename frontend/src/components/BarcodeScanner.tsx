@@ -32,21 +32,11 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
   const rafRef = useRef<number>(0)
   const scannedRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
-  const [debugLines, setDebugLines] = useState<string[]>([])
-
-  function dbg(msg: string) {
-    setDebugLines((prev) => [...prev.slice(-8), msg])
-  }
 
   useEffect(() => {
     let active = true
 
-    dbg(`BarcodeDetector: ${'BarcodeDetector' in window}`)
-    dbg(`secureContext: ${window.isSecureContext}`)
-    dbg(`UA: ${navigator.userAgent.slice(0, 60)}`)
-
     async function startNative() {
-      dbg('Using BarcodeDetector (native)')
       const detector = new window.BarcodeDetector!({
         formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'],
       })
@@ -63,7 +53,6 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
       const video = videoRef.current!
       video.srcObject = stream
       await video.play().catch(() => {})
-      dbg('Camera ready')
       function scan() {
         if (!active || scannedRef.current) return
         detector.detect(video)
@@ -82,12 +71,11 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
     }
 
     function startZxing(constraints: MediaStreamConstraints) {
-      dbg('Using ZXing (BarcodeDetector unavailable)')
       const reader = new BrowserMultiFormatReader(makeHints(), { delayBetweenScanAttempts: 100 })
       let lastCode = ''
       let streak = 0
       reader
-        .decodeFromConstraints(constraints, videoRef.current!, (result, err) => {
+        .decodeFromConstraints(constraints, videoRef.current!, (result, _err) => {
           if (!active || scannedRef.current) return
           if (result) {
             const code = result.getText()
@@ -97,17 +85,14 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
               lastCode = code
               streak = 1
             }
-            dbg(`read: ${code} (${streak}/2)`)
             if (streak >= 2) {
               scannedRef.current = true
               controlsRef.current?.stop()
               onScan(code)
             }
-          } else if (err && !err.message.includes('No MultiFormat')) {
-            dbg(`err: ${err.name}`)
           }
         })
-        .then((controls) => { controlsRef.current = controls; dbg('ZXing ready') })
+        .then((controls) => { controlsRef.current = controls })
         .catch((err: unknown) => {
           if (!active) return
           const name = err instanceof Error ? err.name : String(err)
@@ -121,7 +106,6 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
 
     function handleCameraError(err: unknown) {
       const name = err instanceof Error ? err.name : String(err)
-      dbg(`Camera error: ${name}`)
       if (name === 'SecurityError' || !window.isSecureContext) {
         setError('Camera requires HTTPS.')
       } else if (name === 'NotAllowedError') {
@@ -174,9 +158,6 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
             </div>
           </div>
           <p className="mt-4 text-sm text-neutral-300">Point at a barcode</p>
-          <div className="mt-3 w-full max-w-sm px-4 font-mono text-xs text-green-400 space-y-0.5">
-            {debugLines.map((line, i) => <p key={i}>{line}</p>)}
-          </div>
           <button onClick={onClose} className="mt-4 px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-xl active:scale-95 transition-transform">
             Close
           </button>

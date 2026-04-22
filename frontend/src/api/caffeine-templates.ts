@@ -14,7 +14,7 @@ export function useCaffeineTemplates() {
 export function useCreateCaffeineTemplate() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { name: string; default_mg: number }) =>
+    mutationFn: (data: { name: string; default_mg: number; barcode?: string }) =>
       apiFetch<CaffeineTemplate>('/api/caffeine-templates', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -29,7 +29,7 @@ export function useUpdateCaffeineTemplate() {
     mutationFn: ({
       id,
       ...data
-    }: { id: string; name?: string; default_mg?: number; usage_count?: number }) =>
+    }: { id: string; name?: string; default_mg?: number; usage_count?: number; barcode?: string }) =>
       apiFetch<CaffeineTemplate>(`/api/caffeine-templates/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
