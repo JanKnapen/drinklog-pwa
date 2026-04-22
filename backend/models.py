@@ -14,6 +14,7 @@ class DrinkTemplate(Base):
     default_ml: Mapped[float] = mapped_column(Float, nullable=False)
     default_abv: Mapped[float] = mapped_column(Float, nullable=False)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
+    barcode: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
 
     entries: Mapped[list["DrinkEntry"]] = relationship(
         "DrinkEntry", back_populates="template", lazy="selectin"
@@ -57,6 +58,7 @@ class CaffeineTemplate(Base):
     name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     default_mg: Mapped[float] = mapped_column(Float, nullable=False)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
+    barcode: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
 
     entries: Mapped[list["CaffeineEntry"]] = relationship(
         "CaffeineEntry", back_populates="template", lazy="selectin"

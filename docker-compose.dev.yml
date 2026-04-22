@@ -1,0 +1,13 @@
+services:
+  backend:
+    env_file:
+      - .env
+
+  frontend:
+    env_file:
+      - .env
+    volumes:
+      - ./nginx.dev.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - /etc/ssl:/certs:ro
+    ports:
+      - "443:443"

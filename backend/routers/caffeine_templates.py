@@ -47,6 +47,9 @@ def update_caffeine_template(template_id: str, data: CaffeineTemplateUpdate, db:
     if data.usage_count is not None:
         template.usage_count = data.usage_count
 
+    if data.barcode is not None:
+        template.barcode = data.barcode
+
     has_confirmed = any(e.is_marked for e in template.entries)
     if not has_confirmed and data.default_mg is not None:
         template.default_mg = data.default_mg

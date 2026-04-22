@@ -23,12 +23,14 @@ class DrinkTemplateResponse(BaseModel):
     usage_count: int
     entry_count: int
     confirmed_entry_count: int
+    barcode: Optional[str] = None
 
 
 class DrinkTemplateCreate(BaseModel):
     name: str
     default_ml: float
     default_abv: float
+    barcode: Optional[str] = None
 
 
 class DrinkTemplateUpdate(BaseModel):
@@ -36,6 +38,7 @@ class DrinkTemplateUpdate(BaseModel):
     default_ml: Optional[float] = None
     default_abv: Optional[float] = None
     usage_count: Optional[int] = None
+    barcode: Optional[str] = None
 
 
 class DrinkEntryResponse(BaseModel):
@@ -99,17 +102,20 @@ class CaffeineTemplateResponse(BaseModel):
     usage_count: int
     entry_count: int
     confirmed_entry_count: int
+    barcode: Optional[str] = None
 
 
 class CaffeineTemplateCreate(BaseModel):
     name: str
     default_mg: float
+    barcode: Optional[str] = None
 
 
 class CaffeineTemplateUpdate(BaseModel):
     name: Optional[str] = None
     default_mg: Optional[float] = None
     usage_count: Optional[int] = None
+    barcode: Optional[str] = None
 
 
 class CaffeineEntryResponse(BaseModel):

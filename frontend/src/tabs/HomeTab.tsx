@@ -7,6 +7,7 @@ import {
 } from '@heroicons/react/24/solid'
 import { Cog6ToothIcon } from '@heroicons/react/24/outline'
 import Modal from '../components/Modal'
+import BarcodeScanner from '../components/BarcodeScanner'
 import TimestampPicker from '../components/TimestampPicker'
 import { Field, UnitPreview, inputCls, primaryBtn } from '../components/FormFields'
 import { toLocalDateKey, todayKey } from '../utils'
@@ -15,6 +16,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useModuleAdapter } from '../hooks/useModuleAdapter'
 import { useCreateEntry } from '../api/entries'
 import { useCreateCaffeineEntry } from '../api/caffeine-entries'
+import { lookupBarcode, type BarcodeResult } from '../api/barcode'
 
 interface QuickLogSnapshot {
   todayTopTwo: Array<{ template: TrackerTemplate; count: number; lastTs: string }>
@@ -27,7 +29,9 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
   const { openSettings } = useSettings()
   const { templates, entries, isEntriesFetched, activeModule } = adapter
 
-  const [modal, setModal] = useState<'new' | 'enter' | 'other' | 'pending' | null>(null)
+  const [modal, setModal] = useState<'new' | 'enter' | 'other' | 'pending' | 'scanner' | 'scan-match' | null>(null)
+  const [scanPrefill, setScanPrefill] = useState<BarcodeResult | null>(null)
+  const [scanMatchTemplate, setScanMatchTemplate] = useState<TrackerTemplate | null>(null)
   const [snapshot, setSnapshot] = useState<QuickLogSnapshot>({ todayTopTwo: [], alltimeItems: [], pendingDrinks: [] })
 
   // Keep refs current so refreshSnapshot always reads latest data without being a dep
@@ -84,6 +88,29 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
     if (isEntriesFetched) refreshSnapshot()
   }, [isEntriesFetched, refreshSnapshot])
 
+  async function handleScan(code: string) {
+    setModal(null)
+    try {
+      const result = await lookupBarcode(code, activeModule)
+      if (result.source === 'local') {
+        const matched = templates.find((t) => t.id === result.template_id)
+        if (matched) {
+          setScanMatchTemplate(matched)
+          setModal('scan-match')
+          return
+        }
+      }
+      if (result.source === 'off' && result.name) {
+        setScanPrefill(result)
+        setModal('new')
+        return
+      }
+      onToast('Product not found')
+    } catch {
+      onToast('Barcode lookup failed')
+    }
+  }
+
   const { todayTopTwo, alltimeItems, pendingDrinks } = snapshot
   const showQuickLog = alltimeItems.length > 0 || todayTopTwo.length > 0 || pendingDrinks.length > 0
 
@@ -95,12 +122,21 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
             <h1 className="text-2xl font-bold text-neutral-900 dark:text-neutral-100">DrinkLog</h1>
             <span className="text-sm text-neutral-400 dark:text-neutral-500">{activeModule}</span>
           </div>
-          <button
-            onClick={openSettings}
-            className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 active:scale-95 transition-transform"
-          >
-            <Cog6ToothIcon className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setModal('scanner')}
+              className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 active:scale-95 transition-transform"
+              aria-label="Scan barcode"
+            >
+              <BarcodeScanIcon />
+            </button>
+            <button
+              onClick={openSettings}
+              className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 active:scale-95 transition-transform"
+            >
+              <Cog6ToothIcon className="w-6 h-6" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -167,16 +203,18 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
       {activeModule === 'alcohol' ? (
         <NewAlcoholModal
           open={modal === 'new'}
-          onClose={() => setModal(null)}
+          onClose={() => { setScanPrefill(null); setModal(null) }}
           templates={templates}
-          onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
+          prefill={scanPrefill}
+          onLogged={(name) => { setScanPrefill(null); onToast(`Logged: ${name}`); setModal(null) }}
         />
       ) : (
         <NewCaffeineModal
           open={modal === 'new'}
-          onClose={() => setModal(null)}
+          onClose={() => { setScanPrefill(null); setModal(null) }}
           templates={templates}
-          onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
+          prefill={scanPrefill}
+          onLogged={(name) => { setScanPrefill(null); onToast(`Logged: ${name}`); setModal(null) }}
         />
       )}
       {activeModule === 'alcohol' ? (
@@ -197,6 +235,16 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
         entries={pendingDrinks}
         onLog={(e, count, timestamp) => adapter.logFromPendingEntry(e, count, timestamp)}
         onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
+      />
+      {modal === 'scanner' && (
+        <BarcodeScanner onScan={handleScan} onClose={() => setModal(null)} />
+      )}
+      <ScanMatchModal
+        open={modal === 'scan-match'}
+        template={scanMatchTemplate}
+        onClose={() => { setScanMatchTemplate(null); setModal(null) }}
+        onLog={(t, count, timestamp) => adapter.logFromTemplateWithOptions(t, count, timestamp)}
+        onLogged={(name) => { setScanMatchTemplate(null); onToast(`Logged: ${name}`); setModal(null) }}
       />
     </div>
   )
@@ -234,8 +282,9 @@ function ActionCard({ title, subtitle, icon, onClick }: {
 }
 
 // NewAlcoholModal — uses useCreateEntry directly (module-specific modal, adapter bypass acceptable)
-function NewAlcoholModal({ open, onClose, templates, onLogged }: {
-  open: boolean; onClose: () => void; templates: TrackerTemplate[]; onLogged: (name: string) => void
+function NewAlcoholModal({ open, onClose, templates, prefill, onLogged }: {
+  open: boolean; onClose: () => void; templates: TrackerTemplate[]
+  prefill?: BarcodeResult | null; onLogged: (name: string) => void
 }) {
   const createEntry = useCreateEntry()
   const [name, setName] = useState('')
@@ -245,10 +294,26 @@ function NewAlcoholModal({ open, onClose, templates, onLogged }: {
   const [ts, setTs] = useState<Date>(() => new Date())
   const [count, setCount] = useState(1)
 
-  useEffect(() => { if (open) setTs(new Date()) }, [open])
+  useEffect(() => {
+    if (open) {
+      setTs(new Date())
+      if (prefill) {
+        setName(prefill.name ? `${prefill.name} Ⓑ` : '')
+        setMl(prefill.ml != null ? String(prefill.ml) : '')
+        setAbv(prefill.abv != null ? String(prefill.abv) : '')
+      } else {
+        setName(''); setMl(''); setAbv('')
+      }
+      setError(null); setCount(1)
+    }
+  }, [open, prefill])
 
   const isDuplicate = templates.some((t) => t.name.toLowerCase() === name.trim().toLowerCase())
   const isValid = name.trim().length > 0 && !isNaN(parseFloat(ml)) && !isNaN(parseFloat(abv))
+
+  const mlMissing = prefill && prefill.ml == null
+  const abvMissing = prefill && prefill.abv == null
+  const dashedCls = ' border-dashed border-2 border-neutral-400 dark:border-neutral-500'
 
   async function handleSubmit() {
     if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
@@ -257,13 +322,12 @@ function NewAlcoholModal({ open, onClose, templates, onLogged }: {
       await createEntry.mutateAsync({ custom_name: name.trim(), ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
     }
     const logged = name.trim()
-    reset()
+    setName(''); setMl(''); setAbv(''); setError(null); setTs(new Date()); setCount(1)
     onLogged(logged)
   }
-  function reset() { setName(''); setMl(''); setAbv(''); setError(null); setTs(new Date()); setCount(1) }
 
   return (
-    <Modal open={open} onClose={() => { reset(); onClose() }} title="New Alcohol Drink">
+    <Modal open={open} onClose={() => { setName(''); setMl(''); setAbv(''); setError(null); setTs(new Date()); setCount(1); onClose() }} title="New Alcohol Drink">
       <div className="flex flex-col gap-3">
         <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
@@ -273,10 +337,10 @@ function NewAlcoholModal({ open, onClose, templates, onLogged }: {
           <input className={inputCls} placeholder="e.g. Lager, House Wine…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
         </Field>
         <Field label="Amount (ml)">
-          <input className={inputCls} inputMode="decimal" placeholder="330" value={ml} onChange={(e) => setMl(e.target.value)} />
+          <input className={inputCls + (mlMissing ? dashedCls : '')} inputMode="decimal" placeholder="330" value={ml} onChange={(e) => setMl(e.target.value)} />
         </Field>
         <Field label="ABV (%)">
-          <input className={inputCls} inputMode="decimal" placeholder="5.0" value={abv} onChange={(e) => setAbv(e.target.value)} />
+          <input className={inputCls + (abvMissing ? dashedCls : '')} inputMode="decimal" placeholder="5.0" value={abv} onChange={(e) => setAbv(e.target.value)} />
         </Field>
         <UnitPreview ml={ml} abv={abv} />
         <div className="flex gap-2">
@@ -289,8 +353,9 @@ function NewAlcoholModal({ open, onClose, templates, onLogged }: {
 }
 
 // NewCaffeineModal — uses useCreateCaffeineEntry directly (module-specific modal)
-export function NewCaffeineModal({ open, onClose, templates, onLogged }: {
-  open: boolean; onClose: () => void; templates: TrackerTemplate[]; onLogged: (name: string) => void
+export function NewCaffeineModal({ open, onClose, templates, prefill, onLogged }: {
+  open: boolean; onClose: () => void; templates: TrackerTemplate[]
+  prefill?: BarcodeResult | null; onLogged: (name: string) => void
 }) {
   const createEntry = useCreateCaffeineEntry()
   const [name, setName] = useState('')
@@ -299,10 +364,24 @@ export function NewCaffeineModal({ open, onClose, templates, onLogged }: {
   const [ts, setTs] = useState<Date>(() => new Date())
   const [count, setCount] = useState(1)
 
-  useEffect(() => { if (open) setTs(new Date()) }, [open])
+  useEffect(() => {
+    if (open) {
+      setTs(new Date())
+      if (prefill) {
+        setName(prefill.name ? `${prefill.name} Ⓑ` : '')
+        setMg(prefill.mg != null ? String(prefill.mg) : '')
+      } else {
+        setName(''); setMg('')
+      }
+      setError(null); setCount(1)
+    }
+  }, [open, prefill])
 
   const isDuplicate = templates.some((t) => t.name.toLowerCase() === name.trim().toLowerCase())
   const isValid = name.trim().length > 0 && !isNaN(parseFloat(mg))
+
+  const mgMissing = prefill && prefill.mg == null
+  const dashedCls = ' border-dashed border-2 border-neutral-400 dark:border-neutral-500'
 
   async function handleSubmit() {
     if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
@@ -311,13 +390,12 @@ export function NewCaffeineModal({ open, onClose, templates, onLogged }: {
       await createEntry.mutateAsync({ custom_name: name.trim(), mg: parseFloat(mg), timestamp })
     }
     const logged = name.trim()
-    reset()
+    setName(''); setMg(''); setError(null); setTs(new Date()); setCount(1)
     onLogged(logged)
   }
-  function reset() { setName(''); setMg(''); setError(null); setTs(new Date()); setCount(1) }
 
   return (
-    <Modal open={open} onClose={() => { reset(); onClose() }} title="New Caffeine Drink">
+    <Modal open={open} onClose={() => { setName(''); setMg(''); setError(null); setTs(new Date()); setCount(1); onClose() }} title="New Caffeine Drink">
       <div className="flex flex-col gap-3">
         <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
@@ -327,7 +405,7 @@ export function NewCaffeineModal({ open, onClose, templates, onLogged }: {
           <input className={inputCls} placeholder="e.g. Coffee, Energy Drink…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
         </Field>
         <Field label="Caffeine (mg)">
-          <input className={inputCls} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
+          <input className={inputCls + (mgMissing ? dashedCls : '')} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
         </Field>
         <div className="flex gap-2">
           <Stepper value={count} onChange={setCount} />
@@ -502,6 +580,59 @@ function PendingDrinksModal({ open, onClose, entries, onLog, onLogged }: {
         </div>
       </div>
     </Modal>
+  )
+}
+
+function ScanMatchModal({ open, template, onClose, onLog, onLogged }: {
+  open: boolean
+  template: TrackerTemplate | null
+  onClose: () => void
+  onLog: (t: TrackerTemplate, count: number, timestamp: string) => Promise<void>
+  onLogged: (name: string) => void
+}) {
+  const [ts, setTs] = useState<Date>(() => new Date())
+  const [count, setCount] = useState(1)
+
+  useEffect(() => { if (open) setTs(new Date()) }, [open])
+
+  async function handleLog() {
+    if (!template) return
+    await onLog(template, count, ts.toISOString())
+    setTs(new Date()); setCount(1)
+    onLogged(template.name)
+  }
+
+  if (!template) return null
+
+  return (
+    <Modal open={open} onClose={() => { setTs(new Date()); setCount(1); onClose() }} title="Log Scanned Drink">
+      <div className="flex flex-col gap-3">
+        <div className="bg-neutral-50 dark:bg-neutral-800 rounded-xl px-4 py-3">
+          <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{template.name}</p>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 tabular-nums">{template.displayInfo}</p>
+        </div>
+        <Field label="When (month · day · hour)">
+          <TimestampPicker value={ts} onChange={setTs} />
+        </Field>
+        <div className="flex gap-2">
+          <Stepper value={count} onChange={setCount} />
+          <button onClick={handleLog} className={primaryBtn + ' flex-1'}>Log</button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function BarcodeScanIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" />
+      <line x1="7" y1="8" x2="7" y2="16" strokeWidth={2} />
+      <line x1="10" y1="8" x2="10" y2="16" strokeWidth={1} />
+      <line x1="12.5" y1="8" x2="12.5" y2="16" strokeWidth={2} />
+      <line x1="15" y1="8" x2="15" y2="16" strokeWidth={1} />
+      <line x1="17" y1="8" x2="17" y2="16" strokeWidth={2} />
+    </svg>
   )
 }
 

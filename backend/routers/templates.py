@@ -47,6 +47,9 @@ def update_template(template_id: str, data: DrinkTemplateUpdate, db: Session = D
     if data.usage_count is not None:
         template.usage_count = data.usage_count
 
+    if data.barcode is not None:
+        template.barcode = data.barcode
+
     has_confirmed = any(e.is_marked for e in template.entries)
     if not has_confirmed:
         if data.default_ml is not None:
