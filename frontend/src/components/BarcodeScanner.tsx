@@ -83,7 +83,7 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
 
     function startZxing(constraints: MediaStreamConstraints) {
       dbg('Using ZXing (BarcodeDetector unavailable)')
-      const reader = new BrowserMultiFormatReader(makeHints())
+      const reader = new BrowserMultiFormatReader(makeHints(), 100)
       reader
         .decodeFromConstraints(constraints, videoRef.current!, (result, err) => {
           if (!active || scannedRef.current) return
@@ -122,7 +122,13 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
     if ('BarcodeDetector' in window) {
       startNative()
     } else {
-      startZxing({ video: { facingMode: 'environment' } })
+      startZxing({
+        video: {
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      })
     }
 
     return () => {
