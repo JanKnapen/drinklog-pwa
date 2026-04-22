@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   PlusCircleIcon,
   BeakerIcon,
@@ -16,49 +16,77 @@ import { useModuleAdapter } from '../hooks/useModuleAdapter'
 import { useCreateEntry } from '../api/entries'
 import { useCreateCaffeineEntry } from '../api/caffeine-entries'
 
+interface QuickLogSnapshot {
+  todayTopTwo: Array<{ template: TrackerTemplate; count: number; lastTs: string }>
+  alltimeItems: TrackerTemplate[]
+  pendingDrinks: TrackerEntry[]
+}
+
 export default function HomeTab({ onToast }: { onToast: (msg: string) => void }) {
   const adapter = useModuleAdapter()
   const { openSettings } = useSettings()
   const { templates, entries, activeModule } = adapter
 
   const [modal, setModal] = useState<'new' | 'enter' | 'other' | 'pending' | null>(null)
+  const [snapshot, setSnapshot] = useState<QuickLogSnapshot>({ todayTopTwo: [], alltimeItems: [], pendingDrinks: [] })
 
-  // Today's top 2 templates by log count, tiebreak by most recent entry
-  const today = todayKey()
-  const statsMap = new Map<string, { template: TrackerTemplate; count: number; lastTs: string }>()
-  for (const entry of entries) {
-    if (toLocalDateKey(entry.timestamp) !== today || !entry.templateId) continue
-    const tmpl = templates.find((t) => t.id === entry.templateId)
-    if (!tmpl) continue
-    const s = statsMap.get(entry.templateId)
-    if (!s) {
-      statsMap.set(entry.templateId, { template: tmpl, count: 1, lastTs: entry.timestamp })
-    } else {
-      s.count++
-      if (entry.timestamp > s.lastTs) s.lastTs = entry.timestamp
+  // Keep refs current so refreshSnapshot always reads latest data without being a dep
+  const templatesRef = useRef(templates)
+  const entriesRef = useRef(entries)
+  useEffect(() => { templatesRef.current = templates }, [templates])
+  useEffect(() => { entriesRef.current = entries }, [entries])
+
+  const refreshSnapshot = useCallback(() => {
+    const tmpl = templatesRef.current
+    const entr = entriesRef.current
+    const today = todayKey()
+
+    const statsMap = new Map<string, { template: TrackerTemplate; count: number; lastTs: string }>()
+    for (const entry of entr) {
+      if (toLocalDateKey(entry.timestamp) !== today || !entry.templateId) continue
+      const t = tmpl.find((t) => t.id === entry.templateId)
+      if (!t) continue
+      const s = statsMap.get(entry.templateId)
+      if (!s) statsMap.set(entry.templateId, { template: t, count: 1, lastTs: entry.timestamp })
+      else { s.count++; if (entry.timestamp > s.lastTs) s.lastTs = entry.timestamp }
     }
-  }
-  const todayTopTwo = [...statsMap.values()]
-    .sort((a, b) => b.count - a.count || b.lastTs.localeCompare(a.lastTs))
-    .slice(0, 2)
+    const todayTopTwo = [...statsMap.values()]
+      .sort((a, b) => b.count - a.count || b.lastTs.localeCompare(a.lastTs))
+      .slice(0, 2)
 
-  // Unconfirmed custom_name entries, deduplicated by name (keep most recent per name)
-  const pendingMap = new Map<string, TrackerEntry>()
-  for (const entry of entries) {
-    if (entry.templateId !== null || entry.isMarked || !entry.customName) continue
-    const existing = pendingMap.get(entry.customName)
-    if (!existing || entry.timestamp > existing.timestamp) pendingMap.set(entry.customName, entry)
-  }
-  const pendingDrinks = [...pendingMap.values()].sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    const pendingMap = new Map<string, TrackerEntry>()
+    for (const entry of entr) {
+      if (entry.templateId !== null || entry.isMarked || !entry.customName) continue
+      const existing = pendingMap.get(entry.customName)
+      if (!existing || entry.timestamp > existing.timestamp) pendingMap.set(entry.customName, entry)
+    }
+    const pendingDrinks = [...pendingMap.values()].sort((a, b) => b.timestamp.localeCompare(a.timestamp))
 
-  // Alltime: exclude today's top templates, fill up to 5 total slots
-  const todayIds = new Set(todayTopTwo.map((s) => s.template.id))
-  const alltimeCount = 5 - todayTopTwo.length - (pendingDrinks.length > 0 ? 1 : 0)
-  const alltimeItems = [...templates]
-    .filter((t) => !todayIds.has(t.id))
-    .sort((a, b) => b.usage_count - a.usage_count)
-    .slice(0, alltimeCount)
+    const todayIds = new Set(todayTopTwo.map((s) => s.template.id))
+    const alltimeCount = 5 - todayTopTwo.length - (pendingDrinks.length > 0 ? 1 : 0)
+    const alltimeItems = [...tmpl]
+      .filter((t) => !todayIds.has(t.id))
+      .sort((a, b) => b.usage_count - a.usage_count)
+      .slice(0, alltimeCount)
 
+    setSnapshot({ todayTopTwo, alltimeItems, pendingDrinks })
+  }, [])
+
+  // Refresh when module switches
+  useEffect(() => {
+    refreshSnapshot()
+  }, [activeModule, refreshSnapshot])
+
+  // Snapshot once when data first arrives (refs are empty on mount if cache is cold)
+  const dataLoadedRef = useRef(false)
+  useEffect(() => {
+    if (!dataLoadedRef.current && (templates.length > 0 || entries.length > 0)) {
+      dataLoadedRef.current = true
+      refreshSnapshot()
+    }
+  }, [templates, entries, refreshSnapshot])
+
+  const { todayTopTwo, alltimeItems, pendingDrinks } = snapshot
   const showQuickLog = alltimeItems.length > 0 || todayTopTwo.length > 0 || pendingDrinks.length > 0
 
   return (
@@ -106,18 +134,17 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
               Quick Log
             </p>
             <div className="flex flex-col gap-2">
+              {todayTopTwo.map(({ template }) => (
+                <TemplateButton key={template.id} template={template} onClick={() => { adapter.logFromTemplate(template); onToast(`Logged: ${template.name}`) }} />
+              ))}
+
+              {todayTopTwo.length > 0 && alltimeItems.length > 0 && (
+                <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500 mt-1 px-1">Most used</p>
+              )}
+
               {alltimeItems.map((t) => (
                 <TemplateButton key={t.id} template={t} onClick={() => { adapter.logFromTemplate(t); onToast(`Logged: ${t.name}`) }} />
               ))}
-
-              {todayTopTwo.length > 0 && (
-                <>
-                  <p className="text-xs font-medium text-neutral-400 dark:text-neutral-500 mt-1 px-1">Today</p>
-                  {todayTopTwo.map(({ template }) => (
-                    <TemplateButton key={template.id} template={template} onClick={() => { adapter.logFromTemplate(template); onToast(`Logged: ${template.name}`) }} />
-                  ))}
-                </>
-              )}
 
               {pendingDrinks.length > 0 && (
                 <button
@@ -144,27 +171,27 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
           open={modal === 'new'}
           onClose={() => setModal(null)}
           templates={templates}
-          onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
+          onLogged={(name) => { refreshSnapshot(); onToast(`Logged: ${name}`); setModal(null) }}
         />
       ) : (
         <NewCaffeineModal
           open={modal === 'new'}
           onClose={() => setModal(null)}
           templates={templates}
-          onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
+          onLogged={(name) => { refreshSnapshot(); onToast(`Logged: ${name}`); setModal(null) }}
         />
       )}
       {activeModule === 'alcohol' ? (
-        <EnterAlcoholModal open={modal === 'enter'} onClose={() => setModal(null)} onLogged={(val) => { onToast(`Logged: ${val}`); setModal(null) }} />
+        <EnterAlcoholModal open={modal === 'enter'} onClose={() => setModal(null)} onLogged={(val) => { refreshSnapshot(); onToast(`Logged: ${val}`); setModal(null) }} />
       ) : (
-        <EnterCaffeineModal open={modal === 'enter'} onClose={() => setModal(null)} onLogged={(val) => { onToast(`Logged: ${val}`); setModal(null) }} />
+        <EnterCaffeineModal open={modal === 'enter'} onClose={() => setModal(null)} onLogged={(val) => { refreshSnapshot(); onToast(`Logged: ${val}`); setModal(null) }} />
       )}
       <OtherModal
         open={modal === 'other'}
         onClose={() => setModal(null)}
         templates={templates}
         onLog={(t, count, timestamp) => adapter.logFromTemplateWithOptions(t, count, timestamp)}
-        onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
+        onLogged={(name) => { refreshSnapshot(); onToast(`Logged: ${name}`); setModal(null) }}
       />
       <PendingDrinksModal
         open={modal === 'pending'}
