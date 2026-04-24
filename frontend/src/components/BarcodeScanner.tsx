@@ -92,7 +92,10 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
             }
           }
         })
-        .then((controls) => { controlsRef.current = controls })
+        .then((controls) => {
+          if (!active) { controls.stop(); return }
+          controlsRef.current = controls
+        })
         .catch((err: unknown) => {
           if (!active) return
           const name = err instanceof Error ? err.name : String(err)
