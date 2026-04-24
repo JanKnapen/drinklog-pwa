@@ -324,7 +324,7 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged 
     if (open) {
       setTs(new Date())
       if (prefill) {
-        setName(prefill.name ? `${prefill.name} Ⓑ` : '')
+        setName(prefill.name ?? '')
         setMl(prefill.ml != null ? String(prefill.ml) : '')
         setAbv(prefill.abv != null ? String(prefill.abv) : '')
       } else {
@@ -346,20 +346,28 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged 
     const timestamp = ts.toISOString()
     if (barcode) {
       // Scan flow: create/reuse a template so the barcode is persisted for future lookups
-      let templateId: string
-      if (isDuplicate && duplicateTemplate) {
-        templateId = duplicateTemplate.id
-        updateTemplate.mutate({ id: templateId, barcode })
-      } else {
-        const t = await createTemplate.mutateAsync({
-          name: name.trim(), default_ml: parseFloat(ml), default_abv: parseFloat(abv), barcode,
-        })
-        templateId = t.id
+      try {
+        let templateId: string
+        if (isDuplicate && duplicateTemplate) {
+          templateId = duplicateTemplate.id
+        } else {
+          const t = await createTemplate.mutateAsync({
+            name: name.trim(), default_ml: parseFloat(ml), default_abv: parseFloat(abv), barcode,
+          })
+          templateId = t.id
+        }
+        for (let i = 0; i < count; i++) {
+          await createEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
+        }
+        if (isDuplicate && duplicateTemplate) {
+          await updateTemplate.mutateAsync({ id: templateId, barcode, usage_count: duplicateTemplate.usage_count + count })
+        } else {
+          await updateTemplate.mutateAsync({ id: templateId, usage_count: count })
+        }
+      } catch {
+        setError('Something went wrong, please try again')
+        return
       }
-      for (let i = 0; i < count; i++) {
-        await createEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
-      }
-      await updateTemplate.mutateAsync({ id: templateId, usage_count: (duplicateTemplate?.usage_count ?? 0) + count })
     } else {
       if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
       for (let i = 0; i < count; i++) {
@@ -390,7 +398,7 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged 
         <UnitPreview ml={ml} abv={abv} />
         <div className="flex gap-2">
           <Stepper value={count} onChange={setCount} />
-          <button onClick={handleSubmit} disabled={!isValid} className={primaryBtn + ' flex-1'}>Log</button>
+          <button onClick={handleSubmit} disabled={!isValid || createTemplate.isPending || createEntry.isPending} className={primaryBtn + ' flex-1'}>Log</button>
         </div>
       </div>
     </Modal>
@@ -415,7 +423,7 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, o
     if (open) {
       setTs(new Date())
       if (prefill) {
-        setName(prefill.name ? `${prefill.name} Ⓑ` : '')
+        setName(prefill.name ?? '')
         setMg(prefill.mg != null ? String(prefill.mg) : '')
       } else {
         setName(''); setMg('')
@@ -434,20 +442,28 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, o
   async function handleSubmit() {
     const timestamp = ts.toISOString()
     if (barcode) {
-      let templateId: string
-      if (isDuplicate && duplicateTemplate) {
-        templateId = duplicateTemplate.id
-        updateTemplate.mutate({ id: templateId, barcode })
-      } else {
-        const t = await createTemplate.mutateAsync({
-          name: name.trim(), default_mg: parseFloat(mg), barcode,
-        })
-        templateId = t.id
+      try {
+        let templateId: string
+        if (isDuplicate && duplicateTemplate) {
+          templateId = duplicateTemplate.id
+        } else {
+          const t = await createTemplate.mutateAsync({
+            name: name.trim(), default_mg: parseFloat(mg), barcode,
+          })
+          templateId = t.id
+        }
+        for (let i = 0; i < count; i++) {
+          await createEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp })
+        }
+        if (isDuplicate && duplicateTemplate) {
+          await updateTemplate.mutateAsync({ id: templateId, barcode, usage_count: duplicateTemplate.usage_count + count })
+        } else {
+          await updateTemplate.mutateAsync({ id: templateId, usage_count: count })
+        }
+      } catch {
+        setError('Something went wrong, please try again')
+        return
       }
-      for (let i = 0; i < count; i++) {
-        await createEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp })
-      }
-      await updateTemplate.mutateAsync({ id: templateId, usage_count: (duplicateTemplate?.usage_count ?? 0) + count })
     } else {
       if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
       for (let i = 0; i < count; i++) {
@@ -474,7 +490,7 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, o
         </Field>
         <div className="flex gap-2">
           <Stepper value={count} onChange={setCount} />
-          <button onClick={handleSubmit} disabled={!isValid} className={primaryBtn + ' flex-1'}>Log</button>
+          <button onClick={handleSubmit} disabled={!isValid || createTemplate.isPending || createEntry.isPending} className={primaryBtn + ' flex-1'}>Log</button>
         </div>
       </div>
     </Modal>
