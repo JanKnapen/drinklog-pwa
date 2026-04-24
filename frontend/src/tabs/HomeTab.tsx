@@ -26,7 +26,7 @@ interface QuickLogSnapshot {
   pendingDrinks: TrackerEntry[]
 }
 
-export default function HomeTab({ onToast }: { onToast: (msg: string) => void }) {
+export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: string) => void; onScannerOpen?: (open: boolean) => void }) {
   const adapter = useModuleAdapter()
   const { openSettings } = useSettings()
   const { templates, entries, isEntriesFetched, activeModule } = adapter
@@ -36,6 +36,8 @@ export default function HomeTab({ onToast }: { onToast: (msg: string) => void })
   const [scanCode, setScanCode] = useState<string | null>(null)
   const [scanMatchTemplate, setScanMatchTemplate] = useState<TrackerTemplate | null>(null)
   const [snapshot, setSnapshot] = useState<QuickLogSnapshot>({ todayTopTwo: [], alltimeItems: [], pendingDrinks: [] })
+
+  useEffect(() => { onScannerOpen?.(modal === 'scanner') }, [modal, onScannerOpen])
 
   // Keep refs current so refreshSnapshot always reads latest data without being a dep
   const templatesRef = useRef(templates)

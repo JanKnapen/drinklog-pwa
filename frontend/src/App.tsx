@@ -18,19 +18,20 @@ const queryClient = new QueryClient({
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('home')
   const [toast, setToast] = useState<string | null>(null)
+  const [scannerOpen, setScannerOpen] = useState(false)
 
   return (
     <SettingsProvider>
       <QueryClientProvider client={queryClient}>
         <div className="fixed inset-0 bg-neutral-50 dark:bg-neutral-900 pt-safe pb-safe-nav flex flex-col">
           <Suspense fallback={<div className="flex-1" />}>
-            {activeTab === 'home' && <HomeTab onToast={setToast} />}
+            {activeTab === 'home' && <HomeTab onToast={setToast} onScannerOpen={setScannerOpen} />}
             {activeTab === 'log' && <LogTab />}
             {activeTab === 'manage' && <ManageTab />}
             {activeTab === 'data' && <DataTab />}
           </Suspense>
         </div>
-        <BottomNav activeTab={activeTab} onTabChange={setActiveTab} toast={toast} onDismissToast={() => setToast(null)} />
+        {!scannerOpen && <BottomNav activeTab={activeTab} onTabChange={setActiveTab} toast={toast} onDismissToast={() => setToast(null)} />}
       </QueryClientProvider>
       <SettingsModal />
     </SettingsProvider>
