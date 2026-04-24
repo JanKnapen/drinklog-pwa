@@ -64,6 +64,7 @@ def test_local_alcohol_match(client):
     assert d["name"] == "Test Lager"
     assert d["ml"] == 330.0
     assert d["abv"] == 5.0
+    assert d["module"] == "alcohol"
 
 
 def test_local_caffeine_match(client):
@@ -77,6 +78,7 @@ def test_local_caffeine_match(client):
     assert d["template_id"] == r.json()["id"]
     assert d["name"] == "Espresso"
     assert d["mg"] == 80.0
+    assert d["module"] == "caffeine"
 
 
 def test_off_alcohol_lookup(client):
@@ -89,6 +91,7 @@ def test_off_alcohol_lookup(client):
     assert r.status_code == 200
     d = r.json()
     assert d["source"] == "off"
+    assert d["module"] is None
     assert d["name"] == "Heineken"
     assert d["ml"] == 330.0
     assert d["abv"] == 5.0
@@ -155,11 +158,25 @@ def test_off_product_not_found(client):
     assert r.json()["source"] == "not_found"
 
 
-def test_module_isolation(client):
-    client.post("/api/templates", json={"name": "Beer", "default_ml": 330, "default_abv": 5.0, "barcode": "ISOLATE"})
-    r = client.get("/api/barcode/ISOLATE?module=caffeine")
+def test_local_match_found_regardless_of_module_param(client):
+    client.post("/api/templates", json={"name": "IPA", "default_ml": 330, "default_abv": 6.5, "barcode": "CROSSLOOK"})
+    r = client.get("/api/barcode/CROSSLOOK?module=caffeine")
     assert r.status_code == 200
-    assert r.json()["source"] != "local"
+    d = r.json()
+    assert d["source"] == "local"
+    assert d["module"] == "alcohol"
+    assert d["name"] == "IPA"
+
+
+def test_local_caffeine_match_found_in_alcohol_mode(client):
+    client.post("/api/caffeine-templates", json={"name": "Cold Brew", "default_mg": 200.0, "barcode": "CROSSCAF"})
+    r = client.get("/api/barcode/CROSSCAF?module=alcohol")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["source"] == "local"
+    assert d["module"] == "caffeine"
+    assert d["name"] == "Cold Brew"
+    assert d["mg"] == 200.0
 
 
 def test_invalid_module_rejected(client):

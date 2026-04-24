@@ -1,5 +1,5 @@
 import re
-from typing import Optional
+from typing import Optional, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, Query
@@ -15,7 +15,8 @@ OFF_URL = "https://world.openfoodfacts.org/api/v2/product/{code}.json"
 
 
 class BarcodeResult(BaseModel):
-    source: str  # "local", "off", "not_found"
+    source: str
+    module: Optional[Literal["alcohol", "caffeine"]] = None
     template_id: Optional[str] = None
     name: Optional[str] = None
     ml: Optional[float] = None
@@ -44,25 +45,26 @@ async def lookup_barcode(
     module: str = Query(..., pattern="^(alcohol|caffeine)$"),
     db: Session = Depends(get_db),
 ):
-    if module == "alcohol":
-        local = db.query(DrinkTemplate).filter(DrinkTemplate.barcode == code).first()
-        if local:
-            return BarcodeResult(
-                source="local",
-                template_id=local.id,
-                name=local.name,
-                ml=local.default_ml,
-                abv=local.default_abv,
-            )
-    else:
-        local = db.query(CaffeineTemplate).filter(CaffeineTemplate.barcode == code).first()
-        if local:
-            return BarcodeResult(
-                source="local",
-                template_id=local.id,
-                name=local.name,
-                mg=local.default_mg,
-            )
+    alcohol_match = db.query(DrinkTemplate).filter(DrinkTemplate.barcode == code).first()
+    if alcohol_match:
+        return BarcodeResult(
+            source="local",
+            module="alcohol",
+            template_id=alcohol_match.id,
+            name=alcohol_match.name,
+            ml=alcohol_match.default_ml,
+            abv=alcohol_match.default_abv,
+        )
+
+    caffeine_match = db.query(CaffeineTemplate).filter(CaffeineTemplate.barcode == code).first()
+    if caffeine_match:
+        return BarcodeResult(
+            source="local",
+            module="caffeine",
+            template_id=caffeine_match.id,
+            name=caffeine_match.name,
+            mg=caffeine_match.default_mg,
+        )
 
     async with httpx.AsyncClient(timeout=8.0) as client:
         try:
