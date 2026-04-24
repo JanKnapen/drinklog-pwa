@@ -15,7 +15,7 @@ OFF_URL = "https://world.openfoodfacts.org/api/v2/product/{code}.json"
 
 
 class BarcodeResult(BaseModel):
-    source: str
+    source: Literal["local", "off", "not_found"]
     module: Optional[Literal["alcohol", "caffeine"]] = None
     template_id: Optional[str] = None
     name: Optional[str] = None
@@ -87,7 +87,7 @@ async def lookup_barcode(
     mg: Optional[float] = None
 
     if module == "alcohol":
-        raw_abv = nutriments.get("alcohol") or nutriments.get("alcohol_value")
+        raw_abv = next((nutriments[k] for k in ("alcohol", "alcohol_value") if k in nutriments), None)
         if raw_abv is not None:
             try:
                 abv = float(raw_abv)

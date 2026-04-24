@@ -158,6 +158,18 @@ def test_off_product_not_found(client):
     assert r.json()["source"] == "not_found"
 
 
+def test_off_network_error_returns_not_found(client):
+    import httpx as _httpx
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(side_effect=_httpx.ConnectTimeout("timeout"))
+    with patch("routers.barcode.httpx.AsyncClient") as mock_cls:
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        r = client.get("/api/barcode/9999999999999?module=alcohol")
+    assert r.status_code == 200
+    assert r.json()["source"] == "not_found"
+
+
 def test_local_match_found_regardless_of_module_param(client):
     client.post("/api/templates", json={"name": "IPA", "default_ml": 330, "default_abv": 6.5, "barcode": "CROSSLOOK"})
     r = client.get("/api/barcode/CROSSLOOK?module=caffeine")
