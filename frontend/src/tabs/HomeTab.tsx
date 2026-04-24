@@ -28,16 +28,27 @@ interface QuickLogSnapshot {
 
 export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: string) => void; onScannerOpen?: (open: boolean) => void }) {
   const adapter = useModuleAdapter()
-  const { openSettings } = useSettings()
+  const { openSettings, updateSettings } = useSettings()
   const { templates, entries, isEntriesFetched, activeModule } = adapter
 
   const [modal, setModal] = useState<'new' | 'enter' | 'other' | 'pending' | 'scanner' | 'scan-match' | null>(null)
   const [scanPrefill, setScanPrefill] = useState<BarcodeResult | null>(null)
   const [scanCode, setScanCode] = useState<string | null>(null)
   const [scanMatchTemplate, setScanMatchTemplate] = useState<TrackerTemplate | null>(null)
+  const [pendingScanTemplateId, setPendingScanTemplateId] = useState<string | null>(null)
   const [snapshot, setSnapshot] = useState<QuickLogSnapshot>({ todayTopTwo: [], alltimeItems: [], pendingDrinks: [] })
 
   useEffect(() => { onScannerOpen?.(modal === 'scanner') }, [modal, onScannerOpen])
+
+  useEffect(() => {
+    if (!pendingScanTemplateId) return
+    const matched = templates.find((t) => t.id === pendingScanTemplateId)
+    if (matched) {
+      setScanMatchTemplate(matched)
+      setModal('scan-match')
+      setPendingScanTemplateId(null)
+    }
+  }, [templates, pendingScanTemplateId])
 
   // Keep refs current so refreshSnapshot always reads latest data without being a dep
   const templatesRef = useRef(templates)
@@ -98,13 +109,17 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
     try {
       const result = await lookupBarcode(code, activeModule)
       if (result.source === 'local') {
+        if (result.module && result.module !== activeModule && result.template_id) {
+          updateSettings({ activeModule: result.module })
+          setPendingScanTemplateId(result.template_id)
+          return
+        }
         const matched = templates.find((t) => t.id === result.template_id)
         if (matched) {
           setScanMatchTemplate(matched)
           setModal('scan-match')
           return
         }
-        // Template in DB but not in frontend cache — treat as new, prefill with local data
       }
       if ((result.source === 'off' || result.source === 'local') && result.name) {
         setScanPrefill(result)

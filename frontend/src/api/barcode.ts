@@ -2,6 +2,7 @@ import { apiFetch } from './client'
 
 export interface BarcodeResult {
   source: 'local' | 'off' | 'not_found'
+  module: 'alcohol' | 'caffeine' | null
   template_id: string | null
   name: string | null
   ml: number | null
