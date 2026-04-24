@@ -324,7 +324,7 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged 
     if (open) {
       setTs(new Date())
       if (prefill) {
-        setName(prefill.name ?? '')
+        setName(prefill.name ? `${prefill.name} Ⓑ` : '')
         setMl(prefill.ml != null ? String(prefill.ml) : '')
         setAbv(prefill.abv != null ? String(prefill.abv) : '')
       } else {
@@ -423,7 +423,7 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, o
     if (open) {
       setTs(new Date())
       if (prefill) {
-        setName(prefill.name ?? '')
+        setName(prefill.name ? `${prefill.name} Ⓑ` : '')
         setMg(prefill.mg != null ? String(prefill.mg) : '')
       } else {
         setName(''); setMg('')
