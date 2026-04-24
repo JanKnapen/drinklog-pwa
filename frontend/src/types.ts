@@ -4,6 +4,7 @@ export interface DrinkTemplate {
   default_ml: number
   default_abv: number
   usage_count: number
+  barcode?: string | null
   entry_count: number
   confirmed_entry_count: number
 }
@@ -27,6 +28,7 @@ export interface CaffeineTemplate {
   name: string
   default_mg: number
   usage_count: number
+  barcode?: string | null
   entry_count: number
   confirmed_entry_count: number
 }
@@ -46,6 +48,7 @@ export interface TrackerTemplate {
   id: string
   name: string
   usage_count: number
+  barcode?: string | null
   entryCount: number
   confirmedEntryCount: number
   displayInfo: string
