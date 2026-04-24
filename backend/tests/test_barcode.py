@@ -171,3 +171,33 @@ def test_same_module_barcode_must_be_unique(client):
     client.post("/api/templates", json={"name": "Beer A", "default_ml": 330, "default_abv": 5.0, "barcode": "DUPCHECK"})
     r = client.post("/api/templates", json={"name": "Beer B", "default_ml": 500, "default_abv": 4.0, "barcode": "DUPCHECK"})
     assert r.status_code == 409
+
+
+def test_cross_module_barcode_rejected_on_alcohol_create(client):
+    client.post("/api/caffeine-templates", json={"name": "Espresso", "default_mg": 80.0, "barcode": "CROSSMOD"})
+    r = client.post("/api/templates", json={"name": "Beer", "default_ml": 330, "default_abv": 5.0, "barcode": "CROSSMOD"})
+    assert r.status_code == 409
+    assert "caffeine" in r.json()["detail"].lower()
+
+
+def test_cross_module_barcode_rejected_on_caffeine_create(client):
+    client.post("/api/templates", json={"name": "Wine", "default_ml": 150, "default_abv": 12.0, "barcode": "CROSSMOD2"})
+    r = client.post("/api/caffeine-templates", json={"name": "Tea", "default_mg": 40.0, "barcode": "CROSSMOD2"})
+    assert r.status_code == 409
+    assert "alcohol" in r.json()["detail"].lower()
+
+
+def test_cross_module_barcode_rejected_on_alcohol_update(client):
+    client.post("/api/caffeine-templates", json={"name": "Matcha", "default_mg": 70.0, "barcode": "UPDATEMOD"})
+    r = client.post("/api/templates", json={"name": "Cider", "default_ml": 330, "default_abv": 4.5})
+    template_id = r.json()["id"]
+    r2 = client.put(f"/api/templates/{template_id}", json={"barcode": "UPDATEMOD"})
+    assert r2.status_code == 409
+
+
+def test_cross_module_barcode_rejected_on_caffeine_update(client):
+    client.post("/api/templates", json={"name": "Stout", "default_ml": 440, "default_abv": 6.0, "barcode": "UPDATEMOD2"})
+    r = client.post("/api/caffeine-templates", json={"name": "Green Tea", "default_mg": 30.0})
+    template_id = r.json()["id"]
+    r2 = client.patch(f"/api/caffeine-templates/{template_id}", json={"barcode": "UPDATEMOD2"})
+    assert r2.status_code == 409

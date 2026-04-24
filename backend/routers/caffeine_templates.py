@@ -2,10 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import CaffeineTemplate, CaffeineEntry
+from models import CaffeineTemplate, CaffeineEntry, DrinkTemplate
 from schemas import CaffeineTemplateCreate, CaffeineTemplateUpdate, CaffeineTemplateResponse
 
 router = APIRouter(tags=["caffeine-templates"])
+
+
+def _check_barcode_cross_module(barcode: str | None, db: Session) -> None:
+    if not barcode:
+        return
+    if db.query(DrinkTemplate).filter(DrinkTemplate.barcode == barcode).first():
+        raise HTTPException(status_code=409, detail="This barcode is already assigned to an alcohol template")
 
 
 @router.get("/caffeine-templates", response_model=list[CaffeineTemplateResponse])
@@ -21,6 +28,7 @@ def create_caffeine_template(data: CaffeineTemplateCreate, db: Session = Depends
         raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
     if data.barcode and db.query(CaffeineTemplate).filter(CaffeineTemplate.barcode == data.barcode).first():
         raise HTTPException(status_code=409, detail="A template with this barcode already exists")
+    _check_barcode_cross_module(data.barcode, db)
     template = CaffeineTemplate(**data.model_dump())
     db.add(template)
     db.commit()
@@ -50,6 +58,9 @@ def update_caffeine_template(template_id: str, data: CaffeineTemplateUpdate, db:
         template.usage_count = data.usage_count
 
     if data.barcode is not None:
+        if db.query(CaffeineTemplate).filter(CaffeineTemplate.barcode == data.barcode, CaffeineTemplate.id != template_id).first():
+            raise HTTPException(status_code=409, detail="A template with this barcode already exists")
+        _check_barcode_cross_module(data.barcode, db)
         template.barcode = data.barcode
 
     has_confirmed = any(e.is_marked for e in template.entries)
