@@ -165,3 +165,9 @@ def test_module_isolation(client):
 def test_invalid_module_rejected(client):
     r = client.get("/api/barcode/123?module=wine")
     assert r.status_code == 422
+
+
+def test_same_module_barcode_must_be_unique(client):
+    client.post("/api/templates", json={"name": "Beer A", "default_ml": 330, "default_abv": 5.0, "barcode": "DUPCHECK"})
+    r = client.post("/api/templates", json={"name": "Beer B", "default_ml": 500, "default_abv": 4.0, "barcode": "DUPCHECK"})
+    assert r.status_code == 409

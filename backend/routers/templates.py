@@ -19,6 +19,8 @@ def create_template(data: DrinkTemplateCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail="A template with this name already exists")
     if db.query(DrinkEntry).filter(DrinkEntry.custom_name == data.name, DrinkEntry.is_marked == False).first():
         raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
+    if data.barcode and db.query(DrinkTemplate).filter(DrinkTemplate.barcode == data.barcode).first():
+        raise HTTPException(status_code=409, detail="A template with this barcode already exists")
     template = DrinkTemplate(**data.model_dump())
     db.add(template)
     db.commit()

@@ -19,6 +19,8 @@ def create_caffeine_template(data: CaffeineTemplateCreate, db: Session = Depends
         raise HTTPException(status_code=409, detail="A template with this name already exists")
     if db.query(CaffeineEntry).filter(CaffeineEntry.custom_name == data.name, CaffeineEntry.is_marked == False).first():
         raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
+    if data.barcode and db.query(CaffeineTemplate).filter(CaffeineTemplate.barcode == data.barcode).first():
+        raise HTTPException(status_code=409, detail="A template with this barcode already exists")
     template = CaffeineTemplate(**data.model_dump())
     db.add(template)
     db.commit()

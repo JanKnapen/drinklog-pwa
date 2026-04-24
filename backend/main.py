@@ -11,14 +11,22 @@ from config import PUBLIC_CONFIG
 
 Base.metadata.create_all(bind=engine)
 
-# Add barcode columns to existing DBs that pre-date this migration
 def _migrate():
     inspector = sa_inspect(engine)
     for table in ("drink_templates", "caffeine_templates"):
-        existing = {c["name"] for c in inspector.get_columns(table)}
-        if "barcode" not in existing:
+        existing_cols = {c["name"] for c in inspector.get_columns(table)}
+        if "barcode" not in existing_cols:
             with engine.connect() as conn:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN barcode VARCHAR"))
+                conn.commit()
+        existing_indexes = {i["name"] for i in inspector.get_indexes(table)}
+        index_name = f"uq_{table}_barcode"
+        if index_name not in existing_indexes:
+            with engine.connect() as conn:
+                conn.execute(text(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
+                    f"ON {table}(barcode) WHERE barcode IS NOT NULL"
+                ))
                 conn.commit()
 
 _migrate()
