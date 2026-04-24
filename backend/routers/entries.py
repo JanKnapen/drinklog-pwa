@@ -70,7 +70,9 @@ def update_entry(entry_id: str, data: DrinkEntryUpdate, db: Session = Depends(ge
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
     if entry.template_id is not None:
-        raise HTTPException(status_code=400, detail="Cannot edit entries linked to a template")
+        non_ts = {k: v for k, v in data.model_dump(exclude_none=True).items() if k != "timestamp"}
+        if non_ts:
+            raise HTTPException(status_code=400, detail="Template-linked entries: only timestamp is editable")
     for field, value in data.model_dump(exclude_none=True).items():
         setattr(entry, field, value)
     db.commit()
