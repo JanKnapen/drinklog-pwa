@@ -45,7 +45,7 @@ Both modules share the same structural rules:
 - An entry is either linked to a template (`template_id`) or has a free-text `custom_name`. `is_marked = true` means confirmed.
 - "Confirm All" marks unconfirmed entries before a cutoff and auto-promotes `custom_name` entries into templates.
 - **Router ordering:** `confirm-all` endpoint must be registered before `/{entry_id}` in both `routers/entries.py` and `routers/caffeine_entries.py` or FastAPI matches `"confirm-all"` as an ID.
-- **Entry editing:** template-linked entries can only have their timestamp changed (HTTP 400 otherwise); enforced on both backend and frontend.
+- **Entry editing:** template-linked entries can only have their timestamp changed (HTTP 400 for any other field); enforced on both backend and frontend. Both `entries.py` and `caffeine_entries.py` implement this consistently — the check strips `timestamp` from the payload and raises 400 only if non-timestamp fields remain.
 - **Name / custom_name invariant:** a template name and an unconfirmed entry `custom_name` with the same value cannot coexist (HTTP 409). Confirm-all auto-promotes pending entries into templates.
 - **`CaffeineTemplateUpdate` includes `usage_count`** (same as `DrinkTemplateUpdate`) — needed so the frontend can increment it when logging from a template button.
 
@@ -88,6 +88,35 @@ The quick-log section shows exactly 5 buttons total, filled in this order:
 3. **"New drinks"** — a single button if any entry today used a free-text `custom_name` (max 1)
 
 The Today and New drinks buttons consume slots from the 5-button total, pushing out lower-ranked Most used buttons.
+
+## Barcode Scanner
+
+`BarcodeScanner.tsx` mounts/unmounts conditionally (`{modal === 'scanner' && <BarcodeScanner />}`) — it is never toggled with an `open` prop. `BottomNav` is hidden while the scanner is open (rendered conditionally in `App.tsx` via `scannerOpen` state lifted from `HomeTab`) because z-index stacking made it appear over the fullscreen camera overlay.
+
+### Scanner library
+
+Native `BarcodeDetector` Web API is unavailable in iOS WKWebView (the PWA runtime) even on iOS 18.7. `@zxing/browser` is used as the primary path for iOS; native `BarcodeDetector` is kept as the preferred path for Chrome/Android where it works. ZXing requires **2 consecutive matching reads** (streak ≥ 2) before firing `onScan` — this filters false positives that appeared reliably on iOS at default resolution. Native path has no confirmation delay; the asymmetry is intentional. ZXing runs at 1080p (`width: { ideal: 1920 }, height: { ideal: 1080 }`) — lower resolutions produced unreliable detection on iOS.
+
+Camera requires `window.isSecureContext` (HTTPS). Dev setup uses Tailscale certs via `docker-compose.dev.yml` + `nginx.dev.conf.template` with `${TAILSCALE_HOSTNAME}` envsubst.
+
+### Barcode column and uniqueness
+
+`barcode` column exists on both `DrinkTemplate` and `CaffeineTemplate`. Uniqueness is enforced in two layers:
+
+1. **Per-table (DB level):** `unique=True` on the SQLAlchemy column + a partial unique index `uq_{table}_barcode` (`WHERE barcode IS NOT NULL`) created by `_migrate()` for existing DBs. `_migrate()` runs on every startup and is idempotent.
+2. **Cross-table (application level):** `_check_barcode_cross_module()` helper in both `routers/templates.py` and `routers/caffeine_templates.py` queries the opposite module's table and raises HTTP 409 before any write.
+
+### Barcode lookup endpoint
+
+`GET /api/barcode/{code}?module=alcohol|caffeine` searches **both** tables regardless of the `module` param — barcodes are globally unique so a match can only exist in one table. The `module` param is used solely for Open Food Facts fallback parsing (which nutrient fields to extract). The response includes a `module` field (`"alcohol"` | `"caffeine"` | `null`) indicating where the local match was found; `null` for OFF and not-found results.
+
+### Scan flow invariants
+
+**New scan (OFF result):** `NewAlcohol/CaffeineModal` receives a `barcode` prop. When `handleSubmit` runs, it always creates a **template** (never a `custom_name` entry) and stores the barcode on it. This ensures the next scan of the same product returns `source: "local"` and goes straight to `ScanMatchModal`. If this path used `custom_name` entries instead, barcodes would never be persisted and every scan would hit OFF.
+
+**The `Ⓑ` suffix** on prefilled names in `NewAlcohol/CaffeineModal` is intentional — it identifies barcode-originated templates to the user. Users can edit the name before submitting.
+
+**Cross-module local match:** When a scan returns `source: "local"` with `module !== activeModule`, `handleScan` calls `updateSettings({ activeModule })` and stores the template ID in `pendingScanTemplateId` state rather than opening `ScanMatchModal` immediately. A `useEffect` watching `[templates, pendingScanTemplateId]` opens the modal once the module adapter's `templates` array has updated on the next render. This deferred pattern is necessary because the module switch is reflected in the adapter synchronously on the next render cycle, not immediately.
 
 ## iOS Safari Scroll/Touch Quirks
 
