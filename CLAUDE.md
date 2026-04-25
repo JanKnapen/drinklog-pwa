@@ -68,7 +68,10 @@ Query keys: `['entries']`, `['templates']`, `['caffeine-entries']`, `['caffeine-
 - `entries: TrackerEntry[]` — includes `value` (standard_units or caffeine_units), `displayInfo`, `name` (template name or custom_name)
 - Action methods: `logFromTemplate`, `logFromTemplateWithOptions(t, count, timestamp)`, `logFromPendingEntry(e, count, timestamp)`, `confirmAll`, `deleteEntry`, `updateEntryTimestamp`, `createTemplate`, `updateTemplate`, `deleteTemplate`
 
-**Edit modals bypass the adapter** — `EditAlcoholEntry`, `EditCaffeineEntry`, `EditAlcoholTemplate`, `EditCaffeineTemplate` call their own API hooks directly and fetch raw data by ID. This is intentional; the adapter doesn't expose raw ml/abv/mg fields.
+**Adapter bypasses** — Several components call API hooks directly instead of going through `useModuleAdapter`:
+- **Edit modals** (`EditAlcoholEntry`, `EditCaffeineEntry`, `EditAlcoholTemplate`, `EditCaffeineTemplate`): call hooks directly and fetch raw data by ID. The adapter doesn't expose raw ml/abv/mg fields.
+- **DataTab**: calls `useEntrySummary` / `useCaffeineSummary` directly. Summary data has a different shape (`{ date, total }[]`) and depends on `period` (local UI state).
+- **LogTab**: calls `useEntries` / `useCaffeineEntries` directly. Needs pagination state (`confirmedOnly`, `offset`) for "Load more" that the adapter doesn't support.
 
 `groupByDate` in `utils.ts` is generic (`<T extends { timestamp: string }>`).
 

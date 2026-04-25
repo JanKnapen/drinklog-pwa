@@ -1,10 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timezone, timedelta
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from config import ALCOHOL_UNIT_DIVISOR
 from database import get_db
 from models import DrinkTemplate, DrinkEntry
 from schemas import (
-    DrinkEntryCreate, DrinkEntryUpdate, DrinkEntryResponse, ConfirmAllRequest
+    DrinkEntryCreate, DrinkEntryUpdate, DrinkEntryResponse, ConfirmAllRequest,
+    EntrySummaryItem,
 )
 
 router = APIRouter(tags=["entries"])
@@ -51,8 +57,37 @@ def confirm_all(req: ConfirmAllRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/entries", response_model=list[DrinkEntryResponse])
-def list_entries(db: Session = Depends(get_db)):
-    return db.query(DrinkEntry).order_by(DrinkEntry.timestamp.desc()).all()
+def list_entries(
+    limit: int = Query(default=100, ge=1),
+    offset: int = Query(default=0, ge=0),
+    confirmed_only: bool = False,
+    db: Session = Depends(get_db),
+):
+    if confirmed_only:
+        return (
+            db.query(DrinkEntry)
+            .filter(DrinkEntry.is_marked == True)
+            .order_by(DrinkEntry.timestamp.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+    # Default: all unconfirmed (no limit) + most recent N confirmed, newest-first
+    unconfirmed = (
+        db.query(DrinkEntry)
+        .filter(DrinkEntry.is_marked == False)
+        .order_by(DrinkEntry.timestamp.desc())
+        .all()
+    )
+    confirmed = (
+        db.query(DrinkEntry)
+        .filter(DrinkEntry.is_marked == True)
+        .order_by(DrinkEntry.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    combined = sorted(unconfirmed + confirmed, key=lambda e: e.timestamp, reverse=True)
+    return combined
 
 
 @router.post("/entries", response_model=DrinkEntryResponse, status_code=201)
@@ -62,6 +97,31 @@ def create_entry(data: DrinkEntryCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(entry)
     return entry
+
+
+@router.get("/entries/summary", response_model=list[EntrySummaryItem])
+def entries_summary(
+    period: Literal["week", "month", "year", "all"] = Query(default="all"),
+    db: Session = Depends(get_db),
+):
+    q = (
+        db.query(
+            func.date(DrinkEntry.timestamp).label("date"),
+            func.sum(DrinkEntry.ml * DrinkEntry.abv / 100.0 / ALCOHOL_UNIT_DIVISOR).label("total"),
+        )
+        .filter(DrinkEntry.is_marked == True)
+    )
+    if period != "all":
+        days = {"week": 7, "month": 30, "year": 365}[period]
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        # timestamps stored as naive UTC
+        q = q.filter(DrinkEntry.timestamp >= cutoff.replace(tzinfo=None))
+    rows = (
+        q.group_by(func.date(DrinkEntry.timestamp))
+        .order_by(func.date(DrinkEntry.timestamp).asc())
+        .all()
+    )
+    return [EntrySummaryItem(date=row.date, total=round(row.total, 6)) for row in rows]
 
 
 @router.put("/entries/{entry_id}", response_model=DrinkEntryResponse)

@@ -1,10 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timezone, timedelta
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from config import CAFFEINE_UNIT_DIVISOR
 from database import get_db
 from models import CaffeineTemplate, CaffeineEntry
 from schemas import (
-    CaffeineEntryCreate, CaffeineEntryUpdate, CaffeineEntryResponse, ConfirmAllRequest
+    CaffeineEntryCreate, CaffeineEntryUpdate, CaffeineEntryResponse, ConfirmAllRequest,
+    EntrySummaryItem,
 )
 
 router = APIRouter(tags=["caffeine-entries"])
@@ -50,8 +56,37 @@ def confirm_all_caffeine(req: ConfirmAllRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/caffeine-entries", response_model=list[CaffeineEntryResponse])
-def list_caffeine_entries(db: Session = Depends(get_db)):
-    return db.query(CaffeineEntry).order_by(CaffeineEntry.timestamp.desc()).all()
+def list_caffeine_entries(
+    limit: int = Query(default=100, ge=1),
+    offset: int = Query(default=0, ge=0),
+    confirmed_only: bool = False,
+    db: Session = Depends(get_db),
+):
+    if confirmed_only:
+        return (
+            db.query(CaffeineEntry)
+            .filter(CaffeineEntry.is_marked == True)
+            .order_by(CaffeineEntry.timestamp.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+    # Default: all unconfirmed (no limit) + most recent N confirmed, newest-first
+    unconfirmed = (
+        db.query(CaffeineEntry)
+        .filter(CaffeineEntry.is_marked == False)
+        .order_by(CaffeineEntry.timestamp.desc())
+        .all()
+    )
+    confirmed = (
+        db.query(CaffeineEntry)
+        .filter(CaffeineEntry.is_marked == True)
+        .order_by(CaffeineEntry.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    combined = sorted(unconfirmed + confirmed, key=lambda e: e.timestamp, reverse=True)
+    return combined
 
 
 @router.post("/caffeine-entries", response_model=CaffeineEntryResponse, status_code=201)
@@ -61,6 +96,30 @@ def create_caffeine_entry(data: CaffeineEntryCreate, db: Session = Depends(get_d
     db.commit()
     db.refresh(entry)
     return entry
+
+
+@router.get("/caffeine-entries/summary", response_model=list[EntrySummaryItem])
+def caffeine_entries_summary(
+    period: Literal["week", "month", "year", "all"] = Query(default="all"),
+    db: Session = Depends(get_db),
+):
+    q = (
+        db.query(
+            func.date(CaffeineEntry.timestamp).label("date"),
+            func.sum(CaffeineEntry.mg / CAFFEINE_UNIT_DIVISOR).label("total"),
+        )
+        .filter(CaffeineEntry.is_marked == True)
+    )
+    if period != "all":
+        days = {"week": 7, "month": 30, "year": 365}[period]
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        q = q.filter(CaffeineEntry.timestamp >= cutoff.replace(tzinfo=None))
+    rows = (
+        q.group_by(func.date(CaffeineEntry.timestamp))
+        .order_by(func.date(CaffeineEntry.timestamp).asc())
+        .all()
+    )
+    return [EntrySummaryItem(date=row.date, total=round(row.total, 6)) for row in rows]
 
 
 @router.patch("/caffeine-entries/{entry_id}", response_model=CaffeineEntryResponse)

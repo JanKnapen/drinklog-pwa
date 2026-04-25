@@ -43,7 +43,7 @@ export function useModuleAdapter(): ModuleAdapter {
 
   // All hooks called unconditionally (React rules)
   const { data: drinkTemplates = [] } = useTemplates()
-  const { data: drinkEntries = [], isFetched: drinkEntriesFetched } = useEntries()
+  const { data: drinkEntries = [], isFetched: drinkEntriesFetched } = useEntries({ limit: 100 })
   const createDrinkEntry = useCreateEntry()
   const updateDrinkTemplate = useUpdateTemplate()
   const deleteDrinkEntry = useDeleteEntry()
@@ -53,7 +53,7 @@ export function useModuleAdapter(): ModuleAdapter {
   const deleteDrinkTemplate = useDeleteTemplate()
 
   const { data: caffeineTemplates = [] } = useCaffeineTemplates()
-  const { data: caffeineEntries = [], isFetched: caffeineEntriesFetched } = useCaffeineEntries()
+  const { data: caffeineEntries = [], isFetched: caffeineEntriesFetched } = useCaffeineEntries({ limit: 100 })
   const createCaffeineEntry = useCreateCaffeineEntry()
   const updateCaffeineTemplate = useUpdateCaffeineTemplate()
   const deleteCaffeineEntry = useDeleteCaffeineEntry()

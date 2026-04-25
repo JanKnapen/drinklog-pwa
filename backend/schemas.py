@@ -84,6 +84,11 @@ class DrinkEntryUpdate(BaseModel):
         return _to_naive_utc(v)
 
 
+class EntrySummaryItem(BaseModel):
+    date: str
+    total: float
+
+
 class ConfirmAllRequest(BaseModel):
     cutoff: datetime
 

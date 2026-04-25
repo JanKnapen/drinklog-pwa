@@ -29,6 +29,19 @@ def _migrate():
                 ))
                 conn.commit()
 
+    # Create indexes on entry tables for pagination, filtering, and joins
+    for table, columns in [
+        ("drink_entries", ["timestamp", "is_marked", "template_id"]),
+        ("caffeine_entries", ["timestamp", "is_marked", "template_id"]),
+    ]:
+        existing_indexes = {i["name"] for i in inspector.get_indexes(table)}
+        for column in columns:
+            index_name = f"ix_{table}_{column}"
+            if index_name not in existing_indexes:
+                with engine.connect() as conn:
+                    conn.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table}({column})"))
+                    conn.commit()
+
 _migrate()
 
 app = FastAPI(title="DrinkLog API")

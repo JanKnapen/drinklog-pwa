@@ -1,49 +1,54 @@
 import { useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import EmptyState from '../components/EmptyState'
-import { groupByDate, getFilterStart, toLocalDateKey } from '../utils'
-import type { FilterPeriod } from '../types'
+import { toLocalDateKey } from '../utils'
 import { Cog6ToothIcon } from '@heroicons/react/24/outline'
 import { useSettings } from '../contexts/SettingsContext'
-import { useModuleAdapter } from '../hooks/useModuleAdapter'
+import { useEntrySummary } from '../api/entries'
+import { useCaffeineSummary } from '../api/caffeine-entries'
 
-const PERIODS: { id: FilterPeriod; label: string }[] = [
+type SummaryPeriod = 'week' | 'month' | 'year' | 'all'
+
+const PERIODS: { id: SummaryPeriod; label: string }[] = [
   { id: 'week', label: 'Week' },
   { id: 'month', label: 'Month' },
-  { id: '3m', label: '3M' },
   { id: 'year', label: 'Year' },
   { id: 'all', label: 'All' },
 ]
 
 export default function DataTab() {
-  const { entries } = useModuleAdapter()
-  const [period, setPeriod] = useState<FilterPeriod>('week')
-  const { openSettings } = useSettings()
+  const { settings, openSettings } = useSettings()
+  const { activeModule } = settings
+  const [period, setPeriod] = useState<SummaryPeriod>('week')
 
-  const filterStart = getFilterStart(period)
-  const filtered = filterStart ? entries.filter((e) => new Date(e.timestamp) >= filterStart) : entries
+  // Both hooks called unconditionally (React rules of hooks)
+  const alcoholSummary = useEntrySummary(period)
+  const caffeineSummary = useCaffeineSummary(period)
+  const summaryQuery = activeModule === 'alcohol' ? alcoholSummary : caffeineSummary
+  const summaryData = summaryQuery.data ?? []
 
-  const groups = groupByDate(filtered)
-  const groupsWithTotals = groups.map(({ date, entries }) => ({
-    date,
-    entries,
-    total: entries.reduce((s, e) => s + e.value, 0),
-  }))
+  // Stats derived from backend summary data
+  const totalUnits = summaryData.reduce((s, d) => s + d.total, 0)
+  const heaviest = summaryData.length > 0
+    ? summaryData.reduce((max, d) => d.total > max.total ? d : max, summaryData[0])
+    : null
+  const daysTracked = summaryData.length
 
-  const totalEntries = filtered.length
-  const totalUnits = filtered.reduce((s, e) => s + e.value, 0)
-  const heaviest = [...groupsWithTotals].sort((a, b) => b.total - a.total)[0]
+  // Zero-fill chart data for the full date range
+  const totalsMap = new Map(summaryData.map(d => [d.date, d.total]))
 
-  // Chart range: from range start to yesterday (inclusive), zero-filled
+  const rangeStartKey = period === 'all'
+    ? (summaryData.length > 0 ? summaryData[0].date : null)
+    : (() => {
+        const days = period === 'week' ? 7 : period === 'month' ? 30 : 365
+        const d = new Date()
+        d.setDate(d.getDate() - days)
+        return toLocalDateKey(d.toISOString())
+      })()
+
   const yesterday = new Date()
   yesterday.setDate(yesterday.getDate() - 1)
   const yesterdayKey = toLocalDateKey(yesterday.toISOString())
-
-  const rangeStartKey = period === 'all'
-    ? (groups.length > 0 ? groups[groups.length - 1].date : null)
-    : filterStart ? toLocalDateKey(filterStart.toISOString()) : null
-
-  const totalsMap = new Map(groupsWithTotals.map(({ date, total }) => [date, total]))
 
   const chartData = (() => {
     if (!rangeStartKey || rangeStartKey > yesterdayKey) return []
@@ -62,7 +67,10 @@ export default function DataTab() {
     return result
   })()
 
+  // divide by calendar days in range (including zero-consumption days)
   const avgPerDay = chartData.length > 0 ? totalUnits / chartData.length : 0
+
+  const isInitialLoading = summaryQuery.isFetching && !summaryQuery.data
 
   return (
     <div className="flex flex-col h-full">
@@ -90,10 +98,12 @@ export default function DataTab() {
           ))}
         </div>
 
-        {chartData.length === 0 ? (
+        {isInitialLoading ? (
+          <div className="bg-neutral-100 dark:bg-neutral-800 rounded-2xl p-4 mb-4 animate-pulse" style={{ height: 232 }} />
+        ) : chartData.length === 0 ? (
           <EmptyState message="No data for this period" />
         ) : (
-          <div className="bg-neutral-100 dark:bg-neutral-800 rounded-2xl p-4 mb-4">
+          <div className={`bg-neutral-100 dark:bg-neutral-800 rounded-2xl p-4 mb-4 transition-opacity ${summaryQuery.isFetching ? 'opacity-50 pointer-events-none' : ''}`}>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                 <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
@@ -106,8 +116,8 @@ export default function DataTab() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <SummaryCard title="Total Entries" value={String(totalEntries)} />
+        <div className={`grid grid-cols-2 gap-3 ${summaryQuery.isFetching ? 'opacity-50 pointer-events-none' : ''}`}>
+          <SummaryCard title="Days Tracked" value={String(daysTracked)} />
           <SummaryCard title="Total Units" value={totalUnits.toFixed(1)} />
           <SummaryCard title="Avg / Day" value={avgPerDay.toFixed(1)} />
           <SummaryCard
