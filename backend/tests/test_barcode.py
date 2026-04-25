@@ -230,3 +230,85 @@ def test_cross_module_barcode_rejected_on_caffeine_update(client):
     template_id = r.json()["id"]
     r2 = client.patch(f"/api/caffeine-templates/{template_id}", json={"barcode": "UPDATEMOD2"})
     assert r2.status_code == 409
+
+
+# --- Strategy 1 (OFF+) improvements ---
+
+def test_off_plus_volume_from_serving_size(client):
+    """Strategy 1 uses serving_size when quantity is absent."""
+    payload = {
+        "status": 1,
+        "product": {
+            "product_name": "Special Beer",
+            "serving_size": "330 ml",
+            "nutriments": {"alcohol": 5.0},
+        }
+    }
+    mock_client = _mock_off(payload)
+    with patch("routers.barcode.httpx.AsyncClient", return_value=mock_client):
+        r = client.get("/api/barcode/TESTSERVING?module=alcohol&strategy=1")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["ml"] == 330.0
+    assert d["abv"] == 5.0
+
+
+def test_off_plus_abv_from_alcohol_100g(client):
+    """Strategy 1 falls back to alcohol_100g when alcohol/alcohol_value absent."""
+    payload = {
+        "status": 1,
+        "product": {
+            "product_name": "Craft IPA",
+            "quantity": "330 ml",
+            "nutriments": {"alcohol_100g": 6.5},
+        }
+    }
+    mock_client = _mock_off(payload)
+    with patch("routers.barcode.httpx.AsyncClient", return_value=mock_client):
+        r = client.get("/api/barcode/TESTALC100G?module=alcohol&strategy=1")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["abv"] == pytest.approx(6.5)
+
+
+def test_off_plus_caffeine_serving_in_grams(client):
+    """caffeine_serving is in grams in OFF; strategy 1 converts correctly."""
+    payload = {
+        "status": 1,
+        "product": {
+            "product_name": "Energy Drink",
+            "quantity": "250 ml",
+            "nutriments": {"caffeine_serving": 0.08},
+        }
+    }
+    mock_client = _mock_off(payload)
+    with patch("routers.barcode.httpx.AsyncClient", return_value=mock_client):
+        r = client.get("/api/barcode/TESTCAFS?module=caffeine&strategy=1")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["mg"] == pytest.approx(80.0)
+
+
+def test_response_has_telemetry_fields(client):
+    """Every non-local response includes latency_ms, strategy_used, actual_source."""
+    payload = _make_off_response("Test Beer", quantity="330 ml", alcohol=5.0)
+    mock_client = _mock_off(payload)
+    with patch("routers.barcode.httpx.AsyncClient", return_value=mock_client):
+        r = client.get("/api/barcode/TELEMETRY?module=alcohol&strategy=1")
+    assert r.status_code == 200
+    d = r.json()
+    assert "latency_ms" in d
+    assert isinstance(d["latency_ms"], (int, float))
+    assert d["strategy_used"] == 1
+    assert d["actual_source"] == "off"
+
+
+def test_local_match_has_telemetry_fields(client):
+    """Local matches also return telemetry (latency near-zero, actual_source='local')."""
+    client.post("/api/templates", json={"name": "Telemetry Beer", "default_ml": 330, "default_abv": 5.0, "barcode": "TELLOCAL"})
+    r = client.get("/api/barcode/TELLOCAL?module=alcohol&strategy=1")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["strategy_used"] == 1
+    assert d["actual_source"] == "local"
+    assert "latency_ms" in d
