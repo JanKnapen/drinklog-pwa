@@ -34,13 +34,13 @@ class DrinkEntry(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     template_id: Mapped[str | None] = mapped_column(
-        String, ForeignKey("drink_templates.id"), nullable=True
+        String, ForeignKey("drink_templates.id"), nullable=True, index=True
     )
     custom_name: Mapped[str | None] = mapped_column(String, nullable=True)
     ml: Mapped[float] = mapped_column(Float, nullable=False)
     abv: Mapped[float] = mapped_column(Float, nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    is_marked: Mapped[bool] = mapped_column(Boolean, default=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    is_marked: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
     template: Mapped["DrinkTemplate | None"] = relationship(
         "DrinkTemplate", back_populates="entries"
@@ -78,12 +78,12 @@ class CaffeineEntry(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     template_id: Mapped[str | None] = mapped_column(
-        String, ForeignKey("caffeine_templates.id"), nullable=True
+        String, ForeignKey("caffeine_templates.id"), nullable=True, index=True
     )
     custom_name: Mapped[str | None] = mapped_column(String, nullable=True)
     mg: Mapped[float] = mapped_column(Float, nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    is_marked: Mapped[bool] = mapped_column(Boolean, default=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    is_marked: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
     template: Mapped["CaffeineTemplate | None"] = relationship(
         "CaffeineTemplate", back_populates="entries"
