@@ -187,6 +187,26 @@ def test_caffeine_summary_period_all(client):
     assert len(data) == 2
 
 
+def test_caffeine_summary_period_month(client):
+    """Period=month includes last 30 days, excludes older."""
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=40)})
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=15)})
+    _confirm_all(client)
+
+    data = client.get("/api/caffeine-entries/summary?period=month").json()
+    assert len(data) == 1
+
+
+def test_caffeine_summary_period_year(client):
+    """Period=year includes last 365 days, excludes older."""
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=400)})
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=100)})
+    _confirm_all(client)
+
+    data = client.get("/api/caffeine-entries/summary?period=year").json()
+    assert len(data) == 1
+
+
 def test_caffeine_summary_sorted_ascending(client):
     """Summary rows are sorted by date ascending (chart-ready)."""
     for d in [5, 3, 1]:
