@@ -38,6 +38,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
   const [scanMatchTemplate, setScanMatchTemplate] = useState<TrackerTemplate | null>(null)
   const [pendingScanTemplateId, setPendingScanTemplateId] = useState<string | null>(null)
   const [snapshot, setSnapshot] = useState<QuickLogSnapshot>({ todayTopTwo: [], alltimeItems: [], pendingDrinks: [] })
+  const [isFetching, setIsFetching] = useState(false)
 
   useEffect(() => { onScannerOpen?.(modal === 'scanner') }, [modal, onScannerOpen])
 
@@ -134,6 +135,20 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
     }
   }
 
+  async function handleStrategyChange(newStrategy: 1 | 2 | 3) {
+    if (!scanCode) return
+    setIsFetching(true)
+    updateSettings({ barcodeStrategy: newStrategy })
+    try {
+      const result = await lookupBarcode(scanCode, activeModule, newStrategy)
+      setScanPrefill(result)
+    } catch {
+      // keep existing prefill on network error
+    } finally {
+      setIsFetching(false)
+    }
+  }
+
   const { todayTopTwo, alltimeItems, pendingDrinks } = snapshot
   const showQuickLog = alltimeItems.length > 0 || todayTopTwo.length > 0 || pendingDrinks.length > 0
 
@@ -146,7 +161,6 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
             <span className="text-sm text-neutral-400 dark:text-neutral-500">{activeModule}</span>
           </div>
           <div className="flex items-center gap-2">
-            <StrategyPill value={barcodeStrategy} onChange={(s) => updateSettings({ barcodeStrategy: s })} />
             <button
               onClick={() => setModal('scanner')}
               className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 active:scale-95 transition-transform"
@@ -232,6 +246,9 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
           prefill={scanPrefill}
           barcode={scanCode}
           onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(`Logged: ${name}`); setModal(null) }}
+          isFetching={isFetching}
+          onStrategyChange={handleStrategyChange}
+          barcodeStrategy={barcodeStrategy}
         />
       ) : (
         <NewCaffeineModal
@@ -241,6 +258,9 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
           prefill={scanPrefill}
           barcode={scanCode}
           onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(`Logged: ${name}`); setModal(null) }}
+          isFetching={isFetching}
+          onStrategyChange={handleStrategyChange}
+          barcodeStrategy={barcodeStrategy}
         />
       )}
       {activeModule === 'alcohol' ? (
