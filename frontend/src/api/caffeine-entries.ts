@@ -1,14 +1,36 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { apiFetch } from './client'
-import type { CaffeineEntry } from '../types'
+import type { CaffeineEntry, EntrySummaryItem } from '../types'
 import { CAFFEINE_TEMPLATES_KEY } from './caffeine-templates'
 
 export const CAFFEINE_ENTRIES_KEY = ['caffeine-entries'] as const
+export const CAFFEINE_ENTRIES_SUMMARY_KEY = ['caffeine-entries', 'summary'] as const
 
-export function useCaffeineEntries() {
+function buildCaffeineEntriesUrl(limit = 100, offset = 0, confirmedOnly = false) {
+  const params = new URLSearchParams()
+  if (limit !== 100) params.set('limit', String(limit))
+  if (offset !== 0) params.set('offset', String(offset))
+  if (confirmedOnly) params.set('confirmed_only', 'true')
+  const qs = params.toString()
+  return qs ? `/api/caffeine-entries?${qs}` : '/api/caffeine-entries'
+}
+
+export function useCaffeineEntries(params?: { limit?: number; offset?: number; confirmedOnly?: boolean }) {
+  const limit = params?.limit
+  const offset = params?.offset
+  const confirmedOnly = params?.confirmedOnly
   return useQuery({
-    queryKey: CAFFEINE_ENTRIES_KEY,
-    queryFn: () => apiFetch<CaffeineEntry[]>('/api/caffeine-entries'),
+    queryKey: ['caffeine-entries', { limit, offset, confirmedOnly }] as const,
+    queryFn: () => apiFetch<CaffeineEntry[]>(buildCaffeineEntriesUrl(limit, offset, confirmedOnly)),
+  })
+}
+
+export function useCaffeineSummary(period: 'week' | 'month' | 'year' | 'all') {
+  return useQuery({
+    queryKey: [...CAFFEINE_ENTRIES_SUMMARY_KEY, period] as const,
+    queryFn: () => apiFetch<EntrySummaryItem[]>(`/api/caffeine-entries/summary?period=${period}`),
+    staleTime: period === 'year' || period === 'all' ? Infinity : undefined,
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -24,6 +46,7 @@ export function useCreateCaffeineEntry() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_KEY })
       qc.invalidateQueries({ queryKey: CAFFEINE_TEMPLATES_KEY })
+      qc.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_SUMMARY_KEY })
     },
   })
 }
@@ -63,6 +86,7 @@ export function useConfirmAllCaffeineEntries() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_KEY })
       qc.invalidateQueries({ queryKey: CAFFEINE_TEMPLATES_KEY })
+      qc.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_SUMMARY_KEY })
     },
   })
 }

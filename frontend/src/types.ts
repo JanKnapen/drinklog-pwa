@@ -54,6 +54,11 @@ export interface TrackerTemplate {
   displayInfo: string
 }
 
+export interface EntrySummaryItem {
+  date: string
+  total: number
+}
+
 export interface TrackerEntry {
   id: string
   templateId: string | null
