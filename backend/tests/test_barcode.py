@@ -312,3 +312,94 @@ def test_local_match_has_telemetry_fields(client):
     assert d["strategy_used"] == 1
     assert d["actual_source"] == "local"
     assert "latency_ms" in d
+
+
+# --- Strategy 2 (AH) ---
+
+def _mock_ah(product: dict):
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json.return_value = {"products": [product]} if product else {"products": []}
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=mock_resp)
+    return mock_client
+
+
+def test_strategy_ah_alcohol(client):
+    ah_product = {"title": "Heineken", "unitSize": "330 ml", "alcoholPercentage": 5.0}
+    mock_client = _mock_ah(ah_product)
+    with patch("routers.barcode.httpx.AsyncClient", return_value=mock_client):
+        r = client.get("/api/barcode/8712100325953?module=alcohol&strategy=2")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["source"] == "ah"
+    assert d["name"] == "Heineken"
+    assert d["ml"] == 330.0
+    assert d["abv"] == 5.0
+    assert d["actual_source"] == "ah"
+    assert d["strategy_used"] == 2
+
+
+def test_strategy_ah_not_found(client):
+    mock_client = _mock_ah({})
+    with patch("routers.barcode.httpx.AsyncClient", return_value=mock_client):
+        r = client.get("/api/barcode/9999?module=alcohol&strategy=2")
+    assert r.status_code == 200
+    assert r.json()["source"] == "not_found"
+
+
+# --- Strategy 3 (Hybrid) ---
+
+def _mock_hybrid(ah_product: dict, off_product: dict):
+    """Returns a mock AsyncClient whose .get() routes by URL."""
+    ah_resp = MagicMock()
+    ah_resp.raise_for_status = MagicMock()
+    ah_resp.json.return_value = {"products": [ah_product]} if ah_product else {"products": []}
+
+    off_resp = MagicMock()
+    off_resp.raise_for_status = MagicMock()
+    off_resp.json.return_value = {"status": 1, "product": off_product} if off_product else {"status": 0}
+
+    async def fake_get(url, **kwargs):
+        if "ah.nl" in str(url):
+            return ah_resp
+        return off_resp
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = fake_get
+    return mock_client
+
+
+def test_strategy_hybrid_ah_volume_off_caffeine(client):
+    ah_product = {"title": "Club Mate", "unitSize": "330 ml"}
+    off_product = {"product_name": "Club Mate", "nutriments": {"caffeine_serving": 0.1}}
+    mock_client = _mock_hybrid(ah_product, off_product)
+    with patch("routers.barcode.httpx.AsyncClient", return_value=mock_client):
+        r = client.get("/api/barcode/4029764001801?module=caffeine&strategy=3")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["name"] == "Club Mate"
+    assert d["ml"] == 330.0
+    assert d["mg"] == pytest.approx(100.0)  # 0.1 g * 1000
+    assert d["strategy_used"] == 3
+
+
+def test_strategy_hybrid_regex_abv_fallback(client):
+    ah_product = {"title": "Craft Ale", "unitSize": "500 ml", "ingredients_text": "water, mout, hop, gist, 6.5% vol"}
+    off_product = {}
+    mock_client = _mock_hybrid(ah_product, off_product)
+    with patch("routers.barcode.httpx.AsyncClient", return_value=mock_client):
+        r = client.get("/api/barcode/TEST_REGEX?module=alcohol&strategy=3")
+    assert r.status_code == 200
+    d = r.json()
+    assert d["abv"] == pytest.approx(6.5)
+    assert d["actual_source"] == "hybrid+regex"
+
+
+def test_strategy_out_of_range_rejected(client):
+    r = client.get("/api/barcode/123?module=alcohol&strategy=4")
+    assert r.status_code == 422
