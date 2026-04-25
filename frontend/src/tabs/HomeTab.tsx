@@ -328,9 +328,10 @@ function ActionCard({ title, subtitle, icon, onClick }: {
 }
 
 // NewAlcoholModal — uses useCreateEntry directly (module-specific modal, adapter bypass acceptable)
-function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged }: {
+function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged, isFetching, onStrategyChange, barcodeStrategy }: {
   open: boolean; onClose: () => void; templates: TrackerTemplate[]
   prefill?: BarcodeResult | null; barcode?: string | null; onLogged: (name: string) => void
+  isFetching?: boolean; onStrategyChange?: (s: 1 | 2 | 3) => void; barcodeStrategy?: 1 | 2 | 3
 }) {
   const createEntry = useCreateEntry()
   const createTemplate = useCreateTemplate()
@@ -408,24 +409,35 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged 
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
-        {prefill && prefill.strategy_used != null && (
-          <div className="text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2 font-mono">
-            {(['OFF+', 'AH', 'Hybrid'] as const)[prefill.strategy_used - 1]} · {prefill.actual_source ?? '—'} · {prefill.latency_ms != null ? `${Math.round(prefill.latency_ms)}ms` : '—'}
+        {prefill && (
+          <div className="bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2 flex flex-col gap-2">
+            {onStrategyChange && barcodeStrategy != null && (
+              <StrategyPill value={barcodeStrategy} onChange={onStrategyChange} />
+            )}
+            {prefill.strategy_used != null && (
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
+                {isFetching ? 'Fetching…' : `${(['OFF+', 'AH', 'Hybrid'] as const)[prefill.strategy_used - 1]} · ${prefill.actual_source ?? '—'} · ${prefill.latency_ms != null ? `${Math.round(prefill.latency_ms)}ms` : '—'}`}
+              </p>
+            )}
           </div>
         )}
-        <Field label="Drink name">
-          <input className={inputCls} placeholder="e.g. Lager, House Wine…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
-        </Field>
-        <Field label="Amount (ml)">
-          <input className={inputCls + (mlMissing ? dashedCls : '')} inputMode="decimal" placeholder="330" value={ml} onChange={(e) => setMl(e.target.value)} />
-        </Field>
-        <Field label="ABV (%)">
-          <input className={inputCls + (abvMissing ? dashedCls : '')} inputMode="decimal" placeholder="5.0" value={abv} onChange={(e) => setAbv(e.target.value)} />
-        </Field>
-        <UnitPreview ml={ml} abv={abv} />
+        <div className={isFetching ? 'opacity-40 pointer-events-none' : ''}>
+          <div className="flex flex-col gap-3">
+            <Field label="Drink name">
+              <input className={inputCls} placeholder="e.g. Lager, House Wine…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
+            </Field>
+            <Field label="Amount (ml)">
+              <input className={inputCls + (mlMissing ? dashedCls : '')} inputMode="decimal" placeholder="330" value={ml} onChange={(e) => setMl(e.target.value)} />
+            </Field>
+            <Field label="ABV (%)">
+              <input className={inputCls + (abvMissing ? dashedCls : '')} inputMode="decimal" placeholder="5.0" value={abv} onChange={(e) => setAbv(e.target.value)} />
+            </Field>
+            <UnitPreview ml={ml} abv={abv} />
+          </div>
+        </div>
         <div className="flex gap-2">
           <Stepper value={count} onChange={setCount} />
-          <button onClick={handleSubmit} disabled={!isValid || createTemplate.isPending || createEntry.isPending} className={primaryBtn + ' flex-1'}>Log</button>
+          <button onClick={handleSubmit} disabled={!isValid || createTemplate.isPending || createEntry.isPending || !!isFetching} className={primaryBtn + ' flex-1'}>Log</button>
         </div>
       </div>
     </Modal>
@@ -433,9 +445,10 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged 
 }
 
 // NewCaffeineModal — uses useCreateCaffeineEntry directly (module-specific modal)
-export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, onLogged }: {
+export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, onLogged, isFetching, onStrategyChange, barcodeStrategy }: {
   open: boolean; onClose: () => void; templates: TrackerTemplate[]
   prefill?: BarcodeResult | null; barcode?: string | null; onLogged: (name: string) => void
+  isFetching?: boolean; onStrategyChange?: (s: 1 | 2 | 3) => void; barcodeStrategy?: 1 | 2 | 3
 }) {
   const createEntry = useCreateCaffeineEntry()
   const createTemplate = useCreateCaffeineTemplate()
@@ -509,20 +522,31 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, o
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
-        {prefill && prefill.strategy_used != null && (
-          <div className="text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2 font-mono">
-            {(['OFF+', 'AH', 'Hybrid'] as const)[prefill.strategy_used - 1]} · {prefill.actual_source ?? '—'} · {prefill.latency_ms != null ? `${Math.round(prefill.latency_ms)}ms` : '—'}
+        {prefill && (
+          <div className="bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2 flex flex-col gap-2">
+            {onStrategyChange && barcodeStrategy != null && (
+              <StrategyPill value={barcodeStrategy} onChange={onStrategyChange} />
+            )}
+            {prefill.strategy_used != null && (
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
+                {isFetching ? 'Fetching…' : `${(['OFF+', 'AH', 'Hybrid'] as const)[prefill.strategy_used - 1]} · ${prefill.actual_source ?? '—'} · ${prefill.latency_ms != null ? `${Math.round(prefill.latency_ms)}ms` : '—'}`}
+              </p>
+            )}
           </div>
         )}
-        <Field label="Drink name">
-          <input className={inputCls} placeholder="e.g. Coffee, Energy Drink…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
-        </Field>
-        <Field label="Caffeine (mg)">
-          <input className={inputCls + (mgMissing ? dashedCls : '')} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
-        </Field>
+        <div className={isFetching ? 'opacity-40 pointer-events-none' : ''}>
+          <div className="flex flex-col gap-3">
+            <Field label="Drink name">
+              <input className={inputCls} placeholder="e.g. Coffee, Energy Drink…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
+            </Field>
+            <Field label="Caffeine (mg)">
+              <input className={inputCls + (mgMissing ? dashedCls : '')} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
+            </Field>
+          </div>
+        </div>
         <div className="flex gap-2">
           <Stepper value={count} onChange={setCount} />
-          <button onClick={handleSubmit} disabled={!isValid || createTemplate.isPending || createEntry.isPending} className={primaryBtn + ' flex-1'}>Log</button>
+          <button onClick={handleSubmit} disabled={!isValid || createTemplate.isPending || createEntry.isPending || !!isFetching} className={primaryBtn + ' flex-1'}>Log</button>
         </div>
       </div>
     </Modal>
