@@ -28,7 +28,8 @@ interface QuickLogSnapshot {
 
 export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: string) => void; onScannerOpen?: (open: boolean) => void }) {
   const adapter = useModuleAdapter()
-  const { openSettings, updateSettings } = useSettings()
+  const { openSettings, updateSettings, settings } = useSettings()
+  const barcodeStrategy = settings.barcodeStrategy
   const { templates, entries, isEntriesFetched, activeModule } = adapter
 
   const [modal, setModal] = useState<'new' | 'enter' | 'other' | 'pending' | 'scanner' | 'scan-match' | null>(null)
@@ -107,7 +108,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
   async function handleScan(code: string) {
     setModal(null)
     try {
-      const result = await lookupBarcode(code, activeModule)
+      const result = await lookupBarcode(code, activeModule, barcodeStrategy)
       if (result.source === 'local') {
         if (result.module && result.module !== activeModule && result.template_id) {
           updateSettings({ activeModule: result.module })
@@ -145,6 +146,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
             <span className="text-sm text-neutral-400 dark:text-neutral-500">{activeModule}</span>
           </div>
           <div className="flex items-center gap-2">
+            <StrategyPill value={barcodeStrategy} onChange={(s) => updateSettings({ barcodeStrategy: s })} />
             <button
               onClick={() => setModal('scanner')}
               className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 active:scale-95 transition-transform"
@@ -701,6 +703,28 @@ function ScanMatchModal({ open, template, onClose, onLog, onLogged }: {
         </div>
       </div>
     </Modal>
+  )
+}
+
+function StrategyPill({ value, onChange }: { value: 1 | 2 | 3; onChange: (s: 1 | 2 | 3) => void }) {
+  const labels: Record<1 | 2 | 3, string> = { 1: 'OFF+', 2: 'AH', 3: 'Hybrid' }
+  return (
+    <div className="flex rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 text-xs font-medium">
+      {([1, 2, 3] as const).map((s) => (
+        <button
+          key={s}
+          onClick={() => onChange(s)}
+          className={
+            'px-2 py-1 transition-colors ' +
+            (value === s
+              ? 'bg-blue-500 text-white'
+              : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400')
+          }
+        >
+          {labels[s]}
+        </button>
+      ))}
+    </div>
   )
 }
 
