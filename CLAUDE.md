@@ -108,7 +108,21 @@ Camera requires `window.isSecureContext` (HTTPS). Dev setup uses Tailscale certs
 
 ### Barcode lookup endpoint
 
-`GET /api/barcode/{code}?module=alcohol|caffeine` searches **both** tables regardless of the `module` param — barcodes are globally unique so a match can only exist in one table. The `module` param is used solely for Open Food Facts fallback parsing (which nutrient fields to extract). The response includes a `module` field (`"alcohol"` | `"caffeine"` | `null`) indicating where the local match was found; `null` for OFF and not-found results.
+`GET /api/barcode/{code}?module=alcohol|caffeine&strategy=1|2|3` searches **both** local DB tables first (barcodes are globally unique, match can only exist in one table). On a miss it calls an external API determined by `strategy`. The `module` param controls which nutrient fields to extract from external APIs. The response includes a `module` field (`"alcohol"` | `"caffeine"` | `null`) for local matches; `null` for external and not-found results.
+
+### Retrieval strategies (dev-testing infrastructure)
+
+Three strategies exist for A/B/C comparison — **this is temporary**. Once a preferred strategy is chosen, the other two and all switching UI should be removed per `backlog/changes/05-remove-retrieval-alternatives.md`.
+
+- **Strategy 1 — OFF+** (default): Open Food Facts with improved field parsing (`serving_size` fallback for volume, `alcohol_100g` fallback for ABV, g→mg conversion for caffeine).
+- **Strategy 2 — AH**: Albert Heijn unofficial API (`api.ah.nl`). High accuracy for Dutch product volume/ABV; caffeine rarely available.
+- **Strategy 3 — Hybrid**: Queries both AH and OFF in parallel, stitches best available data, falls back to regex on `ingredients_text` for still-missing fields.
+
+Regex parsing helpers live in `backend/routers/parsers.py` (`parse_ml_from_text`, `parse_abv_from_text`, `parse_caffeine_mg_from_text`). Used by OFF+ and Hybrid; not needed if keeping AH only.
+
+The response includes dev-testing telemetry fields (`latency_ms`, `strategy_used`, `actual_source`) and `source` can be `"ah"` in addition to `"local"` / `"off"` / `"not_found"`.
+
+`barcodeStrategy: 1 | 2 | 3` in `SettingsContext` (persisted to localStorage) and the `StrategyPill` component inside `NewAlcohol/CaffeineModal` are part of this dev-testing UI — both should be removed during cleanup.
 
 ### Scan flow invariants
 
