@@ -2,12 +2,15 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text, inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from database import Base, engine
 from routers import templates, entries, caffeine_templates, caffeine_entries
 from routers import barcode
+from routers.auth import router as auth_router, limiter
 from config import PUBLIC_CONFIG, ADMIN_SEED_USERNAME, ADMIN_SEED_PASSWORD
 from auth import pwd_context
 
@@ -92,6 +95,8 @@ def _migrate():
 _migrate()
 
 app = FastAPI(title="DrinkLog API")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS", "http://localhost,http://localhost:5173"
@@ -109,6 +114,7 @@ app.include_router(entries.router, prefix="/api")
 app.include_router(caffeine_templates.router, prefix="/api")
 app.include_router(caffeine_entries.router, prefix="/api")
 app.include_router(barcode.router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
 
 
 @app.get("/api/config")
