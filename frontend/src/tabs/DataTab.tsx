@@ -67,6 +67,7 @@ export default function DataTab() {
     return result
   })()
 
+  // divide by calendar days in range (including zero-consumption days)
   const avgPerDay = chartData.length > 0 ? totalUnits / chartData.length : 0
 
   const isInitialLoading = summaryQuery.isFetching && !summaryQuery.data
@@ -115,7 +116,7 @@ export default function DataTab() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className={`grid grid-cols-2 gap-3 ${summaryQuery.isFetching ? 'opacity-50 pointer-events-none' : ''}`}>
           <SummaryCard title="Days Tracked" value={String(daysTracked)} />
           <SummaryCard title="Total Units" value={totalUnits.toFixed(1)} />
           <SummaryCard title="Avg / Day" value={avgPerDay.toFixed(1)} />
