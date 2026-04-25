@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from config import CAFFEINE_UNIT_DIVISOR
 from database import get_db
-from models import CaffeineTemplate, CaffeineEntry
+from models import CaffeineTemplate, CaffeineEntry, User
+from routers.deps import get_current_user
 from schemas import (
     CaffeineEntryCreate, CaffeineEntryUpdate, CaffeineEntryResponse, ConfirmAllRequest,
     EntrySummaryItem,
@@ -21,10 +22,18 @@ router = APIRouter(tags=["caffeine-entries"])
 
 
 @router.post("/caffeine-entries/confirm-all")
-def confirm_all_caffeine(req: ConfirmAllRequest, db: Session = Depends(get_db)):
+def confirm_all_caffeine(
+    req: ConfirmAllRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     entries = (
         db.query(CaffeineEntry)
-        .filter(CaffeineEntry.is_marked == False, CaffeineEntry.timestamp < req.cutoff)
+        .filter(
+            CaffeineEntry.user_id == current_user.id,
+            CaffeineEntry.is_marked == False,
+            CaffeineEntry.timestamp < req.cutoff,
+        )
         .all()
     )
     created_templates: dict[str, CaffeineTemplate] = {}
@@ -33,12 +42,14 @@ def confirm_all_caffeine(req: ConfirmAllRequest, db: Session = Depends(get_db)):
             name = entry.custom_name
             if name not in created_templates:
                 existing = db.query(CaffeineTemplate).filter(
-                    CaffeineTemplate.name == name
+                    CaffeineTemplate.user_id == current_user.id,
+                    CaffeineTemplate.name == name,
                 ).first()
                 if existing:
                     created_templates[name] = existing
                 else:
                     template = CaffeineTemplate(
+                        user_id=current_user.id,
                         name=name,
                         default_mg=entry.mg,
                         usage_count=0,
@@ -61,11 +72,12 @@ def list_caffeine_entries(
     offset: int = Query(default=0, ge=0),
     confirmed_only: bool = False,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if confirmed_only:
         return (
             db.query(CaffeineEntry)
-            .filter(CaffeineEntry.is_marked == True)
+            .filter(CaffeineEntry.user_id == current_user.id, CaffeineEntry.is_marked == True)
             .order_by(CaffeineEntry.timestamp.desc())
             .limit(limit)
             .offset(offset)
@@ -74,13 +86,13 @@ def list_caffeine_entries(
     # Default: all unconfirmed (no limit) + most recent N confirmed, newest-first
     unconfirmed = (
         db.query(CaffeineEntry)
-        .filter(CaffeineEntry.is_marked == False)
+        .filter(CaffeineEntry.user_id == current_user.id, CaffeineEntry.is_marked == False)
         .order_by(CaffeineEntry.timestamp.desc())
         .all()
     )
     confirmed = (
         db.query(CaffeineEntry)
-        .filter(CaffeineEntry.is_marked == True)
+        .filter(CaffeineEntry.user_id == current_user.id, CaffeineEntry.is_marked == True)
         .order_by(CaffeineEntry.timestamp.desc())
         .limit(limit)
         .all()
@@ -90,8 +102,12 @@ def list_caffeine_entries(
 
 
 @router.post("/caffeine-entries", response_model=CaffeineEntryResponse, status_code=201)
-def create_caffeine_entry(data: CaffeineEntryCreate, db: Session = Depends(get_db)):
-    entry = CaffeineEntry(**data.model_dump())
+def create_caffeine_entry(
+    data: CaffeineEntryCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    entry = CaffeineEntry(**data.model_dump(), user_id=current_user.id)
     db.add(entry)
     db.commit()
     db.refresh(entry)
@@ -102,13 +118,14 @@ def create_caffeine_entry(data: CaffeineEntryCreate, db: Session = Depends(get_d
 def caffeine_entries_summary(
     period: Literal["week", "month", "year", "all"] = Query(default="all"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     q = (
         db.query(
             func.date(CaffeineEntry.timestamp).label("date"),
             func.sum(CaffeineEntry.mg / CAFFEINE_UNIT_DIVISOR).label("total"),
         )
-        .filter(CaffeineEntry.is_marked == True)
+        .filter(CaffeineEntry.user_id == current_user.id, CaffeineEntry.is_marked == True)
     )
     if period != "all":
         days = {"week": 7, "month": 30, "year": 365}[period]
@@ -123,8 +140,15 @@ def caffeine_entries_summary(
 
 
 @router.patch("/caffeine-entries/{entry_id}", response_model=CaffeineEntryResponse)
-def update_caffeine_entry(entry_id: str, data: CaffeineEntryUpdate, db: Session = Depends(get_db)):
-    entry = db.query(CaffeineEntry).filter(CaffeineEntry.id == entry_id).first()
+def update_caffeine_entry(
+    entry_id: str,
+    data: CaffeineEntryUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    entry = db.query(CaffeineEntry).filter(
+        CaffeineEntry.id == entry_id, CaffeineEntry.user_id == current_user.id
+    ).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
     if entry.template_id is not None:
@@ -139,8 +163,14 @@ def update_caffeine_entry(entry_id: str, data: CaffeineEntryUpdate, db: Session 
 
 
 @router.delete("/caffeine-entries/{entry_id}", status_code=204)
-def delete_caffeine_entry(entry_id: str, db: Session = Depends(get_db)):
-    entry = db.query(CaffeineEntry).filter(CaffeineEntry.id == entry_id).first()
+def delete_caffeine_entry(
+    entry_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    entry = db.query(CaffeineEntry).filter(
+        CaffeineEntry.id == entry_id, CaffeineEntry.user_id == current_user.id
+    ).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
     if entry.is_marked:

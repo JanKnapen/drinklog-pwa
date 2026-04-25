@@ -10,7 +10,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import DrinkTemplate, CaffeineTemplate
+from models import DrinkTemplate, CaffeineTemplate, User
+from routers.deps import get_current_user
 from routers.parsers import parse_ml_from_text, parse_abv_from_text, parse_caffeine_mg_from_text
 
 router = APIRouter(tags=["barcode"])
@@ -228,10 +229,13 @@ async def lookup_barcode(
     module: str = Query(..., pattern="^(alcohol|caffeine)$"),
     strategy: int = Query(default=1, ge=1, le=3),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     t0 = time.perf_counter()
 
-    alcohol_match = db.query(DrinkTemplate).filter(DrinkTemplate.barcode == code).first()
+    alcohol_match = db.query(DrinkTemplate).filter(
+        DrinkTemplate.barcode == code, DrinkTemplate.user_id == current_user.id
+    ).first()
     if alcohol_match:
         latency_ms = (time.perf_counter() - t0) * 1000
         return BarcodeResult(
@@ -241,7 +245,9 @@ async def lookup_barcode(
             latency_ms=latency_ms, strategy_used=strategy, actual_source="local",
         )
 
-    caffeine_match = db.query(CaffeineTemplate).filter(CaffeineTemplate.barcode == code).first()
+    caffeine_match = db.query(CaffeineTemplate).filter(
+        CaffeineTemplate.barcode == code, CaffeineTemplate.user_id == current_user.id
+    ).first()
     if caffeine_match:
         latency_ms = (time.perf_counter() - t0) * 1000
         return BarcodeResult(

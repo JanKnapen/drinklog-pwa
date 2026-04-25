@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import DrinkTemplate, DrinkEntry, CaffeineTemplate
+from models import DrinkTemplate, DrinkEntry, CaffeineTemplate, User
+from routers.deps import get_current_user
 from schemas import DrinkTemplateCreate, DrinkTemplateUpdate, DrinkTemplateResponse
 
 router = APIRouter(tags=["templates"])
@@ -16,20 +17,40 @@ def _check_barcode_cross_module(barcode: str | None, db: Session) -> None:
 
 
 @router.get("/templates", response_model=list[DrinkTemplateResponse])
-def list_templates(db: Session = Depends(get_db)):
-    return db.query(DrinkTemplate).order_by(DrinkTemplate.usage_count.desc()).all()
+def list_templates(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return (
+        db.query(DrinkTemplate)
+        .filter(DrinkTemplate.user_id == current_user.id)
+        .order_by(DrinkTemplate.usage_count.desc())
+        .all()
+    )
 
 
 @router.post("/templates", response_model=DrinkTemplateResponse, status_code=201)
-def create_template(data: DrinkTemplateCreate, db: Session = Depends(get_db)):
-    if db.query(DrinkTemplate).filter(DrinkTemplate.name == data.name).first():
+def create_template(
+    data: DrinkTemplateCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if db.query(DrinkTemplate).filter(
+        DrinkTemplate.user_id == current_user.id, DrinkTemplate.name == data.name
+    ).first():
         raise HTTPException(status_code=409, detail="A template with this name already exists")
-    if db.query(DrinkEntry).filter(DrinkEntry.custom_name == data.name, DrinkEntry.is_marked == False).first():
+    if db.query(DrinkEntry).filter(
+        DrinkEntry.user_id == current_user.id,
+        DrinkEntry.custom_name == data.name,
+        DrinkEntry.is_marked == False,
+    ).first():
         raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
-    if data.barcode and db.query(DrinkTemplate).filter(DrinkTemplate.barcode == data.barcode).first():
+    if data.barcode and db.query(DrinkTemplate).filter(
+        DrinkTemplate.user_id == current_user.id, DrinkTemplate.barcode == data.barcode
+    ).first():
         raise HTTPException(status_code=409, detail="A template with this barcode already exists")
     _check_barcode_cross_module(data.barcode, db)
-    template = DrinkTemplate(**data.model_dump())
+    template = DrinkTemplate(**data.model_dump(), user_id=current_user.id)
     db.add(template)
     db.commit()
     db.refresh(template)
@@ -37,19 +58,30 @@ def create_template(data: DrinkTemplateCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/templates/{template_id}", response_model=DrinkTemplateResponse)
-def update_template(template_id: str, data: DrinkTemplateUpdate, db: Session = Depends(get_db)):
-    template = db.query(DrinkTemplate).filter(DrinkTemplate.id == template_id).first()
+def update_template(
+    template_id: str,
+    data: DrinkTemplateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    template = db.query(DrinkTemplate).filter(
+        DrinkTemplate.id == template_id, DrinkTemplate.user_id == current_user.id
+    ).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
 
     if data.name is not None:
         conflict = db.query(DrinkTemplate).filter(
-            DrinkTemplate.name == data.name, DrinkTemplate.id != template_id
+            DrinkTemplate.user_id == current_user.id,
+            DrinkTemplate.name == data.name,
+            DrinkTemplate.id != template_id,
         ).first()
         if conflict:
             raise HTTPException(status_code=409, detail="A template with this name already exists")
         if db.query(DrinkEntry).filter(
-            DrinkEntry.custom_name == data.name, DrinkEntry.is_marked == False
+            DrinkEntry.user_id == current_user.id,
+            DrinkEntry.custom_name == data.name,
+            DrinkEntry.is_marked == False,
         ).first():
             raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
         template.name = data.name
@@ -58,7 +90,11 @@ def update_template(template_id: str, data: DrinkTemplateUpdate, db: Session = D
         template.usage_count = data.usage_count
 
     if data.barcode is not None:
-        if db.query(DrinkTemplate).filter(DrinkTemplate.barcode == data.barcode, DrinkTemplate.id != template_id).first():
+        if db.query(DrinkTemplate).filter(
+            DrinkTemplate.user_id == current_user.id,
+            DrinkTemplate.barcode == data.barcode,
+            DrinkTemplate.id != template_id,
+        ).first():
             raise HTTPException(status_code=409, detail="A template with this barcode already exists")
         _check_barcode_cross_module(data.barcode, db)
         template.barcode = data.barcode
@@ -76,8 +112,14 @@ def update_template(template_id: str, data: DrinkTemplateUpdate, db: Session = D
 
 
 @router.delete("/templates/{template_id}", status_code=204)
-def delete_template(template_id: str, db: Session = Depends(get_db)):
-    template = db.query(DrinkTemplate).filter(DrinkTemplate.id == template_id).first()
+def delete_template(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    template = db.query(DrinkTemplate).filter(
+        DrinkTemplate.id == template_id, DrinkTemplate.user_id == current_user.id
+    ).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
     if template.entries:
