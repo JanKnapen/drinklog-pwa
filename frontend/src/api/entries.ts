@@ -16,9 +16,9 @@ function buildEntriesUrl(limit = 100, offset = 0, confirmedOnly = false) {
 }
 
 export function useEntries(params?: { limit?: number; offset?: number; confirmedOnly?: boolean }) {
-  const limit = params?.limit
-  const offset = params?.offset
-  const confirmedOnly = params?.confirmedOnly
+  const limit = params?.limit ?? 100
+  const offset = params?.offset ?? 0
+  const confirmedOnly = params?.confirmedOnly ?? false
   return useQuery({
     queryKey: ['entries', { limit, offset, confirmedOnly }] as const,
     queryFn: () => apiFetch<DrinkEntry[]>(buildEntriesUrl(limit, offset, confirmedOnly)),
@@ -63,7 +63,10 @@ export function useUpdateEntry() {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ENTRIES_KEY }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ENTRIES_KEY })
+      qc.invalidateQueries({ queryKey: ENTRIES_SUMMARY_KEY })
+    },
   })
 }
 
@@ -72,7 +75,10 @@ export function useDeleteEntry() {
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch<void>(`/api/entries/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ENTRIES_KEY }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ENTRIES_KEY })
+      qc.invalidateQueries({ queryKey: ENTRIES_SUMMARY_KEY })
+    },
   })
 }
 

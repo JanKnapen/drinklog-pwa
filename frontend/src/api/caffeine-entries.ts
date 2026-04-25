@@ -16,9 +16,9 @@ function buildCaffeineEntriesUrl(limit = 100, offset = 0, confirmedOnly = false)
 }
 
 export function useCaffeineEntries(params?: { limit?: number; offset?: number; confirmedOnly?: boolean }) {
-  const limit = params?.limit
-  const offset = params?.offset
-  const confirmedOnly = params?.confirmedOnly
+  const limit = params?.limit ?? 100
+  const offset = params?.offset ?? 0
+  const confirmedOnly = params?.confirmedOnly ?? false
   return useQuery({
     queryKey: ['caffeine-entries', { limit, offset, confirmedOnly }] as const,
     queryFn: () => apiFetch<CaffeineEntry[]>(buildCaffeineEntriesUrl(limit, offset, confirmedOnly)),
@@ -62,7 +62,10 @@ export function useUpdateCaffeineEntry() {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_KEY }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_KEY })
+      qc.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_SUMMARY_KEY })
+    },
   })
 }
 
@@ -71,7 +74,10 @@ export function useDeleteCaffeineEntry() {
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch<void>(`/api/caffeine-entries/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_KEY }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_KEY })
+      qc.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_SUMMARY_KEY })
+    },
   })
 }
 
