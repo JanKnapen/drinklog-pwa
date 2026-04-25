@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -51,8 +51,8 @@ def confirm_all_caffeine(req: ConfirmAllRequest, db: Session = Depends(get_db)):
 
 @router.get("/caffeine-entries", response_model=list[CaffeineEntryResponse])
 def list_caffeine_entries(
-    limit: int = 100,
-    offset: int = 0,
+    limit: int = Query(default=100, ge=1),
+    offset: int = Query(default=0, ge=0),
     confirmed_only: bool = False,
     db: Session = Depends(get_db),
 ):
