@@ -30,7 +30,7 @@ def _mock_off(payload):
 
 # --- _parse_ml unit tests ---
 
-from routers.barcode import _parse_ml
+from routers.parsers import parse_ml_from_text as _parse_ml
 
 
 @pytest.mark.parametrize("qty,expected", [

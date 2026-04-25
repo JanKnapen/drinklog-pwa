@@ -1,5 +1,4 @@
 import logging
-import re
 import time
 from typing import Optional, Literal
 
@@ -34,10 +33,6 @@ class BarcodeResult(BaseModel):
     actual_source: Optional[str] = None
 
 
-def _parse_ml(quantity: str | None) -> Optional[float]:
-    return parse_ml_from_text(quantity)
-
-
 async def _fetch_off(client: httpx.AsyncClient, code: str) -> dict:
     resp = await client.get(OFF_URL.format(code=code))
     resp.raise_for_status()
@@ -57,7 +52,7 @@ async def _fetch_ah(client: httpx.AsyncClient, code: str) -> dict:
 
 def _extract_off_alcohol(product: dict) -> tuple[Optional[float], Optional[float], Optional[float]]:
     nutriments = product.get("nutriments", {})
-    ml = _parse_ml(product.get("quantity")) or _parse_ml(product.get("serving_size"))
+    ml = parse_ml_from_text(product.get("quantity")) or parse_ml_from_text(product.get("serving_size"))
     abv: Optional[float] = None
     for key in ("alcohol", "alcohol_value", "alcohol_100g"):
         raw = nutriments.get(key)
@@ -72,7 +67,7 @@ def _extract_off_alcohol(product: dict) -> tuple[Optional[float], Optional[float
 
 def _extract_off_caffeine(product: dict) -> tuple[Optional[float], Optional[float], Optional[float]]:
     nutriments = product.get("nutriments", {})
-    ml = _parse_ml(product.get("quantity")) or _parse_ml(product.get("serving_size"))
+    ml = parse_ml_from_text(product.get("quantity")) or parse_ml_from_text(product.get("serving_size"))
     mg: Optional[float] = None
     caffeine_serving = nutriments.get("caffeine_serving")
     caffeine_100g = nutriments.get("caffeine_100g") or nutriments.get("caffeine")
@@ -91,7 +86,7 @@ def _extract_off_caffeine(product: dict) -> tuple[Optional[float], Optional[floa
 
 def _extract_ah(product: dict, module: str) -> tuple[Optional[str], Optional[float], Optional[float], Optional[float]]:
     name = product.get("title") or product.get("description") or None
-    ml = _parse_ml(product.get("unitSize"))
+    ml = parse_ml_from_text(product.get("unitSize"))
     abv: Optional[float] = None
     mg: Optional[float] = None
     if module == "alcohol":
@@ -167,9 +162,9 @@ async def _strategy_hybrid(code: str, module: str, client: httpx.AsyncClient) ->
     actual_source = "hybrid"
 
     if module == "alcohol":
-        ml = _parse_ml(ah_product.get("unitSize"))
+        ml = parse_ml_from_text(ah_product.get("unitSize"))
         if ml is None and off_product:
-            ml = _parse_ml(off_product.get("quantity")) or _parse_ml(off_product.get("serving_size"))
+            ml = parse_ml_from_text(off_product.get("quantity")) or parse_ml_from_text(off_product.get("serving_size"))
 
         abv: Optional[float] = None
         raw_abv = ah_product.get("alcoholPercentage")
@@ -204,9 +199,9 @@ async def _strategy_hybrid(code: str, module: str, client: httpx.AsyncClient) ->
         return BarcodeResult(source=name_source, name=name, ml=ml, abv=abv, actual_source=actual_source)
 
     else:
-        ml = _parse_ml(ah_product.get("unitSize"))
+        ml = parse_ml_from_text(ah_product.get("unitSize"))
         if ml is None and off_product:
-            ml = _parse_ml(off_product.get("quantity")) or _parse_ml(off_product.get("serving_size"))
+            ml = parse_ml_from_text(off_product.get("quantity")) or parse_ml_from_text(off_product.get("serving_size"))
 
         mg: Optional[float] = None
         if off_product:

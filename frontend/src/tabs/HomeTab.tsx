@@ -122,7 +122,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
           return
         }
       }
-      if ((result.source === 'off' || result.source === 'local') && result.name) {
+      if ((result.source === 'off' || result.source === 'ah' || result.source === 'local') && result.name) {
         setScanPrefill(result)
         setScanCode(code)
         setModal('new')
