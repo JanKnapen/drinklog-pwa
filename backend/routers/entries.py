@@ -51,8 +51,37 @@ def confirm_all(req: ConfirmAllRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/entries", response_model=list[DrinkEntryResponse])
-def list_entries(db: Session = Depends(get_db)):
-    return db.query(DrinkEntry).order_by(DrinkEntry.timestamp.desc()).all()
+def list_entries(
+    limit: int = 100,
+    offset: int = 0,
+    confirmed_only: bool = False,
+    db: Session = Depends(get_db),
+):
+    if confirmed_only:
+        return (
+            db.query(DrinkEntry)
+            .filter(DrinkEntry.is_marked == True)
+            .order_by(DrinkEntry.timestamp.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+    # Default: all unconfirmed (no limit) + most recent N confirmed, newest-first
+    unconfirmed = (
+        db.query(DrinkEntry)
+        .filter(DrinkEntry.is_marked == False)
+        .order_by(DrinkEntry.timestamp.desc())
+        .all()
+    )
+    confirmed = (
+        db.query(DrinkEntry)
+        .filter(DrinkEntry.is_marked == True)
+        .order_by(DrinkEntry.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    combined = sorted(unconfirmed + confirmed, key=lambda e: e.timestamp, reverse=True)
+    return combined
 
 
 @router.post("/entries", response_model=DrinkEntryResponse, status_code=201)

@@ -50,8 +50,37 @@ def confirm_all_caffeine(req: ConfirmAllRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/caffeine-entries", response_model=list[CaffeineEntryResponse])
-def list_caffeine_entries(db: Session = Depends(get_db)):
-    return db.query(CaffeineEntry).order_by(CaffeineEntry.timestamp.desc()).all()
+def list_caffeine_entries(
+    limit: int = 100,
+    offset: int = 0,
+    confirmed_only: bool = False,
+    db: Session = Depends(get_db),
+):
+    if confirmed_only:
+        return (
+            db.query(CaffeineEntry)
+            .filter(CaffeineEntry.is_marked == True)
+            .order_by(CaffeineEntry.timestamp.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+    # Default: all unconfirmed (no limit) + most recent N confirmed, newest-first
+    unconfirmed = (
+        db.query(CaffeineEntry)
+        .filter(CaffeineEntry.is_marked == False)
+        .order_by(CaffeineEntry.timestamp.desc())
+        .all()
+    )
+    confirmed = (
+        db.query(CaffeineEntry)
+        .filter(CaffeineEntry.is_marked == True)
+        .order_by(CaffeineEntry.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    combined = sorted(unconfirmed + confirmed, key=lambda e: e.timestamp, reverse=True)
+    return combined
 
 
 @router.post("/caffeine-entries", response_model=CaffeineEntryResponse, status_code=201)
