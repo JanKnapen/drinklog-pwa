@@ -5,6 +5,15 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _ts(days_ago: int = 0, hours_ago: int = 0):
+    return (datetime.now(timezone.utc) - timedelta(days=days_ago, hours=hours_ago)).isoformat()
+
+
+def _confirm_all(client):
+    cutoff = (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat()
+    client.post("/api/entries/confirm-all", json={"cutoff": cutoff})
+
+
 def test_list_entries_empty(client):
     assert client.get("/api/entries").json() == []
 
@@ -214,3 +223,115 @@ def test_confirmed_only_offset_ignores_unconfirmed(client):
     assert len(result) == 2
     for e in result:
         assert e["is_marked"] is True
+
+
+# --- Summary endpoint tests ---
+
+def test_summary_empty(client):
+    """No confirmed entries → empty list."""
+    r = client.get("/api/entries/summary")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_summary_excludes_unconfirmed(client):
+    """Unconfirmed entries are not included in the summary."""
+    client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": _now()})
+    r = client.get("/api/entries/summary")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_summary_daily_total_calculation(client):
+    """Two entries on the same day are summed; standard_units = (ml * abv / 100) / 15."""
+    # 330ml @ 5.0 ABV → 330*5/100/15 = 1.1 units
+    # 500ml @ 6.0 ABV → 500*6/100/15 ≈ 2.0 units
+    client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": _now()})
+    client.post("/api/entries", json={"ml": 500, "abv": 6.0, "timestamp": _now()})
+    _confirm_all(client)
+
+    r = client.get("/api/entries/summary")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data) == 1
+    expected_total = (330 * 5.0 / 100 / 15) + (500 * 6.0 / 100 / 15)
+    assert abs(data[0]["total"] - expected_total) < 0.0001
+
+
+def test_summary_groups_by_date(client):
+    """Entries on different days produce separate rows sorted ascending."""
+    ts_old = _ts(days_ago=2)
+    ts_new = _ts(days_ago=1)
+    client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": ts_old})
+    client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": ts_new})
+    _confirm_all(client)
+
+    r = client.get("/api/entries/summary")
+    data = r.json()
+    assert len(data) == 2
+    # Sorted ascending: older date first
+    assert data[0]["date"] < data[1]["date"]
+
+
+def test_summary_period_week_excludes_old_entries(client):
+    """Period=week excludes entries older than 7 days."""
+    old_ts = _ts(days_ago=10)
+    recent_ts = _ts(days_ago=2)
+    client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": old_ts})
+    client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": recent_ts})
+    _confirm_all(client)
+
+    r = client.get("/api/entries/summary?period=week")
+    data = r.json()
+    assert len(data) == 1
+    assert data[0]["date"] == recent_ts[:10]
+
+
+def test_summary_period_all_includes_all(client):
+    """Period=all returns all confirmed entries regardless of age."""
+    old_ts = _ts(days_ago=400)
+    recent_ts = _ts(days_ago=2)
+    client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": old_ts})
+    client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": recent_ts})
+    _confirm_all(client)
+
+    r = client.get("/api/entries/summary?period=all")
+    data = r.json()
+    assert len(data) == 2
+
+
+def test_summary_period_month(client):
+    """Period=month includes last 30 days, excludes older."""
+    old_ts = _ts(days_ago=40)
+    recent_ts = _ts(days_ago=15)
+    client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": old_ts})
+    client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": recent_ts})
+    _confirm_all(client)
+
+    r = client.get("/api/entries/summary?period=month")
+    data = r.json()
+    assert len(data) == 1
+
+
+def test_summary_period_year(client):
+    """Period=year includes last 365 days, excludes older."""
+    old_ts = _ts(days_ago=400)
+    recent_ts = _ts(days_ago=100)
+    client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": old_ts})
+    client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": recent_ts})
+    _confirm_all(client)
+
+    r = client.get("/api/entries/summary?period=year")
+    data = r.json()
+    assert len(data) == 1
+
+
+def test_summary_sorted_ascending(client):
+    """Summary rows are sorted by date ascending (chart-ready)."""
+    for d in [5, 3, 1]:
+        client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": _ts(days_ago=d)})
+    _confirm_all(client)
+
+    data = client.get("/api/entries/summary").json()
+    dates = [row["date"] for row in data]
+    assert dates == sorted(dates)

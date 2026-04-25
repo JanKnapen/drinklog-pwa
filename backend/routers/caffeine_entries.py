@@ -1,10 +1,16 @@
+from datetime import datetime, timezone, timedelta
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from config import CAFFEINE_UNIT_DIVISOR
 from database import get_db
 from models import CaffeineTemplate, CaffeineEntry
 from schemas import (
-    CaffeineEntryCreate, CaffeineEntryUpdate, CaffeineEntryResponse, ConfirmAllRequest
+    CaffeineEntryCreate, CaffeineEntryUpdate, CaffeineEntryResponse, ConfirmAllRequest,
+    EntrySummaryItem,
 )
 
 router = APIRouter(tags=["caffeine-entries"])
@@ -90,6 +96,30 @@ def create_caffeine_entry(data: CaffeineEntryCreate, db: Session = Depends(get_d
     db.commit()
     db.refresh(entry)
     return entry
+
+
+@router.get("/caffeine-entries/summary", response_model=list[EntrySummaryItem])
+def caffeine_entries_summary(
+    period: Literal["week", "month", "year", "all"] = Query(default="all"),
+    db: Session = Depends(get_db),
+):
+    q = (
+        db.query(
+            func.date(CaffeineEntry.timestamp).label("date"),
+            func.sum(CaffeineEntry.mg / CAFFEINE_UNIT_DIVISOR).label("total"),
+        )
+        .filter(CaffeineEntry.is_marked == True)
+    )
+    if period != "all":
+        days = {"week": 7, "month": 30, "year": 365}[period]
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        q = q.filter(CaffeineEntry.timestamp >= cutoff.replace(tzinfo=None))
+    rows = (
+        q.group_by(func.date(CaffeineEntry.timestamp))
+        .order_by(func.date(CaffeineEntry.timestamp).asc())
+        .all()
+    )
+    return [EntrySummaryItem(date=row.date, total=round(row.total, 6)) for row in rows]
 
 
 @router.patch("/caffeine-entries/{entry_id}", response_model=CaffeineEntryResponse)

@@ -5,8 +5,8 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def _ts(hours_ago: int):
-    return (datetime.now(timezone.utc) - timedelta(hours=hours_ago)).isoformat()
+def _ts(hours_ago: int = 0, days_ago: int = 0):
+    return (datetime.now(timezone.utc) - timedelta(hours=hours_ago, days=days_ago)).isoformat()
 
 
 def _confirm_all(client):
@@ -125,3 +125,74 @@ def test_caffeine_confirmed_only_offset_counts_only_confirmed_rows(client):
     assert len(result) == 2
     for e in result:
         assert e["is_marked"] is True
+
+
+# --- Summary endpoint tests ---
+
+def test_caffeine_summary_empty(client):
+    """No confirmed entries → empty list."""
+    r = client.get("/api/caffeine-entries/summary")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_caffeine_summary_excludes_unconfirmed(client):
+    """Unconfirmed entries are not included in the summary."""
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _now()})
+    r = client.get("/api/caffeine-entries/summary")
+    assert r.json() == []
+
+
+def test_caffeine_summary_daily_total_calculation(client):
+    """Two entries on the same day are summed; caffeine_units = mg / 80."""
+    # 80mg → 1.0 unit; 160mg → 2.0 units → total 3.0
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _now()})
+    client.post("/api/caffeine-entries", json={"mg": 160, "timestamp": _now()})
+    _confirm_all(client)
+
+    r = client.get("/api/caffeine-entries/summary")
+    data = r.json()
+    assert len(data) == 1
+    assert abs(data[0]["total"] - 3.0) < 0.0001
+
+
+def test_caffeine_summary_groups_by_date(client):
+    """Entries on different days produce separate rows sorted ascending."""
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=2)})
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=1)})
+    _confirm_all(client)
+
+    data = client.get("/api/caffeine-entries/summary").json()
+    assert len(data) == 2
+    assert data[0]["date"] < data[1]["date"]
+
+
+def test_caffeine_summary_period_week(client):
+    """Period=week excludes entries older than 7 days."""
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=10)})
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=2)})
+    _confirm_all(client)
+
+    data = client.get("/api/caffeine-entries/summary?period=week").json()
+    assert len(data) == 1
+
+
+def test_caffeine_summary_period_all(client):
+    """Period=all returns all confirmed entries."""
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=400)})
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=2)})
+    _confirm_all(client)
+
+    data = client.get("/api/caffeine-entries/summary?period=all").json()
+    assert len(data) == 2
+
+
+def test_caffeine_summary_sorted_ascending(client):
+    """Summary rows are sorted by date ascending (chart-ready)."""
+    for d in [5, 3, 1]:
+        client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=d)})
+    _confirm_all(client)
+
+    data = client.get("/api/caffeine-entries/summary").json()
+    dates = [row["date"] for row in data]
+    assert dates == sorted(dates)

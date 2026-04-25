@@ -1,10 +1,16 @@
+from datetime import datetime, timezone, timedelta
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from config import ALCOHOL_UNIT_DIVISOR
 from database import get_db
 from models import DrinkTemplate, DrinkEntry
 from schemas import (
-    DrinkEntryCreate, DrinkEntryUpdate, DrinkEntryResponse, ConfirmAllRequest
+    DrinkEntryCreate, DrinkEntryUpdate, DrinkEntryResponse, ConfirmAllRequest,
+    EntrySummaryItem,
 )
 
 router = APIRouter(tags=["entries"])
@@ -91,6 +97,31 @@ def create_entry(data: DrinkEntryCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(entry)
     return entry
+
+
+@router.get("/entries/summary", response_model=list[EntrySummaryItem])
+def entries_summary(
+    period: Literal["week", "month", "year", "all"] = Query(default="all"),
+    db: Session = Depends(get_db),
+):
+    q = (
+        db.query(
+            func.date(DrinkEntry.timestamp).label("date"),
+            func.sum(DrinkEntry.ml * DrinkEntry.abv / 100.0 / ALCOHOL_UNIT_DIVISOR).label("total"),
+        )
+        .filter(DrinkEntry.is_marked == True)
+    )
+    if period != "all":
+        days = {"week": 7, "month": 30, "year": 365}[period]
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        # timestamps stored as naive UTC
+        q = q.filter(DrinkEntry.timestamp >= cutoff.replace(tzinfo=None))
+    rows = (
+        q.group_by(func.date(DrinkEntry.timestamp))
+        .order_by(func.date(DrinkEntry.timestamp).asc())
+        .all()
+    )
+    return [EntrySummaryItem(date=row.date, total=round(row.total, 6)) for row in rows]
 
 
 @router.put("/entries/{entry_id}", response_model=DrinkEntryResponse)
