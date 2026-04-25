@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { TrashIcon, PencilIcon, CheckCircleIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
@@ -7,26 +7,87 @@ import { Field, UnitPreview, inputCls, primaryBtn } from '../components/FormFiel
 import { groupByDate, localMidnightISO, todayKey, toLocalDateKey } from '../utils'
 import type { TrackerEntry, DrinkEntry, CaffeineEntry } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
-import { useModuleAdapter } from '../hooks/useModuleAdapter'
-import { useEntries, useUpdateEntry } from '../api/entries'
-import { useCaffeineEntries, useUpdateCaffeineEntry } from '../api/caffeine-entries'
+import { useEntries, useDeleteEntry, useConfirmAll, useUpdateEntry } from '../api/entries'
+import {
+  useCaffeineEntries,
+  useDeleteCaffeineEntry,
+  useConfirmAllCaffeineEntries,
+  useUpdateCaffeineEntry,
+} from '../api/caffeine-entries'
+import { apiFetch } from '../api/client'
 
 export default function LogTab() {
-  const adapter = useModuleAdapter()
-  const { openSettings } = useSettings()
-  const { entries, activeModule } = adapter
+  const { settings, openSettings } = useSettings()
+  const activeModule = settings.activeModule
+
+  // Both called unconditionally (React rules)
+  const alcoholQuery = useEntries()
+  const caffeineQuery = useCaffeineEntries()
+  const query = activeModule === 'alcohol' ? alcoholQuery : caffeineQuery
+  const rawEntries = query.data ?? []
+
+  // Both called unconditionally (React rules)
+  const deleteAlcohol = useDeleteEntry()
+  const deleteCaffeine = useDeleteCaffeineEntry()
+  const confirmAllAlcohol = useConfirmAll()
+  const confirmAllCaffeine = useConfirmAllCaffeineEntries()
 
   const [filter, setFilter] = useState<'unconfirmed' | 'confirmed'>('unconfirmed')
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set([todayKey()]))
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null)
 
-  const filtered = entries.filter((e) => e.isMarked === (filter === 'confirmed'))
-  const groups = groupByDate(filtered)
+  // Load more state
+  const [extraConfirmed, setExtraConfirmed] = useState<typeof rawEntries>([])
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
+  const [nextOffset, setNextOffset] = useState(100)
+
+  // Reset load-more state when activeModule changes
+  useEffect(() => {
+    setExtraConfirmed([])
+    setHasMore(true)
+    setNextOffset(100)
+  }, [activeModule])
+
+  function mapEntry(e: DrinkEntry | CaffeineEntry): TrackerEntry {
+    if (activeModule === 'alcohol') {
+      const d = e as DrinkEntry
+      return {
+        id: d.id,
+        templateId: d.template_id,
+        customName: d.custom_name,
+        name: d.template?.name ?? d.custom_name,
+        timestamp: d.timestamp,
+        isMarked: d.is_marked,
+        value: d.standard_units,
+        displayInfo: `${d.ml}ml · ${d.abv.toFixed(1)}% · ${d.standard_units.toFixed(1)} units`,
+      }
+    } else {
+      const c = e as CaffeineEntry
+      return {
+        id: c.id,
+        templateId: c.template_id,
+        customName: c.custom_name,
+        name: c.template?.name ?? c.custom_name,
+        timestamp: c.timestamp,
+        isMarked: c.is_marked,
+        value: c.caffeine_units,
+        displayInfo: `${c.mg}mg · ${c.caffeine_units.toFixed(1)} units`,
+      }
+    }
+  }
+
+  const allMapped: TrackerEntry[] = rawEntries.map(mapEntry)
+  const allUnconfirmed = allMapped.filter((e) => !e.isMarked)
+  const confirmedFromInitial = allMapped.filter((e) => e.isMarked)
+  const extraMapped = extraConfirmed.map(mapEntry)
+  const allConfirmed = [...confirmedFromInitial, ...extraMapped]
+
+  const displayed = filter === 'confirmed' ? allConfirmed : allUnconfirmed
+  const groups = groupByDate(displayed)
   const today = todayKey()
 
-  const hasEligibleToConfirm = entries
-    .filter((e) => !e.isMarked)
-    .some((e) => toLocalDateKey(e.timestamp) < today)
+  const hasEligibleToConfirm = allUnconfirmed.some((e) => toLocalDateKey(e.timestamp) < today)
 
   function toggleDate(date: string) {
     setExpandedDates((prev) => {
@@ -34,6 +95,35 @@ export default function LogTab() {
       next.has(date) ? next.delete(date) : next.add(date)
       return next
     })
+  }
+
+  function handleDelete(id: string) {
+    if (activeModule === 'alcohol') deleteAlcohol.mutate(id)
+    else deleteCaffeine.mutate(id)
+  }
+
+  async function handleConfirmAll(cutoff: Date) {
+    const iso = cutoff.toISOString()
+    if (activeModule === 'alcohol') await confirmAllAlcohol.mutateAsync(iso)
+    else await confirmAllCaffeine.mutateAsync(iso)
+    setExtraConfirmed([])
+    setHasMore(true)
+    setNextOffset(100)
+  }
+
+  async function handleLoadMore() {
+    setLoadingMore(true)
+    try {
+      const path = activeModule === 'alcohol' ? '/api/entries' : '/api/caffeine-entries'
+      const more = await apiFetch<typeof rawEntries>(
+        `${path}?confirmed_only=true&limit=100&offset=${nextOffset}`
+      )
+      if (more.length < 100) setHasMore(false)
+      setExtraConfirmed((prev) => [...prev, ...more] as typeof rawEntries)
+      setNextOffset((prev) => prev + 100)
+    } finally {
+      setLoadingMore(false)
+    }
   }
 
   const midnight = new Date(localMidnightISO())
@@ -53,7 +143,7 @@ export default function LogTab() {
       </div>
 
       <div data-dbg-zone="LIST" className="flex-1 min-h-0 overflow-y-auto touch-pan-y">
-        {filtered.length === 0 ? (
+        {displayed.length === 0 ? (
           <EmptyState message={filter === 'confirmed' ? 'No confirmed entries' : 'No unconfirmed entries'} />
         ) : (
           <div className="px-4 flex flex-col gap-2 pt-2 pb-4">
@@ -80,7 +170,7 @@ export default function LogTab() {
                           entry={entry}
                           isConfirmed={filter === 'confirmed'}
                           onEdit={() => setEditingEntryId(entry.id)}
-                          onDelete={() => adapter.deleteEntry(entry.id)}
+                          onDelete={() => handleDelete(entry.id)}
                         />
                       ))}
                     </div>
@@ -88,6 +178,15 @@ export default function LogTab() {
                 </div>
               )
             })}
+            {filter === 'confirmed' && hasMore && (
+              <button
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="w-full py-3 text-sm font-medium text-blue-500 disabled:text-neutral-400 transition-colors"
+              >
+                {loadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -95,7 +194,7 @@ export default function LogTab() {
       <div data-dbg-zone="FOOTER" className="flex-shrink-0 px-4 pt-3 pb-3 flex flex-col gap-2 bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700">
         {filter === 'unconfirmed' && (
           <button
-            onClick={() => adapter.confirmAll(midnight)}
+            onClick={() => handleConfirmAll(midnight)}
             disabled={!hasEligibleToConfirm}
             className="flex items-center justify-center gap-2 bg-blue-500 disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white disabled:text-neutral-400 font-semibold text-sm py-2.5 rounded-full transition-colors"
           >
