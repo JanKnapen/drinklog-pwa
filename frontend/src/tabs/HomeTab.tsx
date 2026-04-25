@@ -388,6 +388,11 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged 
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
+        {prefill && prefill.strategy_used != null && (
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2 font-mono">
+            {(['OFF+', 'AH', 'Hybrid'] as const)[prefill.strategy_used - 1]} · {prefill.actual_source ?? '—'} · {prefill.latency_ms != null ? `${Math.round(prefill.latency_ms)}ms` : '—'}
+          </div>
+        )}
         <Field label="Drink name">
           <input className={inputCls} placeholder="e.g. Lager, House Wine…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
         </Field>
@@ -484,6 +489,11 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, o
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
+        {prefill && prefill.strategy_used != null && (
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2 font-mono">
+            {(['OFF+', 'AH', 'Hybrid'] as const)[prefill.strategy_used - 1]} · {prefill.actual_source ?? '—'} · {prefill.latency_ms != null ? `${Math.round(prefill.latency_ms)}ms` : '—'}
+          </div>
+        )}
         <Field label="Drink name">
           <input className={inputCls} placeholder="e.g. Coffee, Energy Drink…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
         </Field>
