@@ -1,6 +1,9 @@
+import logging
 import re
 import time
 from typing import Optional, Literal
+
+logger = logging.getLogger(__name__)
 
 import httpx
 from fastapi import APIRouter, Depends, Query
@@ -144,19 +147,20 @@ async def _strategy_hybrid(code: str, module: str, client: httpx.AsyncClient) ->
 
     try:
         ah_product = await _fetch_ah(client, code)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("AH lookup failed for %s: %s", code, exc)
 
     try:
         off_product = await _fetch_off(client, code)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("OFF lookup failed for %s: %s", code, exc)
 
-    name = (
-        (ah_product.get("title") or ah_product.get("description"))
-        or (off_product.get("product_name") or off_product.get("product_name_en"))
-        or None
-    )
+    # Name resolution — track which source it came from
+    name = (ah_product.get("title") or ah_product.get("description")) or None
+    name_source: Literal["ah", "off"] = "ah"
+    if not name:
+        name = (off_product.get("product_name") or off_product.get("product_name_en")) or None
+        name_source = "off"
     if not name:
         return BarcodeResult(source="not_found", actual_source="hybrid")
 
@@ -188,13 +192,16 @@ async def _strategy_hybrid(code: str, module: str, client: httpx.AsyncClient) ->
 
         if abv is None:
             for field in ("ingredients_text", "description", "generic_name"):
-                text = ah_product.get(field) or off_product.get(field)
-                abv = parse_abv_from_text(text)
+                for source_dict in (ah_product, off_product):
+                    text = source_dict.get(field)
+                    abv = parse_abv_from_text(text)
+                    if abv is not None:
+                        actual_source = "hybrid+regex"
+                        break
                 if abv is not None:
-                    actual_source = "hybrid+regex"
                     break
 
-        return BarcodeResult(source="ah" if ah_product else "off", name=name, ml=ml, abv=abv, actual_source=actual_source)
+        return BarcodeResult(source=name_source, name=name, ml=ml, abv=abv, actual_source=actual_source)
 
     else:
         ml = _parse_ml(ah_product.get("unitSize"))
@@ -207,14 +214,17 @@ async def _strategy_hybrid(code: str, module: str, client: httpx.AsyncClient) ->
 
         if mg is None:
             for field in ("ingredients_text", "description", "generic_name"):
-                text = ah_product.get(field) or off_product.get(field)
-                mg_per_100ml = parse_caffeine_mg_from_text(text)
-                if mg_per_100ml is not None and ml is not None:
-                    mg = mg_per_100ml * ml / 100
-                    actual_source = "hybrid+regex"
+                for source_dict in (ah_product, off_product):
+                    text = source_dict.get(field)
+                    mg_per_100ml = parse_caffeine_mg_from_text(text)
+                    if mg_per_100ml is not None and ml is not None:
+                        mg = mg_per_100ml * ml / 100
+                        actual_source = "hybrid+regex"
+                        break
+                if mg is not None:
                     break
 
-        return BarcodeResult(source="ah" if ah_product else "off", name=name, ml=ml, mg=mg, actual_source=actual_source)
+        return BarcodeResult(source=name_source, name=name, ml=ml, mg=mg, actual_source=actual_source)
 
 
 @router.get("/barcode/{code}", response_model=BarcodeResult)
