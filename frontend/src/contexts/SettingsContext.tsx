@@ -2,10 +2,12 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 
 export type Theme = 'light' | 'dark' | 'system'
 export type ActiveModule = 'alcohol' | 'caffeine'
+export type BarcodeStrategy = 1 | 2 | 3
 
 export interface Settings {
   theme: Theme
   activeModule: ActiveModule
+  barcodeStrategy: BarcodeStrategy
 }
 
 interface SettingsContextValue {
@@ -17,13 +19,15 @@ interface SettingsContextValue {
 }
 
 const STORAGE_KEY = 'drinklog-settings'
-const DEFAULT_SETTINGS: Settings = { theme: 'system', activeModule: 'alcohol' }
+const DEFAULT_SETTINGS: Settings = { theme: 'system', activeModule: 'alcohol', barcodeStrategy: 1 }
 
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return DEFAULT_SETTINGS
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) }
+    const parsed = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) }
+    if (![1, 2, 3].includes(parsed.barcodeStrategy)) parsed.barcodeStrategy = 1
+    return parsed
   } catch {
     return DEFAULT_SETTINGS
   }
