@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { TrashIcon, PencilIcon, CheckCircleIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
@@ -15,6 +15,33 @@ import {
   useUpdateCaffeineEntry,
 } from '../api/caffeine-entries'
 import { apiFetch } from '../api/client'
+
+function mapEntry(e: DrinkEntry | CaffeineEntry, activeModule: 'alcohol' | 'caffeine'): TrackerEntry {
+  if (activeModule === 'alcohol') {
+    const d = e as DrinkEntry
+    return {
+      id: d.id,
+      templateId: d.template_id,
+      customName: d.custom_name,
+      name: d.template?.name ?? d.custom_name,
+      timestamp: d.timestamp,
+      isMarked: d.is_marked,
+      value: d.standard_units,
+      displayInfo: `${d.ml}ml · ${d.abv.toFixed(1)}% · ${d.standard_units.toFixed(1)} units`,
+    }
+  }
+  const c = e as CaffeineEntry
+  return {
+    id: c.id,
+    templateId: c.template_id,
+    customName: c.custom_name,
+    name: c.template?.name ?? c.custom_name,
+    timestamp: c.timestamp,
+    isMarked: c.is_marked,
+    value: c.caffeine_units,
+    displayInfo: `${c.mg}mg · ${c.caffeine_units.toFixed(1)} units`,
+  }
+}
 
 export default function LogTab() {
   const { settings, openSettings } = useSettings()
@@ -39,49 +66,30 @@ export default function LogTab() {
   // Load more state
   const [extraConfirmed, setExtraConfirmed] = useState<typeof rawEntries>([])
   const [loadingMore, setLoadingMore] = useState(false)
-  const [hasMore, setHasMore] = useState(true)
+  const [loadMoreExhausted, setLoadMoreExhausted] = useState(false)
   const [nextOffset, setNextOffset] = useState(100)
 
   // Reset load-more state when activeModule changes
   useEffect(() => {
     setExtraConfirmed([])
-    setHasMore(true)
+    setLoadMoreExhausted(false)
     setNextOffset(100)
   }, [activeModule])
 
-  function mapEntry(e: DrinkEntry | CaffeineEntry): TrackerEntry {
-    if (activeModule === 'alcohol') {
-      const d = e as DrinkEntry
-      return {
-        id: d.id,
-        templateId: d.template_id,
-        customName: d.custom_name,
-        name: d.template?.name ?? d.custom_name,
-        timestamp: d.timestamp,
-        isMarked: d.is_marked,
-        value: d.standard_units,
-        displayInfo: `${d.ml}ml · ${d.abv.toFixed(1)}% · ${d.standard_units.toFixed(1)} units`,
-      }
-    } else {
-      const c = e as CaffeineEntry
-      return {
-        id: c.id,
-        templateId: c.template_id,
-        customName: c.custom_name,
-        name: c.template?.name ?? c.custom_name,
-        timestamp: c.timestamp,
-        isMarked: c.is_marked,
-        value: c.caffeine_units,
-        displayInfo: `${c.mg}mg · ${c.caffeine_units.toFixed(1)} units`,
-      }
-    }
-  }
-
-  const allMapped: TrackerEntry[] = rawEntries.map(mapEntry)
+  const allMapped: TrackerEntry[] = useMemo(
+    () => rawEntries.map(e => mapEntry(e, activeModule)),
+    [rawEntries, activeModule]
+  )
   const allUnconfirmed = allMapped.filter((e) => !e.isMarked)
   const confirmedFromInitial = allMapped.filter((e) => e.isMarked)
-  const extraMapped = extraConfirmed.map(mapEntry)
+  const extraMapped = useMemo(
+    () => extraConfirmed.map(e => mapEntry(e, activeModule)),
+    [extraConfirmed, activeModule]
+  )
   const allConfirmed = [...confirmedFromInitial, ...extraMapped]
+
+  // Derive canLoadMore: show "Load more" only if we might have more data on server
+  const canLoadMore = !loadMoreExhausted && (confirmedFromInitial.length >= 100 || extraConfirmed.length > 0)
 
   const displayed = filter === 'confirmed' ? allConfirmed : allUnconfirmed
   const groups = groupByDate(displayed)
@@ -107,10 +115,12 @@ export default function LogTab() {
     if (activeModule === 'alcohol') await confirmAllAlcohol.mutateAsync(iso)
     else await confirmAllCaffeine.mutateAsync(iso)
     setExtraConfirmed([])
-    setHasMore(true)
+    setLoadMoreExhausted(false)
     setNextOffset(100)
   }
 
+  // Offset starts at 100 because the initial useEntries() call already fetches
+  // the most-recent 100 confirmed entries (same result as confirmed_only=true&offset=0)
   async function handleLoadMore() {
     setLoadingMore(true)
     try {
@@ -118,7 +128,7 @@ export default function LogTab() {
       const more = await apiFetch<typeof rawEntries>(
         `${path}?confirmed_only=true&limit=100&offset=${nextOffset}`
       )
-      if (more.length < 100) setHasMore(false)
+      if (more.length < 100) setLoadMoreExhausted(true)
       setExtraConfirmed((prev) => [...prev, ...more] as typeof rawEntries)
       setNextOffset((prev) => prev + 100)
     } finally {
@@ -178,7 +188,7 @@ export default function LogTab() {
                 </div>
               )
             })}
-            {filter === 'confirmed' && hasMore && (
+            {filter === 'confirmed' && canLoadMore && (
               <button
                 onClick={handleLoadMore}
                 disabled={loadingMore}
