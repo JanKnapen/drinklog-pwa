@@ -2,6 +2,7 @@ services:
   backend:
     build: ./backend
     container_name: drinklog-backend
+    env_file: .env
     environment:
       - DATABASE_URL=sqlite:////data/drinklog.db
     volumes:

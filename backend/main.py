@@ -3,13 +3,56 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text, inspect as sa_inspect
+from sqlalchemy.orm import Session
 
 from database import Base, engine
 from routers import templates, entries, caffeine_templates, caffeine_entries
 from routers import barcode
-from config import PUBLIC_CONFIG
+from config import PUBLIC_CONFIG, ADMIN_SEED_USERNAME, ADMIN_SEED_PASSWORD
+from auth import pwd_context
 
 Base.metadata.create_all(bind=engine)
+
+
+def _ensure_seed_user():
+    from models import User
+    with Session(engine) as session:
+        if session.query(User).count() == 0:
+            if not ADMIN_SEED_USERNAME or not ADMIN_SEED_PASSWORD:
+                raise RuntimeError(
+                    "No users exist and ADMIN_SEED_USERNAME/ADMIN_SEED_PASSWORD env vars are not set. "
+                    "Set them to bootstrap the first user."
+                )
+            user = User(
+                username=ADMIN_SEED_USERNAME,
+                hashed_password=pwd_context.hash(ADMIN_SEED_PASSWORD),
+            )
+            session.add(user)
+            session.commit()
+
+
+def _migrate_user_id_columns():
+    from models import User
+    inspector = sa_inspect(engine)
+    with Session(engine) as session:
+        seed_user = session.query(User).first()
+        assert seed_user is not None  # guaranteed by _ensure_seed_user
+        seed_user_id = seed_user.id
+
+    tables = ["drink_entries", "drink_templates", "caffeine_entries", "caffeine_templates"]
+    for table in tables:
+        existing_cols = {c["name"] for c in inspector.get_columns(table)}
+        if "user_id" not in existing_cols:
+            with engine.connect() as conn:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER"))
+                conn.commit()
+        # Backfill NULLs
+        with engine.connect() as conn:
+            conn.execute(text(
+                f"UPDATE {table} SET user_id = :uid WHERE user_id IS NULL"
+            ), {"uid": seed_user_id})
+            conn.commit()
+
 
 def _migrate():
     inspector = sa_inspect(engine)
@@ -41,6 +84,10 @@ def _migrate():
                 with engine.connect() as conn:
                     conn.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table}({column})"))
                     conn.commit()
+
+    # Auth migration
+    _ensure_seed_user()  # must run before backfill
+    _migrate_user_id_columns()
 
 _migrate()
 
