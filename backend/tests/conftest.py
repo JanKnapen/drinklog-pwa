@@ -1,3 +1,8 @@
+import os
+
+os.environ.setdefault("ADMIN_SEED_USERNAME", "testadmin")
+os.environ.setdefault("ADMIN_SEED_PASSWORD", "testpass123")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -6,6 +11,8 @@ from sqlalchemy.orm import sessionmaker
 
 from database import Base, get_db
 from main import app
+from models import User
+from routers.deps import get_current_user
 
 
 @pytest.fixture
@@ -25,7 +32,23 @@ def client():
         finally:
             db.close()
 
+    def override_get_current_user():
+        db = TestSession()
+        try:
+            user = db.query(User).first()
+            if user is None:
+                from auth import pwd_context
+                user = User(username="testadmin", hashed_password=pwd_context.hash("testpass123"))
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+            yield user
+        finally:
+            db.close()
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
     yield TestClient(app)
     app.dependency_overrides.pop(get_db, None)
+    app.dependency_overrides.pop(get_current_user, None)
     Base.metadata.drop_all(engine)
