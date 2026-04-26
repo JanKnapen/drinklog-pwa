@@ -274,7 +274,9 @@ Tailwind uses `darkMode: 'class'` — the `dark` class is toggled on `<html>` by
 
 Both admin ports are bound to all interfaces (not localhost-only) so they are accessible over LAN and Tailscale without extra tunneling.
 
-**Required env vars** (document in `.env`, see `.env.example`):
+**`.env` and `.env.example`** — `.env` is the live deployment file (gitignored) that holds real secrets on the server. `.env.example` is the committed template. **Whenever a new env var is introduced, it must be added to `.env.example`** with a placeholder value and a short comment explaining what it is. Never read or suggest values from `.env` — treat it as a secret file that Claude should not inspect or expose.
+
+**Env vars** (set in `.env` on the server, documented in `.env.example`):
 - `ADMIN_SEED_USERNAME` / `ADMIN_SEED_PASSWORD` — bootstrap the first user on a fresh database. Ignored once any user exists. Backend refuses to start if the User table is empty and these are unset.
 - `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` — secrets for signing tokens. If unset, random values are generated per process restart, which invalidates all existing tokens on every redeploy. Always set these in production.
 - `ACCESS_TOKEN_EXPIRE_MINUTES` (default: 15) / `REFRESH_TOKEN_EXPIRE_DAYS` (default: 30) — optional overrides.
