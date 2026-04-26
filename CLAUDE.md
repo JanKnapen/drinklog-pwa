@@ -14,10 +14,17 @@ DrinkLog is a self-hosted PWA for tracking consumption. It supports two modes â€
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn main:app --reload          # runs on :8000
-pytest                             # all tests
-pytest tests/test_entries.py       # single test file
-pytest -k "test_confirm_all"       # single test by name
+PYTHONPATH=.. uvicorn main:app --reload          # runs on :8000
+PYTHONPATH=.. pytest                             # all tests
+PYTHONPATH=.. pytest tests/test_entries.py       # single test file
+PYTHONPATH=.. pytest -k "test_confirm_all"       # single test by name
+```
+
+**Admin Backend** (from `admin/backend/`):
+```bash
+pip install -r requirements.txt
+PYTHONPATH=../.. uvicorn main:app --reload --port 8001
+PYTHONPATH=../.. pytest tests/
 ```
 
 **Frontend** (from `frontend/`):
