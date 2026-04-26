@@ -27,6 +27,13 @@ PYTHONPATH=../.. uvicorn main:app --reload --port 8001
 PYTHONPATH=../.. pytest tests/
 ```
 
+**Admin Frontend** (from `admin/frontend/`):
+```bash
+npm install
+npm run dev      # runs on :5174, proxies /api → :8001
+npm run build    # vite build
+```
+
 **Frontend** (from `frontend/`):
 ```bash
 npm install
@@ -137,6 +144,49 @@ Two-token JWT pattern. All data endpoints require a valid access token.
 
 `conftest.py` — `override_get_current_user` creates or reuses a `testadmin` user in the test DB. This means all non-auth tests run as `testadmin` without needing a token.
 
+## Admin Interface
+
+A separate service for server operators to manage user accounts. It is **not** the same as the main app's user-facing authentication.
+
+### Architecture
+
+The admin is two independent Docker services (`admin-backend`, `admin-frontend`) running alongside the main stack. They share the same `db_data` volume and therefore the same SQLite database. The admin backend imports models from `shared/models.py` (the same ORM models the main backend uses) — it does **not** have its own database or User table.
+
+Both admin services are exposed on all interfaces (not localhost-only) so they are reachable over LAN and Tailscale. `admin-backend` listens on port `8001`, `admin-frontend` on `8002`.
+
+### Authentication (admin-specific)
+
+The admin uses a **single master password** pattern, not per-user credentials. This is separate from the main app's JWT system.
+
+- **Login:** `POST /api/admin/login` with `{ password }`. Validated against `ADMIN_MASTER_PASSWORD` env var (plain string comparison — no hashing needed because this is a server secret, not a user password). Returns a short-lived JWT.
+- **Admin token** — 60-minute lifetime (default). Signed with `ADMIN_JWT_SECRET`. Payload carries `{ type: "admin" }` — `get_admin_user` dependency in `routers/deps.py` validates this claim.
+- **Token storage** — stored in `sessionStorage` (survives page refresh, cleared on tab close). Unlike the main app, there is no `httpOnly` cookie or refresh mechanism. Logging out clears `sessionStorage`.
+- **Rate limiting** — login is rate-limited to 5 requests/minute per IP via `slowapi` (same library as the main backend).
+- **`ADMIN_MASTER_PASSWORD` is required at startup** — `main.py` raises `RuntimeError` and refuses to start if the env var is unset or empty.
+- **`ADMIN_JWT_SECRET`** — if unset, a random secret is generated per process restart (same pattern as main app JWT secrets). Always set this in production or the admin will require re-login after every restart.
+
+### Backend
+
+`admin/backend/routers/admin.py` — all endpoints are under the `/api/admin/` prefix and require `get_admin_user` dependency. Endpoints:
+- `GET /api/admin/users` — lists all users with alcohol and caffeine entry counts
+- `POST /api/admin/users` — creates a user (409 if username exists); passwords are hashed with `bcrypt`
+- `PATCH /api/admin/users/{id}/password` — replaces password hash
+- `DELETE /api/admin/users/{id}` — **explicitly** deletes all child rows (DrinkEntry, CaffeineEntry, DrinkTemplate, CaffeineTemplate) before deleting the user. There is no DB-level cascade; the explicit delete loop is intentional.
+
+`ALLOWED_ORIGINS` env var (comma-separated) controls CORS. Defaults to `http://localhost,http://localhost:5174`.
+
+### Frontend
+
+`admin/frontend/` is a standalone Vite + React + TS + Tailwind project with no TanStack Query, no dark mode, and no PWA/service worker.
+
+- `src/api/client.ts` — plain `fetch` wrapper; no `apiFetch` retry logic (no refresh token to retry with).
+- `src/App.tsx` — checks `sessionStorage` for a token on mount; renders `LoginView` or `UsersView` accordingly.
+- `src/views/UsersView.tsx` — inline modal components (`ModalOverlay`, `LabeledInput`, `ModalActions`) rather than a shared Modal component.
+
+**Viewport:** `index.html` uses `maximum-scale=1` in the viewport meta tag (same as the main app) to prevent Chrome on iOS from rendering the page zoomed in. Modern iOS ignores `maximum-scale=1` when focusing an input, so input auto-zoom still works.
+
+**`html, body, #root { height: 100%; overflow: hidden }`** in `index.css` — same pattern as the main app, required so the admin fills the full viewport on mobile without document-level scroll.
+
 ## Barcode Scanner
 
 `BarcodeScanner.tsx` mounts/unmounts conditionally (`{modal === 'scanner' && <BarcodeScanner />}`) — it is never toggled with an `open` prop. `BottomNav` is hidden while the scanner is open (rendered conditionally in `App.tsx` via `scannerOpen` state lifted from `HomeTab`) because z-index stacking made it appear over the fullscreen camera overlay.
@@ -216,14 +266,20 @@ Tailwind uses `darkMode: 'class'` — the `dark` class is toggled on `<html>` by
 
 ## Deployment Notes
 
-`docker-compose.yml` runs two services on an `internal` bridge network:
+`docker-compose.yml` runs four services on an `internal` bridge network:
 - `backend` — FastAPI, no exposed ports, `DATABASE_URL` points to a named volume at `/data/drinklog.db`. Reads env vars from `.env` (via `env_file: .env`).
-- `frontend` — nginx on port 80, serves the Vite build, proxies `/api/` to `backend:8000`
+- `frontend` — nginx on port **80**, serves the Vite build, proxies `/api/` to `backend:8000`.
+- `admin-backend` — FastAPI on port **8001** (all interfaces), shares the same `db_data` volume. Reads env vars from `.env`.
+- `admin-frontend` — nginx on port **8002** (all interfaces), serves the admin Vite build, proxies `/api/` to `admin-backend:8000`.
+
+Both admin ports are bound to all interfaces (not localhost-only) so they are accessible over LAN and Tailscale without extra tunneling.
 
 **Required env vars** (document in `.env`, see `.env.example`):
 - `ADMIN_SEED_USERNAME` / `ADMIN_SEED_PASSWORD` — bootstrap the first user on a fresh database. Ignored once any user exists. Backend refuses to start if the User table is empty and these are unset.
 - `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` — secrets for signing tokens. If unset, random values are generated per process restart, which invalidates all existing tokens on every redeploy. Always set these in production.
 - `ACCESS_TOKEN_EXPIRE_MINUTES` (default: 15) / `REFRESH_TOKEN_EXPIRE_DAYS` (default: 30) — optional overrides.
+- `ADMIN_MASTER_PASSWORD` — required; admin backend refuses to start without it.
+- `ADMIN_JWT_SECRET` — if unset, random secret generated per restart (admin re-login required after every restart). Always set in production.
 
 `nginx.conf` is at the project root and is baked into the frontend image at build time (`frontend/Dockerfile`). To change proxy behavior, edit `nginx.conf` and rebuild with `docker compose up --build`.
 
