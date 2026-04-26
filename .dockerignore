@@ -3,3 +3,9 @@ backend/.venv
 backend/__pycache__
 backend/.pytest_cache
 .git
+backend/tests/
+admin/backend/.venv
+admin/backend/__pycache__
+admin/backend/.pytest_cache
+admin/backend/tests/
+admin/frontend/node_modules

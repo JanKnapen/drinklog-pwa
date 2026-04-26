@@ -1,4 +1,5 @@
-import os
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 os.environ.setdefault("ADMIN_SEED_USERNAME", "testadmin")
 os.environ.setdefault("ADMIN_SEED_PASSWORD", "testpass123")
