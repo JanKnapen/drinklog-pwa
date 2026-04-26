@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import CaffeineTemplate, CaffeineEntry, DrinkTemplate
+from models import CaffeineTemplate, CaffeineEntry, DrinkTemplate, User
+from routers.deps import get_current_user
 from schemas import CaffeineTemplateCreate, CaffeineTemplateUpdate, CaffeineTemplateResponse
 
 router = APIRouter(tags=["caffeine-templates"])
@@ -16,20 +17,40 @@ def _check_barcode_cross_module(barcode: str | None, db: Session) -> None:
 
 
 @router.get("/caffeine-templates", response_model=list[CaffeineTemplateResponse])
-def list_caffeine_templates(db: Session = Depends(get_db)):
-    return db.query(CaffeineTemplate).order_by(CaffeineTemplate.usage_count.desc()).all()
+def list_caffeine_templates(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return (
+        db.query(CaffeineTemplate)
+        .filter(CaffeineTemplate.user_id == current_user.id)
+        .order_by(CaffeineTemplate.usage_count.desc())
+        .all()
+    )
 
 
 @router.post("/caffeine-templates", response_model=CaffeineTemplateResponse, status_code=201)
-def create_caffeine_template(data: CaffeineTemplateCreate, db: Session = Depends(get_db)):
-    if db.query(CaffeineTemplate).filter(CaffeineTemplate.name == data.name).first():
+def create_caffeine_template(
+    data: CaffeineTemplateCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if db.query(CaffeineTemplate).filter(
+        CaffeineTemplate.user_id == current_user.id, CaffeineTemplate.name == data.name
+    ).first():
         raise HTTPException(status_code=409, detail="A template with this name already exists")
-    if db.query(CaffeineEntry).filter(CaffeineEntry.custom_name == data.name, CaffeineEntry.is_marked == False).first():
+    if db.query(CaffeineEntry).filter(
+        CaffeineEntry.user_id == current_user.id,
+        CaffeineEntry.custom_name == data.name,
+        CaffeineEntry.is_marked == False,
+    ).first():
         raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
-    if data.barcode and db.query(CaffeineTemplate).filter(CaffeineTemplate.barcode == data.barcode).first():
+    if data.barcode and db.query(CaffeineTemplate).filter(
+        CaffeineTemplate.user_id == current_user.id, CaffeineTemplate.barcode == data.barcode
+    ).first():
         raise HTTPException(status_code=409, detail="A template with this barcode already exists")
     _check_barcode_cross_module(data.barcode, db)
-    template = CaffeineTemplate(**data.model_dump())
+    template = CaffeineTemplate(**data.model_dump(), user_id=current_user.id)
     db.add(template)
     db.commit()
     db.refresh(template)
@@ -37,19 +58,30 @@ def create_caffeine_template(data: CaffeineTemplateCreate, db: Session = Depends
 
 
 @router.patch("/caffeine-templates/{template_id}", response_model=CaffeineTemplateResponse)
-def update_caffeine_template(template_id: str, data: CaffeineTemplateUpdate, db: Session = Depends(get_db)):
-    template = db.query(CaffeineTemplate).filter(CaffeineTemplate.id == template_id).first()
+def update_caffeine_template(
+    template_id: str,
+    data: CaffeineTemplateUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    template = db.query(CaffeineTemplate).filter(
+        CaffeineTemplate.id == template_id, CaffeineTemplate.user_id == current_user.id
+    ).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
 
     if data.name is not None:
         conflict = db.query(CaffeineTemplate).filter(
-            CaffeineTemplate.name == data.name, CaffeineTemplate.id != template_id
+            CaffeineTemplate.user_id == current_user.id,
+            CaffeineTemplate.name == data.name,
+            CaffeineTemplate.id != template_id,
         ).first()
         if conflict:
             raise HTTPException(status_code=409, detail="A template with this name already exists")
         if db.query(CaffeineEntry).filter(
-            CaffeineEntry.custom_name == data.name, CaffeineEntry.is_marked == False
+            CaffeineEntry.user_id == current_user.id,
+            CaffeineEntry.custom_name == data.name,
+            CaffeineEntry.is_marked == False,
         ).first():
             raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
         template.name = data.name
@@ -58,7 +90,11 @@ def update_caffeine_template(template_id: str, data: CaffeineTemplateUpdate, db:
         template.usage_count = data.usage_count
 
     if data.barcode is not None:
-        if db.query(CaffeineTemplate).filter(CaffeineTemplate.barcode == data.barcode, CaffeineTemplate.id != template_id).first():
+        if db.query(CaffeineTemplate).filter(
+            CaffeineTemplate.user_id == current_user.id,
+            CaffeineTemplate.barcode == data.barcode,
+            CaffeineTemplate.id != template_id,
+        ).first():
             raise HTTPException(status_code=409, detail="A template with this barcode already exists")
         _check_barcode_cross_module(data.barcode, db)
         template.barcode = data.barcode
@@ -73,8 +109,14 @@ def update_caffeine_template(template_id: str, data: CaffeineTemplateUpdate, db:
 
 
 @router.delete("/caffeine-templates/{template_id}", status_code=204)
-def delete_caffeine_template(template_id: str, db: Session = Depends(get_db)):
-    template = db.query(CaffeineTemplate).filter(CaffeineTemplate.id == template_id).first()
+def delete_caffeine_template(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    template = db.query(CaffeineTemplate).filter(
+        CaffeineTemplate.id == template_id, CaffeineTemplate.user_id == current_user.id
+    ).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
     if template.entries:

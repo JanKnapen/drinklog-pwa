@@ -161,3 +161,14 @@ class CaffeineEntryUpdate(BaseModel):
     @classmethod
     def strip_tz(cls, v: datetime | None) -> datetime | None:
         return _to_naive_utc(v)
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    username: str

@@ -6,6 +6,14 @@ from database import Base
 from config import ALCOHOL_UNIT_DIVISOR, CAFFEINE_UNIT_DIVISOR
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+
+
 class DrinkTemplate(Base):
     __tablename__ = "drink_templates"
 
@@ -15,6 +23,7 @@ class DrinkTemplate(Base):
     default_abv: Mapped[float] = mapped_column(Float, nullable=False)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
     barcode: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     entries: Mapped[list["DrinkEntry"]] = relationship(
         "DrinkEntry", back_populates="template", lazy="selectin"
@@ -41,6 +50,7 @@ class DrinkEntry(Base):
     abv: Mapped[float] = mapped_column(Float, nullable=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     is_marked: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     template: Mapped["DrinkTemplate | None"] = relationship(
         "DrinkTemplate", back_populates="entries"
@@ -59,6 +69,7 @@ class CaffeineTemplate(Base):
     default_mg: Mapped[float] = mapped_column(Float, nullable=False)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
     barcode: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     entries: Mapped[list["CaffeineEntry"]] = relationship(
         "CaffeineEntry", back_populates="template", lazy="selectin"
@@ -84,6 +95,7 @@ class CaffeineEntry(Base):
     mg: Mapped[float] = mapped_column(Float, nullable=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     is_marked: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     template: Mapped["CaffeineTemplate | None"] = relationship(
         "CaffeineTemplate", back_populates="entries"

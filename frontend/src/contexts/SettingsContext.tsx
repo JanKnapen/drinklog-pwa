@@ -16,6 +16,8 @@ interface SettingsContextValue {
   openSettings: () => void
   closeSettings: () => void
   isOpen: boolean
+  username: string | null
+  setUsername: (username: string | null) => void
 }
 
 const STORAGE_KEY = 'drinklog-settings'
@@ -42,6 +44,7 @@ const SettingsContext = createContext<SettingsContextValue | null>(null)
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(loadSettings)
   const [isOpen, setIsOpen] = useState(false)
+  const [username, setUsername] = useState<string | null>(null)
 
   useEffect(() => {
     const root = document.documentElement
@@ -78,6 +81,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       openSettings: () => setIsOpen(true),
       closeSettings: () => setIsOpen(false),
       isOpen,
+      username,
+      setUsername,
     }}>
       {children}
     </SettingsContext.Provider>

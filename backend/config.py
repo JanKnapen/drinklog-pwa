@@ -1,4 +1,5 @@
 import os
+import secrets
 
 ALCOHOL_UNIT_DIVISOR = float(os.getenv('ALCOHOL_UNIT_DIVISOR', '15.0'))
 CAFFEINE_UNIT_DIVISOR = float(os.getenv('CAFFEINE_UNIT_DIVISOR', '80.0'))
@@ -7,3 +8,10 @@ PUBLIC_CONFIG = {
     'alcohol_unit_divisor': ALCOHOL_UNIT_DIVISOR,
     'caffeine_unit_divisor': CAFFEINE_UNIT_DIVISOR,
 }
+
+JWT_ACCESS_SECRET = os.getenv("JWT_ACCESS_SECRET", secrets.token_hex(32))
+JWT_REFRESH_SECRET = os.getenv("JWT_REFRESH_SECRET", secrets.token_hex(32))
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
+ADMIN_SEED_USERNAME = os.getenv("ADMIN_SEED_USERNAME")
+ADMIN_SEED_PASSWORD = os.getenv("ADMIN_SEED_PASSWORD")
