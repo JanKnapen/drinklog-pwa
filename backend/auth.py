@@ -1,9 +1,15 @@
-from passlib.context import CryptContext
-from jose import JWTError, jwt
+import bcrypt
+import jwt
 from datetime import datetime, timedelta, timezone
 from config import JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed.encode())
 
 
 def create_access_token(data: dict) -> str:

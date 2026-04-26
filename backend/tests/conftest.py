@@ -37,8 +37,8 @@ def client():
         try:
             user = db.query(User).first()
             if user is None:
-                from auth import pwd_context
-                user = User(username="testadmin", hashed_password=pwd_context.hash("testpass123"))
+                from auth import hash_password
+                user = User(username="testadmin", hashed_password=hash_password("testpass123"))
                 db.add(user)
                 db.commit()
                 db.refresh(user)

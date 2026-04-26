@@ -1,5 +1,5 @@
 from fastapi import Depends, HTTPException, Header
-from jose import JWTError
+import jwt
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -19,7 +19,7 @@ async def get_current_user(
         if payload.get("type") != "access":
             raise HTTPException(status_code=401, detail="Invalid token type")
         username: str = payload.get("sub")
-    except JWTError:
+    except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
     user = db.query(User).filter(User.username == username).first()
     if not user:

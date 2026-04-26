@@ -12,7 +12,7 @@ from routers import templates, entries, caffeine_templates, caffeine_entries
 from routers import barcode
 from routers.auth import router as auth_router, limiter
 from config import PUBLIC_CONFIG, ADMIN_SEED_USERNAME, ADMIN_SEED_PASSWORD
-from auth import pwd_context
+from auth import hash_password
 
 Base.metadata.create_all(bind=engine)
 
@@ -28,7 +28,7 @@ def _ensure_seed_user():
                 )
             user = User(
                 username=ADMIN_SEED_USERNAME,
-                hashed_password=pwd_context.hash(ADMIN_SEED_PASSWORD),
+                hashed_password=hash_password(ADMIN_SEED_PASSWORD),
             )
             session.add(user)
             session.commit()

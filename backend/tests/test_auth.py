@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from database import Base, get_db
 from main import app
 from models import User
-from auth import pwd_context
+from auth import hash_password
 from routers.auth import limiter
 
 
@@ -37,7 +37,7 @@ def auth_client():
 
     # Pre-create a user for login tests
     with TestSession() as db:
-        user = User(username="alice", hashed_password=pwd_context.hash("password123"))
+        user = User(username="alice", hashed_password=hash_password("password123"))
         db.add(user)
         db.commit()
 
