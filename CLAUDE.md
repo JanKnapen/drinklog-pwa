@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DrinkLog is a self-hosted PWA for tracking consumption. It supports two modes — **alcohol** and **caffeine** — switchable via Settings. Both modes share the same four tabs: **Home** (quick-log), **Log** (confirm/review), **Manage** (templates), **Data** (charts). Designed for a home server behind Tailscale — no auth.
+DrinkLog is a self-hosted PWA for tracking consumption. It supports two modes — **alcohol** and **caffeine** — switchable via Settings. Both modes share the same four tabs: **Home** (quick-log), **Log** (confirm/review), **Manage** (templates), **Data** (charts). Designed for a home server behind Tailscale. Authentication via JWT — see Authentication section below.
 
 **Stack:** React 18 + Vite + TypeScript + TailwindCSS (frontend) · FastAPI + SQLAlchemy + SQLite (backend) · Docker Compose with nginx
 
@@ -92,6 +92,44 @@ The quick-log section shows exactly 5 buttons total, filled in this order:
 
 The Today and New drinks buttons consume slots from the 5-button total, pushing out lower-ranked Most used buttons.
 
+## Authentication
+
+Two-token JWT pattern. All data endpoints require a valid access token.
+
+### Token architecture
+- **Access token** — 15-min lifetime. Returned in the login response body. Stored in a module-level variable in `frontend/src/api/client.ts` — never written to localStorage, sessionStorage, or any cookie. Sent as `Authorization: Bearer <token>` on every request.
+- **Refresh token** — 30-day lifetime. Set by the server as an `httpOnly; SameSite=Strict; Secure` cookie named `refresh_token`. JavaScript cannot read it. Used only by `POST /api/auth/refresh` to issue a new access token silently.
+
+### Backend
+
+**`backend/auth.py`** — `hash_password` / `verify_password` (using `bcrypt` directly) and `create_access_token` / `create_refresh_token` / `decode_*` (using `PyJWT`). Do not use `passlib` or `python-jose` — both are abandoned and have known issues with modern Python environments.
+
+**`backend/routers/deps.py`** — `get_current_user` dependency. Validates the `Authorization: Bearer` header and returns the `User` ORM object. Every data router (`entries`, `templates`, `caffeine_entries`, `caffeine_templates`, `barcode`) must include this as a dependency on every endpoint. Every query in those routers filters by `user_id == current_user.id` — no cross-user leakage is possible.
+
+**`backend/routers/auth.py`** — login / refresh / logout / me endpoints. Login is rate-limited to 5 requests/minute per IP via `slowapi`. The `limiter` instance is created in `auth.py` and registered on the FastAPI app in `main.py`.
+
+**Seed mechanism** — on startup, `_ensure_seed_user()` (called from `_migrate()`) checks if the `User` table is empty. If empty and `ADMIN_SEED_USERNAME` / `ADMIN_SEED_PASSWORD` env vars are unset, it raises `RuntimeError` and refuses to start. If the env vars are set, it creates the seed user. Once any user exists the env vars are ignored.
+
+**`_migrate_user_id_columns()`** — adds `user_id` column to all four data tables for existing databases and backfills `NULL` rows with the seed user's ID. Runs after `_ensure_seed_user()` so the seed user's ID is always available for the backfill. Both functions are idempotent.
+
+### Frontend
+
+**`apiFetch` 401 retry** — on a 401 response, `apiFetch` attempts one silent refresh via `POST /api/auth/refresh`. If the refresh succeeds, the original request is retried. If the refresh fails, the in-memory token is cleared and the page reloads to show the login screen. The retry is one-shot — it does not loop.
+
+**`credentials: 'include'`** — all `fetch` calls in `client.ts` must use `credentials: 'include'` so the browser sends the `httpOnly` refresh cookie. This is already set in the `fetchWithAuth` helper. Any new API calls added outside `apiFetch` must also include this or refresh will silently fail.
+
+**Startup flow** — `AppContent` in `App.tsx` calls `refreshAccessToken()` before rendering any tab. A blank screen is shown during this check to avoid a flash of the login screen. If refresh fails (cookie absent or expired), `<LoginView />` is rendered.
+
+**`username` in `SettingsContext`** — session-only state, not persisted to localStorage. Populated from `GET /api/auth/me` after every successful refresh. Cleared on logout. The login/logout state of the app is derived solely from whether `username` is non-null.
+
+**`secure=True` on the refresh cookie** — the cookie is only sent over HTTPS. Local dev without TLS will not receive the cookie and the silent refresh will always fail. Use the Tailscale dev setup (`docker-compose.dev.yml`) for end-to-end auth testing.
+
+### Tests
+
+`backend/tests/test_auth.py` — uses a separate `auth_client` fixture with its own in-memory DB (does not use the shared `client` fixture from `conftest.py`). Has an autouse `reset_rate_limiter` fixture that clears slowapi's state before each test to prevent rate-limit state bleeding between tests.
+
+`conftest.py` — `override_get_current_user` creates or reuses a `testadmin` user in the test DB. This means all non-auth tests run as `testadmin` without needing a token.
+
 ## Barcode Scanner
 
 `BarcodeScanner.tsx` mounts/unmounts conditionally (`{modal === 'scanner' && <BarcodeScanner />}`) — it is never toggled with an `open` prop. `BottomNav` is hidden while the scanner is open (rendered conditionally in `App.tsx` via `scannerOpen` state lifted from `HomeTab`) because z-index stacking made it appear over the fullscreen camera overlay.
@@ -156,7 +194,7 @@ These fixes are intentional — do not revert them:
 
 ## Settings & Dark Mode
 
-App-level settings live in `SettingsContext` (`frontend/src/contexts/SettingsContext.tsx`), persisted to `localStorage` under key `drinklog-settings`. Fields: `theme` (`'light' | 'dark' | 'system'`) and `activeModule` (`'alcohol' | 'caffeine'`, default `'alcohol'`). The context provides `openSettings()` used by the gear icon in every tab header. `SettingsModal` is rendered once in `App.tsx` inside `SettingsProvider` but outside `QueryClientProvider`.
+App-level settings live in `SettingsContext` (`frontend/src/contexts/SettingsContext.tsx`), persisted to `localStorage` under key `drinklog-settings`. Fields: `theme` (`'light' | 'dark' | 'system'`) and `activeModule` (`'alcohol' | 'caffeine'`, default `'alcohol'`). The context also holds `username: string | null` and `setUsername` as **session-only state** (not persisted to localStorage — see Authentication section). The context provides `openSettings()` used by the gear icon in every tab header. `SettingsModal` is rendered once in `App.tsx` inside `SettingsProvider` but outside `QueryClientProvider`.
 
 Tailwind uses `darkMode: 'class'` — the `dark` class is toggled on `<html>` by `SettingsContext`. **An inline script in `index.html`** applies the `dark` class synchronously before first render to prevent a flash of light mode on app launch. Do not remove it.
 
@@ -172,8 +210,13 @@ Tailwind uses `darkMode: 'class'` — the `dark` class is toggled on `<html>` by
 ## Deployment Notes
 
 `docker-compose.yml` runs two services on an `internal` bridge network:
-- `backend` — FastAPI, no exposed ports, `DATABASE_URL` points to a named volume at `/data/drinklog.db`
+- `backend` — FastAPI, no exposed ports, `DATABASE_URL` points to a named volume at `/data/drinklog.db`. Reads env vars from `.env` (via `env_file: .env`).
 - `frontend` — nginx on port 80, serves the Vite build, proxies `/api/` to `backend:8000`
+
+**Required env vars** (document in `.env`, see `.env.example`):
+- `ADMIN_SEED_USERNAME` / `ADMIN_SEED_PASSWORD` — bootstrap the first user on a fresh database. Ignored once any user exists. Backend refuses to start if the User table is empty and these are unset.
+- `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` — secrets for signing tokens. If unset, random values are generated per process restart, which invalidates all existing tokens on every redeploy. Always set these in production.
+- `ACCESS_TOKEN_EXPIRE_MINUTES` (default: 15) / `REFRESH_TOKEN_EXPIRE_DAYS` (default: 30) — optional overrides.
 
 `nginx.conf` is at the project root and is baked into the frontend image at build time (`frontend/Dockerfile`). To change proxy behavior, edit `nginx.conf` and rebuild with `docker compose up --build`.
 
