@@ -26,6 +26,35 @@ services:
       - internal
     restart: unless-stopped
 
+  admin-backend:
+    build:
+      context: .
+      dockerfile: admin/backend/Dockerfile
+    container_name: drinklog-admin-backend
+    env_file: .env
+    environment:
+      - DATABASE_URL=sqlite:////data/drinklog.db
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
+      - db_data:/data
+    networks:
+      - internal
+    restart: unless-stopped
+
+  admin-frontend:
+    build:
+      context: .
+      dockerfile: admin/frontend/Dockerfile
+    container_name: drinklog-admin-frontend
+    ports:
+      - "127.0.0.1:8002:80"
+    depends_on:
+      - admin-backend
+    networks:
+      - internal
+    restart: unless-stopped
+
 volumes:
   db_data:
 
