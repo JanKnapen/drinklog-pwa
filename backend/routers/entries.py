@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,7 @@ from config import ALCOHOL_UNIT_DIVISOR
 from database import get_db
 from models import DrinkTemplate, DrinkEntry, User
 from routers.deps import get_current_user
+from routers.limiter import limiter, user_key
 from schemas import (
     DrinkEntryCreate, DrinkEntryUpdate, DrinkEntryResponse, ConfirmAllRequest,
     EntrySummaryItem,
@@ -22,7 +23,9 @@ router = APIRouter(tags=["entries"])
 
 
 @router.post("/entries/confirm-all")
+@limiter.limit("60/minute", key_func=user_key)
 def confirm_all(
+    request: Request,
     req: ConfirmAllRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -103,7 +106,9 @@ def list_entries(
 
 
 @router.post("/entries", response_model=DrinkEntryResponse, status_code=201)
+@limiter.limit("60/minute", key_func=user_key)
 def create_entry(
+    request: Request,
     data: DrinkEntryCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -142,7 +147,9 @@ def entries_summary(
 
 
 @router.put("/entries/{entry_id}", response_model=DrinkEntryResponse)
+@limiter.limit("60/minute", key_func=user_key)
 def update_entry(
+    request: Request,
     entry_id: str,
     data: DrinkEntryUpdate,
     db: Session = Depends(get_db),
@@ -165,7 +172,9 @@ def update_entry(
 
 
 @router.delete("/entries/{entry_id}", status_code=204)
+@limiter.limit("60/minute", key_func=user_key)
 def delete_entry(
+    request: Request,
     entry_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

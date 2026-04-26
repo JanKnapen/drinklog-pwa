@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import DrinkTemplate, DrinkEntry, CaffeineTemplate, User
 from routers.deps import get_current_user
+from routers.limiter import limiter, user_key
 from schemas import DrinkTemplateCreate, DrinkTemplateUpdate, DrinkTemplateResponse
 
 router = APIRouter(tags=["templates"])
@@ -30,7 +31,9 @@ def list_templates(
 
 
 @router.post("/templates", response_model=DrinkTemplateResponse, status_code=201)
+@limiter.limit("60/minute", key_func=user_key)
 def create_template(
+    request: Request,
     data: DrinkTemplateCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -58,7 +61,9 @@ def create_template(
 
 
 @router.put("/templates/{template_id}", response_model=DrinkTemplateResponse)
+@limiter.limit("60/minute", key_func=user_key)
 def update_template(
+    request: Request,
     template_id: str,
     data: DrinkTemplateUpdate,
     db: Session = Depends(get_db),
@@ -112,7 +117,9 @@ def update_template(
 
 
 @router.delete("/templates/{template_id}", status_code=204)
+@limiter.limit("60/minute", key_func=user_key)
 def delete_template(
+    request: Request,
     template_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

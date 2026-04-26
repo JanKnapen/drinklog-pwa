@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from database import Base, engine
 from routers import templates, entries, caffeine_templates, caffeine_entries
 from routers import barcode
-from routers.auth import router as auth_router, limiter
+from routers.auth import router as auth_router
+from routers.limiter import limiter
 from config import PUBLIC_CONFIG, ADMIN_SEED_USERNAME, ADMIN_SEED_PASSWORD
 from auth import hash_password
 

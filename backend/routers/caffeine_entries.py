@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,7 @@ from config import CAFFEINE_UNIT_DIVISOR
 from database import get_db
 from models import CaffeineTemplate, CaffeineEntry, User
 from routers.deps import get_current_user
+from routers.limiter import limiter, user_key
 from schemas import (
     CaffeineEntryCreate, CaffeineEntryUpdate, CaffeineEntryResponse, ConfirmAllRequest,
     EntrySummaryItem,
@@ -22,7 +23,9 @@ router = APIRouter(tags=["caffeine-entries"])
 
 
 @router.post("/caffeine-entries/confirm-all")
+@limiter.limit("60/minute", key_func=user_key)
 def confirm_all_caffeine(
+    request: Request,
     req: ConfirmAllRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -102,7 +105,9 @@ def list_caffeine_entries(
 
 
 @router.post("/caffeine-entries", response_model=CaffeineEntryResponse, status_code=201)
+@limiter.limit("60/minute", key_func=user_key)
 def create_caffeine_entry(
+    request: Request,
     data: CaffeineEntryCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -140,7 +145,9 @@ def caffeine_entries_summary(
 
 
 @router.patch("/caffeine-entries/{entry_id}", response_model=CaffeineEntryResponse)
+@limiter.limit("60/minute", key_func=user_key)
 def update_caffeine_entry(
+    request: Request,
     entry_id: str,
     data: CaffeineEntryUpdate,
     db: Session = Depends(get_db),
@@ -163,7 +170,9 @@ def update_caffeine_entry(
 
 
 @router.delete("/caffeine-entries/{entry_id}", status_code=204)
+@limiter.limit("60/minute", key_func=user_key)
 def delete_caffeine_entry(
+    request: Request,
     entry_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import CaffeineTemplate, CaffeineEntry, DrinkTemplate, User
 from routers.deps import get_current_user
+from routers.limiter import limiter, user_key
 from schemas import CaffeineTemplateCreate, CaffeineTemplateUpdate, CaffeineTemplateResponse
 
 router = APIRouter(tags=["caffeine-templates"])
@@ -30,7 +31,9 @@ def list_caffeine_templates(
 
 
 @router.post("/caffeine-templates", response_model=CaffeineTemplateResponse, status_code=201)
+@limiter.limit("60/minute", key_func=user_key)
 def create_caffeine_template(
+    request: Request,
     data: CaffeineTemplateCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -58,7 +61,9 @@ def create_caffeine_template(
 
 
 @router.patch("/caffeine-templates/{template_id}", response_model=CaffeineTemplateResponse)
+@limiter.limit("60/minute", key_func=user_key)
 def update_caffeine_template(
+    request: Request,
     template_id: str,
     data: CaffeineTemplateUpdate,
     db: Session = Depends(get_db),
@@ -109,7 +114,9 @@ def update_caffeine_template(
 
 
 @router.delete("/caffeine-templates/{template_id}", status_code=204)
+@limiter.limit("60/minute", key_func=user_key)
 def delete_caffeine_template(
+    request: Request,
     template_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

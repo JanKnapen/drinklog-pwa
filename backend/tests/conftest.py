@@ -14,6 +14,13 @@ from database import Base, get_db
 from main import app
 from models import User
 from routers.deps import get_current_user
+from routers.limiter import limiter
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    limiter.reset()
+    yield
 
 
 @pytest.fixture

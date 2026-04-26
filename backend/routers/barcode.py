@@ -5,13 +5,14 @@ from typing import Optional, Literal
 logger = logging.getLogger(__name__)
 
 import httpx
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import DrinkTemplate, CaffeineTemplate, User
 from routers.deps import get_current_user
+from routers.limiter import limiter, user_key
 from routers.parsers import parse_ml_from_text, parse_abv_from_text, parse_caffeine_mg_from_text
 
 router = APIRouter(tags=["barcode"])
@@ -224,7 +225,9 @@ async def _strategy_hybrid(code: str, module: str, client: httpx.AsyncClient) ->
 
 
 @router.get("/barcode/{code}", response_model=BarcodeResult)
+@limiter.limit("60/minute", key_func=user_key)
 async def lookup_barcode(
+    request: Request,
     code: str,
     module: str = Query(..., pattern="^(alcohol|caffeine)$"),
     strategy: int = Query(default=1, ge=1, le=3),

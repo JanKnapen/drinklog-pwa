@@ -1,17 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 import jwt
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
 from database import get_db
 from models import User
 from auth import verify_password, create_access_token, create_refresh_token, decode_access_token, decode_refresh_token
 from schemas import LoginRequest, TokenResponse
 from config import REFRESH_TOKEN_EXPIRE_DAYS
 from routers.deps import get_current_user
-
-limiter = Limiter(key_func=get_remote_address)
+from routers.limiter import limiter
 
 router = APIRouter()
 

@@ -8,7 +8,7 @@ from database import Base, get_db
 from main import app
 from models import User
 from auth import hash_password
-from routers.auth import limiter
+from routers.limiter import limiter
 
 
 @pytest.fixture(autouse=True)
