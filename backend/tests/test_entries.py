@@ -335,3 +335,38 @@ def test_summary_sorted_ascending(client):
     data = client.get("/api/entries/summary").json()
     dates = [row["date"] for row in data]
     assert dates == sorted(dates)
+
+
+# --- Fraction tests ---
+
+def test_create_entry_with_fraction_halves_standard_units(client):
+    """An entry with fraction=0.5 reports half the standard_units of a full entry."""
+    r = client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": _now(), "fraction": 0.5})
+    assert r.status_code == 201
+    d = r.json()
+    assert d["fraction"] == 0.5
+    full_units = (330 * 5.0 / 100) / 15
+    assert abs(d["standard_units"] - full_units * 0.5) < 0.0001
+
+
+def test_create_entry_without_fraction_is_full(client):
+    """An entry without fraction has standard_units unchanged (fraction=null)."""
+    r = client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": _now()})
+    assert r.status_code == 201
+    d = r.json()
+    assert d["fraction"] is None
+    assert abs(d["standard_units"] - (330 * 5.0 / 100) / 15) < 0.0001
+
+
+def test_summary_applies_fraction(client):
+    """Summary total correctly applies fraction multiplier."""
+    # full entry: 330ml @ 5% = 1.1 units
+    client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": _now()})
+    # half entry: 330ml @ 5% * 0.5 = 0.55 units
+    client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": _now(), "fraction": 0.5})
+    _confirm_all(client)
+
+    data = client.get("/api/entries/summary").json()
+    assert len(data) == 1
+    expected = (330 * 5.0 / 100 / 15) + (330 * 5.0 / 100 / 15 * 0.5)
+    assert abs(data[0]["total"] - expected) < 0.0001

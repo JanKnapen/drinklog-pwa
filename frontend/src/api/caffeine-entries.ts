@@ -42,6 +42,7 @@ export function useCreateCaffeineEntry() {
       custom_name?: string
       mg: number
       timestamp: string
+      fraction?: number
     }) => apiFetch<CaffeineEntry>('/api/caffeine-entries', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_KEY })

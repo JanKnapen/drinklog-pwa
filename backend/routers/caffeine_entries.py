@@ -123,7 +123,10 @@ def caffeine_entries_summary(
     q = (
         db.query(
             func.date(CaffeineEntry.timestamp).label("date"),
-            func.sum(CaffeineEntry.mg / CAFFEINE_UNIT_DIVISOR).label("total"),
+            func.sum(
+                CaffeineEntry.mg / CAFFEINE_UNIT_DIVISOR
+                * func.coalesce(CaffeineEntry.fraction, 1.0)
+            ).label("total"),
         )
         .filter(CaffeineEntry.user_id == current_user.id, CaffeineEntry.is_marked == True)
     )
