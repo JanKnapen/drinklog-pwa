@@ -845,7 +845,7 @@ function Stepper({ value, onChange, half, onHalfChange }: {
           className="px-3 py-2 text-lg font-semibold text-neutral-700 dark:text-neutral-300 active:scale-90 transition-transform">+</button>
       </div>
       <button
-        onClick={() => { onHalfChange(!half); if (!half && value === 0) onChange(0) }}
+        onClick={() => { if (half && value === 0) onChange(1); onHalfChange(!half) }}
         className={
           'px-2.5 py-2 rounded-xl text-sm font-semibold transition-colors ' +
           (half
