@@ -62,7 +62,7 @@ Both modules share the same structural rules:
 - "Confirm All" marks unconfirmed entries before a cutoff and auto-promotes `custom_name` entries into templates.
 - **Router ordering:** `confirm-all` endpoint must be registered before `/{entry_id}` in both `routers/entries.py` and `routers/caffeine_entries.py` or FastAPI matches `"confirm-all"` as an ID.
 - **Entry editing:** template-linked entries can only have their timestamp changed (HTTP 400 for any other field); enforced on both backend and frontend. Both `entries.py` and `caffeine_entries.py` implement this consistently — the check strips `timestamp` from the payload and raises 400 only if non-timestamp fields remain.
-- **Name / custom_name invariant:** a template name and an unconfirmed entry `custom_name` with the same value cannot coexist (HTTP 409). Confirm-all auto-promotes pending entries into templates.
+- **Name / custom_name invariant:** a template name and an unconfirmed entry `custom_name` with the same value cannot coexist (HTTP 409). Confirm-all auto-promotes pending entries into templates. Two unconfirmed entries also cannot share the same `custom_name` (HTTP 409 on `POST /entries` and `POST /caffeine-entries`); the frontend enforces this too with an inline error before the request is made.
 - **`CaffeineTemplateUpdate` includes `usage_count`** (same as `DrinkTemplateUpdate`) — needed so the frontend can increment it when logging from a template button.
 
 ### Frontend state management
@@ -137,6 +137,8 @@ Two-token JWT pattern. All data endpoints require a valid access token.
 **Startup flow** — `AppContent` in `App.tsx` calls `refreshAccessToken()` before rendering any tab. A blank screen is shown during this check to avoid a flash of the login screen. If refresh fails (cookie absent or expired), `<LoginView />` is rendered.
 
 **`username` in `SettingsContext`** — session-only state, not persisted to localStorage. Populated from `GET /api/auth/me` after every successful refresh. Cleared on logout. The login/logout state of the app is derived solely from whether `username` is non-null.
+
+**Query cache cleared on logout** — `AppContent` in `App.tsx` has a `useEffect` that calls `queryClient.clear()` whenever `username` becomes `null`. This prevents stale data from the previous session being visible to a different user who logs in on the same device. Do not remove it.
 
 **`secure=True` on the refresh cookie** — the cookie is only sent over HTTPS. Local dev without TLS will not receive the cookie and the silent refresh will always fail. Use the Tailscale dev setup (`docker-compose.dev.yml`) for end-to-end auth testing.
 
