@@ -228,6 +228,8 @@ The response includes dev-testing telemetry fields (`latency_ms`, `strategy_used
 
 **New scan (OFF result):** `NewAlcohol/CaffeineModal` receives a `barcode` prop. When `handleSubmit` runs, it always creates a **template** (never a `custom_name` entry) and stores the barcode on it. This ensures the next scan of the same product returns `source: "local"` and goes straight to `ScanMatchModal`. If this path used `custom_name` entries instead, barcodes would never be persisted and every scan would hit OFF.
 
+**Not-found scan:** When the lookup returns `source: "not_found"`, `handleScan` opens `NewAlcohol/CaffeineModal` with `prefill=null` and `barcode` set (instead of toasting "Product not found"). The modal shows a prompt asking the user to fill in the details manually. On submit the same template-creation path runs, so the barcode is persisted for future scans.
+
 **The `Ⓑ` suffix** on prefilled names in `NewAlcohol/CaffeineModal` is intentional — it identifies barcode-originated templates to the user. Users can edit the name before submitting.
 
 **Cross-module local match:** When a scan returns `source: "local"` with `module !== activeModule`, `handleScan` calls `updateSettings({ activeModule })` and stores the template ID in `pendingScanTemplateId` state rather than opening `ScanMatchModal` immediately. A `useEffect` watching `[templates, pendingScanTemplateId]` opens the modal once the module adapter's `templates` array has updated on the next render. This deferred pattern is necessary because the module switch is reflected in the adapter synchronously on the next render cycle, not immediately.
