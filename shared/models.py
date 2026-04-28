@@ -62,9 +62,11 @@ class DrinkEntry(Base):
         "DrinkTemplate", back_populates="entries"
     )
 
+    fraction: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     @property
     def standard_units(self) -> float:
-        return (self.ml * self.abv / 100.0) / ALCOHOL_UNIT_DIVISOR
+        return (self.ml * self.abv / 100.0) / ALCOHOL_UNIT_DIVISOR * (self.fraction if self.fraction is not None else 1.0)
 
 
 class CaffeineTemplate(Base):
@@ -107,6 +109,8 @@ class CaffeineEntry(Base):
         "CaffeineTemplate", back_populates="entries"
     )
 
+    fraction: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     @property
     def caffeine_units(self) -> float:
-        return self.mg / CAFFEINE_UNIT_DIVISOR
+        return self.mg / CAFFEINE_UNIT_DIVISOR * (self.fraction if self.fraction is not None else 1.0)

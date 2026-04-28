@@ -53,6 +53,7 @@ class DrinkEntryResponse(BaseModel):
     timestamp: datetime
     is_marked: bool
     standard_units: float
+    fraction: Optional[float] = None
 
     @field_serializer("timestamp")
     def serialize_timestamp(self, v: datetime) -> str:
@@ -65,6 +66,7 @@ class DrinkEntryCreate(BaseModel):
     ml: float
     abv: float
     timestamp: datetime
+    fraction: Optional[float] = None
 
     @field_validator("timestamp")
     @classmethod
@@ -134,6 +136,7 @@ class CaffeineEntryResponse(BaseModel):
     timestamp: datetime
     is_marked: bool
     caffeine_units: float
+    fraction: Optional[float] = None
 
     @field_serializer("timestamp")
     def serialize_timestamp(self, v: datetime) -> str:
@@ -145,6 +148,7 @@ class CaffeineEntryCreate(BaseModel):
     custom_name: Optional[str] = None
     mg: float
     timestamp: datetime
+    fraction: Optional[float] = None
 
     @field_validator("timestamp")
     @classmethod

@@ -43,6 +43,7 @@ export function useCreateEntry() {
       ml: number
       abv: number
       timestamp: string
+      fraction?: number
     }) => apiFetch<DrinkEntry>('/api/entries', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ENTRIES_KEY })

@@ -55,6 +55,8 @@ docker compose up --build   # full stack on :80
 
 **Caffeine:** `CaffeineTemplate` / `CaffeineEntry`. `caffeine_units = mg / 80` — same pattern. No `ml` or `abv` fields. Tables are created automatically by `Base.metadata.create_all()` on startup.
 
+**Fractional entries:** Both entry tables have a nullable `fraction` float column (`NULL` = 1.0). It is multiplied into `standard_units`/`caffeine_units` in the ORM `@property` and into the summary SQL aggregation via `COALESCE(fraction, 1.0)`. A ½ drink is stored as a **separate** DB entry with `fraction=0.5` — logging `2½` creates 3 rows (two with `fraction=NULL`, one with `fraction=0.5`). The column is added to existing DBs by `_migrate()`. The ½ toggle in the `Stepper` component bumps the counter from 0 to 1 when disabled at 0 — this is intentional to prevent submitting 0 drinks.
+
 Both modules share the same structural rules:
 - An entry is either linked to a template (`template_id`) or has a free-text `custom_name`. `is_marked = true` means confirmed.
 - "Confirm All" marks unconfirmed entries before a cutoff and auto-promotes `custom_name` entries into templates.
@@ -225,6 +227,8 @@ The response includes dev-testing telemetry fields (`latency_ms`, `strategy_used
 ### Scan flow invariants
 
 **New scan (OFF result):** `NewAlcohol/CaffeineModal` receives a `barcode` prop. When `handleSubmit` runs, it always creates a **template** (never a `custom_name` entry) and stores the barcode on it. This ensures the next scan of the same product returns `source: "local"` and goes straight to `ScanMatchModal`. If this path used `custom_name` entries instead, barcodes would never be persisted and every scan would hit OFF.
+
+**Not-found scan:** When the lookup returns `source: "not_found"`, `handleScan` opens `NewAlcohol/CaffeineModal` with `prefill=null` and `barcode` set (instead of toasting "Product not found"). The modal shows a prompt asking the user to fill in the details manually. On submit the same template-creation path runs, so the barcode is persisted for future scans.
 
 **The `Ⓑ` suffix** on prefilled names in `NewAlcohol/CaffeineModal` is intentional — it identifies barcode-originated templates to the user. Users can edit the name before submitting.
 

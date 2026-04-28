@@ -19,6 +19,7 @@ export interface DrinkEntry {
   timestamp: string
   is_marked: boolean
   standard_units: number
+  fraction: number | null
 }
 
 export type FilterPeriod = 'today' | 'week' | 'month' | '3m' | 'year' | 'all'
@@ -42,6 +43,7 @@ export interface CaffeineEntry {
   timestamp: string
   is_marked: boolean
   caffeine_units: number
+  fraction: number | null
 }
 
 export interface TrackerTemplate {
