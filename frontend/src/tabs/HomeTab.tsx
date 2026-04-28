@@ -245,6 +245,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
           open={modal === 'new'}
           onClose={() => { setScanPrefill(null); setScanCode(null); setModal(null) }}
           templates={templates}
+          pendingDrinks={pendingDrinks}
           prefill={scanPrefill}
           barcode={scanCode}
           onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(`Logged: ${name}`); setModal(null) }}
@@ -257,6 +258,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
           open={modal === 'new'}
           onClose={() => { setScanPrefill(null); setScanCode(null); setModal(null) }}
           templates={templates}
+          pendingDrinks={pendingDrinks}
           prefill={scanPrefill}
           barcode={scanCode}
           onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(`Logged: ${name}`); setModal(null) }}
@@ -330,8 +332,8 @@ function ActionCard({ title, subtitle, icon, onClick }: {
 }
 
 // NewAlcoholModal — uses useCreateEntry directly (module-specific modal, adapter bypass acceptable)
-function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged, isFetching, onStrategyChange, barcodeStrategy }: {
-  open: boolean; onClose: () => void; templates: TrackerTemplate[]
+function NewAlcoholModal({ open, onClose, templates, pendingDrinks, prefill, barcode, onLogged, isFetching, onStrategyChange, barcodeStrategy }: {
+  open: boolean; onClose: () => void; templates: TrackerTemplate[]; pendingDrinks: TrackerEntry[]
   prefill?: BarcodeResult | null; barcode?: string | null; onLogged: (name: string) => void
   isFetching?: boolean; onStrategyChange?: (s: 1 | 2 | 3) => void; barcodeStrategy?: 1 | 2 | 3
 }) {
@@ -361,6 +363,7 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged,
   }, [open, prefill])
 
   const duplicateTemplate = templates.find((t) => t.name.toLowerCase() === name.trim().toLowerCase())
+  const duplicatePending = pendingDrinks.find((e) => e.customName?.toLowerCase() === name.trim().toLowerCase())
   const isDuplicate = !!duplicateTemplate
   const isValid = name.trim().length > 0 && !isNaN(parseFloat(ml)) && !isNaN(parseFloat(abv))
 
@@ -401,6 +404,7 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged,
       }
     } else {
       if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
+      if (duplicatePending) { setError(`"${name.trim()}" is already pending — confirm it first`); return }
       for (let i = 0; i < count; i++) {
         await createEntry.mutateAsync({ custom_name: name.trim(), ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
       }
@@ -460,8 +464,8 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged,
 }
 
 // NewCaffeineModal — uses useCreateCaffeineEntry directly (module-specific modal)
-export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, onLogged, isFetching, onStrategyChange, barcodeStrategy }: {
-  open: boolean; onClose: () => void; templates: TrackerTemplate[]
+export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, prefill, barcode, onLogged, isFetching, onStrategyChange, barcodeStrategy }: {
+  open: boolean; onClose: () => void; templates: TrackerTemplate[]; pendingDrinks: TrackerEntry[]
   prefill?: BarcodeResult | null; barcode?: string | null; onLogged: (name: string) => void
   isFetching?: boolean; onStrategyChange?: (s: 1 | 2 | 3) => void; barcodeStrategy?: 1 | 2 | 3
 }) {
@@ -489,6 +493,7 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, o
   }, [open, prefill])
 
   const duplicateTemplate = templates.find((t) => t.name.toLowerCase() === name.trim().toLowerCase())
+  const duplicatePending = pendingDrinks.find((e) => e.customName?.toLowerCase() === name.trim().toLowerCase())
   const isDuplicate = !!duplicateTemplate
   const isValid = name.trim().length > 0 && !isNaN(parseFloat(mg))
 
@@ -527,6 +532,7 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, o
       }
     } else {
       if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
+      if (duplicatePending) { setError(`"${name.trim()}" is already pending — confirm it first`); return }
       for (let i = 0; i < count; i++) {
         await createEntry.mutateAsync({ custom_name: name.trim(), mg: parseFloat(mg), timestamp })
       }
