@@ -39,6 +39,12 @@ def test_create_new_entry_with_custom_name(client):
     assert d["template"] is None
 
 
+def test_create_duplicate_custom_name_entry_returns_409(client):
+    client.post("/api/entries", json={"custom_name": "Craft IPA", "ml": 440, "abv": 6.5, "timestamp": _now()})
+    r = client.post("/api/entries", json={"custom_name": "Craft IPA", "ml": 440, "abv": 6.5, "timestamp": _now()})
+    assert r.status_code == 409
+
+
 def test_create_entry_linked_to_template(client):
     t = client.post("/api/templates", json={
         "name": "Lager", "default_ml": 330, "default_abv": 5.0

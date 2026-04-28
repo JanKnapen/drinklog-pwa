@@ -108,6 +108,14 @@ def create_entry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if data.custom_name:
+        existing = db.query(DrinkEntry).filter(
+            DrinkEntry.user_id == current_user.id,
+            DrinkEntry.custom_name == data.custom_name,
+            DrinkEntry.is_marked == False,
+        ).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
     entry = DrinkEntry(**data.model_dump(), user_id=current_user.id)
     db.add(entry)
     db.commit()
