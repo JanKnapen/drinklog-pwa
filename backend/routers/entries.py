@@ -124,7 +124,10 @@ def entries_summary(
     q = (
         db.query(
             func.date(DrinkEntry.timestamp).label("date"),
-            func.sum(DrinkEntry.ml * DrinkEntry.abv / 100.0 / ALCOHOL_UNIT_DIVISOR).label("total"),
+            func.sum(
+                DrinkEntry.ml * DrinkEntry.abv / 100.0 / ALCOHOL_UNIT_DIVISOR
+                * func.coalesce(DrinkEntry.fraction, 1.0)
+            ).label("total"),
         )
         .filter(DrinkEntry.user_id == current_user.id, DrinkEntry.is_marked == True)
     )

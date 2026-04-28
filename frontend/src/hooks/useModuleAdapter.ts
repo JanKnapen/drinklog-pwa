@@ -26,8 +26,8 @@ export interface ModuleAdapter {
   activeModule: 'alcohol' | 'caffeine'
   moduleTitle: string
   logFromTemplate: (t: TrackerTemplate) => void
-  logFromTemplateWithOptions: (t: TrackerTemplate, count: number, timestamp: string) => Promise<void>
-  logFromPendingEntry: (e: TrackerEntry, count: number, timestamp: string) => Promise<void>
+  logFromTemplateWithOptions: (t: TrackerTemplate, count: number, timestamp: string, fraction?: number) => Promise<void>
+  logFromPendingEntry: (e: TrackerEntry, count: number, timestamp: string, fraction?: number) => Promise<void>
   confirmAll: (cutoff: Date) => Promise<void>
   deleteEntry: (id: string) => void
   updateEntryTimestamp: (id: string, ts: Date) => void
@@ -118,17 +118,23 @@ export function useModuleAdapter(): ModuleAdapter {
           { onSuccess: () => updateCaffeineTemplate.mutate({ id: raw.id, usage_count: raw.usage_count + 1 }) },
         )
       },
-      logFromTemplateWithOptions: async (t, count, timestamp) => {
+      logFromTemplateWithOptions: async (t, count, timestamp, fraction) => {
         const raw = caffeineTemplates.find((r) => r.id === t.id)!
         for (let i = 0; i < count; i++) {
           await createCaffeineEntry.mutateAsync({ template_id: raw.id, mg: raw.default_mg, timestamp })
         }
-        updateCaffeineTemplate.mutate({ id: raw.id, usage_count: raw.usage_count + count })
+        if (fraction != null) {
+          await createCaffeineEntry.mutateAsync({ template_id: raw.id, mg: raw.default_mg, timestamp, fraction })
+        }
+        updateCaffeineTemplate.mutate({ id: raw.id, usage_count: raw.usage_count + count + (fraction != null ? 1 : 0) })
       },
-      logFromPendingEntry: async (e, count, timestamp) => {
+      logFromPendingEntry: async (e, count, timestamp, fraction) => {
         const raw = caffeineEntries.find((r) => r.id === e.id)!
         for (let i = 0; i < count; i++) {
           await createCaffeineEntry.mutateAsync({ custom_name: raw.custom_name!, mg: raw.mg, timestamp })
+        }
+        if (fraction != null) {
+          await createCaffeineEntry.mutateAsync({ custom_name: raw.custom_name!, mg: raw.mg, timestamp, fraction })
         }
       },
       confirmAll: (cutoff) => confirmAllCaffeine.mutateAsync(cutoff.toISOString()).then(() => {}),
@@ -159,17 +165,23 @@ export function useModuleAdapter(): ModuleAdapter {
         { onSuccess: () => updateDrinkTemplate.mutate({ id: raw.id, usage_count: raw.usage_count + 1 }) },
       )
     },
-    logFromTemplateWithOptions: async (t, count, timestamp) => {
+    logFromTemplateWithOptions: async (t, count, timestamp, fraction) => {
       const raw = drinkTemplates.find((r) => r.id === t.id)!
       for (let i = 0; i < count; i++) {
         await createDrinkEntry.mutateAsync({ template_id: raw.id, ml: raw.default_ml, abv: raw.default_abv, timestamp })
       }
-      updateDrinkTemplate.mutate({ id: raw.id, usage_count: raw.usage_count + count })
+      if (fraction != null) {
+        await createDrinkEntry.mutateAsync({ template_id: raw.id, ml: raw.default_ml, abv: raw.default_abv, timestamp, fraction })
+      }
+      updateDrinkTemplate.mutate({ id: raw.id, usage_count: raw.usage_count + count + (fraction != null ? 1 : 0) })
     },
-    logFromPendingEntry: async (e, count, timestamp) => {
+    logFromPendingEntry: async (e, count, timestamp, fraction) => {
       const raw = drinkEntries.find((r) => r.id === e.id)!
       for (let i = 0; i < count; i++) {
         await createDrinkEntry.mutateAsync({ custom_name: raw.custom_name!, ml: raw.ml, abv: raw.abv, timestamp })
+      }
+      if (fraction != null) {
+        await createDrinkEntry.mutateAsync({ custom_name: raw.custom_name!, ml: raw.ml, abv: raw.abv, timestamp, fraction })
       }
     },
     confirmAll: (cutoff) => confirmAllDrink.mutateAsync(cutoff.toISOString()).then(() => {}),

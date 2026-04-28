@@ -274,14 +274,14 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
         open={modal === 'other'}
         onClose={() => setModal(null)}
         templates={templates}
-        onLog={(t, count, timestamp) => adapter.logFromTemplateWithOptions(t, count, timestamp)}
+        onLog={(t, count, timestamp, fraction) => adapter.logFromTemplateWithOptions(t, count, timestamp, fraction)}
         onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
       />
       <PendingDrinksModal
         open={modal === 'pending'}
         onClose={() => setModal(null)}
         entries={pendingDrinks}
-        onLog={(e, count, timestamp) => adapter.logFromPendingEntry(e, count, timestamp)}
+        onLog={(e, count, timestamp, fraction) => adapter.logFromPendingEntry(e, count, timestamp, fraction)}
         onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
       />
       {modal === 'scanner' && (
@@ -291,7 +291,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
         open={modal === 'scan-match'}
         template={scanMatchTemplate}
         onClose={() => { setScanMatchTemplate(null); setModal(null) }}
-        onLog={(t, count, timestamp) => adapter.logFromTemplateWithOptions(t, count, timestamp)}
+        onLog={(t, count, timestamp, fraction) => adapter.logFromTemplateWithOptions(t, count, timestamp, fraction)}
         onLogged={(name) => { setScanMatchTemplate(null); onToast(`Logged: ${name}`); setModal(null) }}
       />
     </div>
@@ -344,6 +344,7 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged,
   const [error, setError] = useState<string | null>(null)
   const [ts, setTs] = useState<Date>(() => new Date())
   const [count, setCount] = useState(1)
+  const [half, setHalf] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -355,7 +356,7 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged,
       } else {
         setName(''); setMl(''); setAbv('')
       }
-      setError(null); setCount(1)
+      setError(null); setCount(1); setHalf(false)
     }
   }, [open, prefill])
 
@@ -366,6 +367,7 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged,
   const mlMissing = prefill && prefill.ml == null
   const abvMissing = prefill && prefill.abv == null
   const dashedCls = ' border-dashed border-2 border-neutral-400 dark:border-neutral-500'
+  const fraction = half ? 0.5 : undefined
 
   async function handleSubmit() {
     const timestamp = ts.toISOString()
@@ -384,10 +386,14 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged,
         for (let i = 0; i < count; i++) {
           await createEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
         }
+        if (fraction != null) {
+          await createEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp, fraction })
+        }
+        const totalCount = count + (fraction != null ? 1 : 0)
         if (isDuplicate && duplicateTemplate) {
-          await updateTemplate.mutateAsync({ id: templateId, barcode, usage_count: duplicateTemplate.usage_count + count })
+          await updateTemplate.mutateAsync({ id: templateId, barcode, usage_count: duplicateTemplate.usage_count + totalCount })
         } else {
-          await updateTemplate.mutateAsync({ id: templateId, usage_count: count })
+          await updateTemplate.mutateAsync({ id: templateId, usage_count: totalCount })
         }
       } catch {
         setError('Something went wrong, please try again')
@@ -398,14 +404,17 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged,
       for (let i = 0; i < count; i++) {
         await createEntry.mutateAsync({ custom_name: name.trim(), ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
       }
+      if (fraction != null) {
+        await createEntry.mutateAsync({ custom_name: name.trim(), ml: parseFloat(ml), abv: parseFloat(abv), timestamp, fraction })
+      }
     }
     const logged = name.trim()
-    setName(''); setMl(''); setAbv(''); setError(null); setTs(new Date()); setCount(1)
+    setName(''); setMl(''); setAbv(''); setError(null); setTs(new Date()); setCount(1); setHalf(false)
     onLogged(logged)
   }
 
   return (
-    <Modal open={open} onClose={() => { setName(''); setMl(''); setAbv(''); setError(null); setTs(new Date()); setCount(1); onClose() }} title="New Alcohol Drink">
+    <Modal open={open} onClose={() => { setName(''); setMl(''); setAbv(''); setError(null); setTs(new Date()); setCount(1); setHalf(false); onClose() }} title="New Alcohol Drink">
       <div className="flex flex-col gap-3">
         <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
@@ -442,8 +451,8 @@ function NewAlcoholModal({ open, onClose, templates, prefill, barcode, onLogged,
           </div>
         </div>
         <div className="flex gap-2">
-          <Stepper value={count} onChange={setCount} />
-          <button onClick={handleSubmit} disabled={!isValid || createTemplate.isPending || createEntry.isPending || !!isFetching} className={primaryBtn + ' flex-1'}>Log</button>
+          <Stepper value={count} onChange={setCount} half={half} onHalfChange={setHalf} />
+          <button onClick={handleSubmit} disabled={(!isValid) || (count === 0 && !half) || createTemplate.isPending || createEntry.isPending || !!isFetching} className={primaryBtn + ' flex-1'}>Log</button>
         </div>
       </div>
     </Modal>
@@ -464,6 +473,7 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, o
   const [error, setError] = useState<string | null>(null)
   const [ts, setTs] = useState<Date>(() => new Date())
   const [count, setCount] = useState(1)
+  const [half, setHalf] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -474,7 +484,7 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, o
       } else {
         setName(''); setMg('')
       }
-      setError(null); setCount(1)
+      setError(null); setCount(1); setHalf(false)
     }
   }, [open, prefill])
 
@@ -484,6 +494,7 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, o
 
   const mgMissing = prefill && prefill.mg == null
   const dashedCls = ' border-dashed border-2 border-neutral-400 dark:border-neutral-500'
+  const fraction = half ? 0.5 : undefined
 
   async function handleSubmit() {
     const timestamp = ts.toISOString()
@@ -501,10 +512,14 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, o
         for (let i = 0; i < count; i++) {
           await createEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp })
         }
+        if (fraction != null) {
+          await createEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp, fraction })
+        }
+        const totalCount = count + (fraction != null ? 1 : 0)
         if (isDuplicate && duplicateTemplate) {
-          await updateTemplate.mutateAsync({ id: templateId, barcode, usage_count: duplicateTemplate.usage_count + count })
+          await updateTemplate.mutateAsync({ id: templateId, barcode, usage_count: duplicateTemplate.usage_count + totalCount })
         } else {
-          await updateTemplate.mutateAsync({ id: templateId, usage_count: count })
+          await updateTemplate.mutateAsync({ id: templateId, usage_count: totalCount })
         }
       } catch {
         setError('Something went wrong, please try again')
@@ -515,14 +530,17 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, o
       for (let i = 0; i < count; i++) {
         await createEntry.mutateAsync({ custom_name: name.trim(), mg: parseFloat(mg), timestamp })
       }
+      if (fraction != null) {
+        await createEntry.mutateAsync({ custom_name: name.trim(), mg: parseFloat(mg), timestamp, fraction })
+      }
     }
     const logged = name.trim()
-    setName(''); setMg(''); setError(null); setTs(new Date()); setCount(1)
+    setName(''); setMg(''); setError(null); setTs(new Date()); setCount(1); setHalf(false)
     onLogged(logged)
   }
 
   return (
-    <Modal open={open} onClose={() => { setName(''); setMg(''); setError(null); setTs(new Date()); setCount(1); onClose() }} title="New Caffeine Drink">
+    <Modal open={open} onClose={() => { setName(''); setMg(''); setError(null); setTs(new Date()); setCount(1); setHalf(false); onClose() }} title="New Caffeine Drink">
       <div className="flex flex-col gap-3">
         <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
@@ -555,8 +573,8 @@ export function NewCaffeineModal({ open, onClose, templates, prefill, barcode, o
           </div>
         </div>
         <div className="flex gap-2">
-          <Stepper value={count} onChange={setCount} />
-          <button onClick={handleSubmit} disabled={!isValid || createTemplate.isPending || createEntry.isPending || !!isFetching} className={primaryBtn + ' flex-1'}>Log</button>
+          <Stepper value={count} onChange={setCount} half={half} onHalfChange={setHalf} />
+          <button onClick={handleSubmit} disabled={(!isValid) || (count === 0 && !half) || createTemplate.isPending || createEntry.isPending || !!isFetching} className={primaryBtn + ' flex-1'}>Log</button>
         </div>
       </div>
     </Modal>
@@ -636,27 +654,29 @@ function OtherModal({ open, onClose, templates, onLog, onLogged }: {
   open: boolean
   onClose: () => void
   templates: TrackerTemplate[]
-  onLog: (t: TrackerTemplate, count: number, timestamp: string) => Promise<void>
+  onLog: (t: TrackerTemplate, count: number, timestamp: string, fraction?: number) => Promise<void>
   onLogged: (name: string) => void
 }) {
   const [search, setSearch] = useState('')
   const [ts, setTs] = useState<Date>(() => new Date())
   const [count, setCount] = useState(1)
+  const [half, setHalf] = useState(false)
 
-  useEffect(() => { if (open) setTs(new Date()) }, [open])
+  useEffect(() => { if (open) { setTs(new Date()); setHalf(false) } }, [open])
 
   const filtered = templates.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
 
   async function logTemplate(t: TrackerTemplate) {
-    await onLog(t, count, ts.toISOString())
+    await onLog(t, count, ts.toISOString(), half ? 0.5 : undefined)
     setSearch('')
     setTs(new Date())
     setCount(1)
+    setHalf(false)
     onLogged(t.name)
   }
 
   return (
-    <Modal open={open} onClose={() => { setSearch(''); setTs(new Date()); setCount(1); onClose() }} title="Other Drinks">
+    <Modal open={open} onClose={() => { setSearch(''); setTs(new Date()); setCount(1); setHalf(false); onClose() }} title="Other Drinks">
       <div className="flex flex-col gap-2">
         <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
@@ -664,7 +684,7 @@ function OtherModal({ open, onClose, templates, onLog, onLogged }: {
         <input className={inputCls} placeholder="Search drinks…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="flex items-center justify-between">
           <span className="text-sm text-neutral-500 dark:text-neutral-400">Quantity</span>
-          <Stepper value={count} onChange={setCount} />
+          <Stepper value={count} onChange={setCount} half={half} onHalfChange={setHalf} />
         </div>
         {filtered.length === 0 && <p className="text-sm text-neutral-400 py-4 text-center">No drinks found</p>}
         <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
@@ -688,30 +708,32 @@ function PendingDrinksModal({ open, onClose, entries, onLog, onLogged }: {
   open: boolean
   onClose: () => void
   entries: TrackerEntry[]
-  onLog: (e: TrackerEntry, count: number, timestamp: string) => Promise<void>
+  onLog: (e: TrackerEntry, count: number, timestamp: string, fraction?: number) => Promise<void>
   onLogged: (name: string) => void
 }) {
   const [ts, setTs] = useState<Date>(() => new Date())
   const [count, setCount] = useState(1)
+  const [half, setHalf] = useState(false)
 
-  useEffect(() => { if (open) setTs(new Date()) }, [open])
+  useEffect(() => { if (open) { setTs(new Date()); setHalf(false) } }, [open])
 
   async function logDrink(entry: TrackerEntry) {
-    await onLog(entry, count, ts.toISOString())
+    await onLog(entry, count, ts.toISOString(), half ? 0.5 : undefined)
     setTs(new Date())
     setCount(1)
+    setHalf(false)
     onLogged(entry.customName!)
   }
 
   return (
-    <Modal open={open} onClose={() => { setTs(new Date()); setCount(1); onClose() }} title="New Drinks">
+    <Modal open={open} onClose={() => { setTs(new Date()); setCount(1); setHalf(false); onClose() }} title="New Drinks">
       <div className="flex flex-col gap-2">
         <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         <div className="flex items-center justify-between">
           <span className="text-sm text-neutral-500 dark:text-neutral-400">Quantity</span>
-          <Stepper value={count} onChange={setCount} />
+          <Stepper value={count} onChange={setCount} half={half} onHalfChange={setHalf} />
         </div>
         <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
           {entries.map((entry) => (
@@ -734,25 +756,26 @@ function ScanMatchModal({ open, template, onClose, onLog, onLogged }: {
   open: boolean
   template: TrackerTemplate | null
   onClose: () => void
-  onLog: (t: TrackerTemplate, count: number, timestamp: string) => Promise<void>
+  onLog: (t: TrackerTemplate, count: number, timestamp: string, fraction?: number) => Promise<void>
   onLogged: (name: string) => void
 }) {
   const [ts, setTs] = useState<Date>(() => new Date())
   const [count, setCount] = useState(1)
+  const [half, setHalf] = useState(false)
 
-  useEffect(() => { if (open) setTs(new Date()) }, [open])
+  useEffect(() => { if (open) { setTs(new Date()); setHalf(false) } }, [open])
 
   async function handleLog() {
     if (!template) return
-    await onLog(template, count, ts.toISOString())
-    setTs(new Date()); setCount(1)
+    await onLog(template, count, ts.toISOString(), half ? 0.5 : undefined)
+    setTs(new Date()); setCount(1); setHalf(false)
     onLogged(template.name)
   }
 
   if (!template) return null
 
   return (
-    <Modal open={open} onClose={() => { setTs(new Date()); setCount(1); onClose() }} title="Log Scanned Drink">
+    <Modal open={open} onClose={() => { setTs(new Date()); setCount(1); setHalf(false); onClose() }} title="Log Scanned Drink">
       <div className="flex flex-col gap-3">
         <div className="bg-neutral-50 dark:bg-neutral-800 rounded-xl px-4 py-3">
           <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{template.name}</p>
@@ -762,8 +785,8 @@ function ScanMatchModal({ open, template, onClose, onLog, onLogged }: {
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         <div className="flex gap-2">
-          <Stepper value={count} onChange={setCount} />
-          <button onClick={handleLog} className={primaryBtn + ' flex-1'}>Log</button>
+          <Stepper value={count} onChange={setCount} half={half} onHalfChange={setHalf} />
+          <button onClick={handleLog} disabled={count === 0 && !half} className={primaryBtn + ' flex-1'}>Log</button>
         </div>
       </div>
     </Modal>
@@ -805,14 +828,31 @@ function BarcodeScanIcon() {
   )
 }
 
-function Stepper({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+function Stepper({ value, onChange, half, onHalfChange }: {
+  value: number
+  onChange: (n: number) => void
+  half: boolean
+  onHalfChange: (h: boolean) => void
+}) {
+  const displayLabel = half ? (value === 0 ? '½' : `${value}½`) : String(value)
   return (
-    <div className="flex items-center bg-neutral-100 dark:bg-neutral-800 rounded-xl flex-shrink-0">
-      <button onClick={() => onChange(Math.max(1, value - 1))}
-        className="px-3 py-2 text-lg font-semibold text-neutral-700 dark:text-neutral-300 active:scale-90 transition-transform">−</button>
-      <span className="w-6 text-center text-sm font-semibold tabular-nums text-neutral-900 dark:text-neutral-100">{value}</span>
-      <button onClick={() => onChange(value + 1)}
-        className="px-3 py-2 text-lg font-semibold text-neutral-700 dark:text-neutral-300 active:scale-90 transition-transform">+</button>
+    <div className="flex items-center gap-1.5 flex-shrink-0">
+      <div className="flex items-center bg-neutral-100 dark:bg-neutral-800 rounded-xl">
+        <button onClick={() => onChange(Math.max(half ? 0 : 1, value - 1))}
+          className="px-3 py-2 text-lg font-semibold text-neutral-700 dark:text-neutral-300 active:scale-90 transition-transform">−</button>
+        <span className="w-7 text-center text-sm font-semibold tabular-nums text-neutral-900 dark:text-neutral-100">{displayLabel}</span>
+        <button onClick={() => onChange(value + 1)}
+          className="px-3 py-2 text-lg font-semibold text-neutral-700 dark:text-neutral-300 active:scale-90 transition-transform">+</button>
+      </div>
+      <button
+        onClick={() => { if (half && value === 0) onChange(1); onHalfChange(!half) }}
+        className={
+          'px-2.5 py-2 rounded-xl text-sm font-semibold transition-colors ' +
+          (half
+            ? 'bg-blue-500 text-white'
+            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400')
+        }
+      >½</button>
     </div>
   )
 }

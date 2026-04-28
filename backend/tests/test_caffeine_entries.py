@@ -177,6 +177,38 @@ def test_caffeine_summary_period_week(client):
     assert len(data) == 1
 
 
+# --- Fraction tests ---
+
+def test_create_caffeine_entry_with_fraction_halves_units(client):
+    """A caffeine entry with fraction=0.5 reports half the caffeine_units."""
+    r = client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _now(), "fraction": 0.5})
+    assert r.status_code == 201
+    d = r.json()
+    assert d["fraction"] == 0.5
+    assert abs(d["caffeine_units"] - 0.5) < 0.0001
+
+
+def test_create_caffeine_entry_without_fraction_is_full(client):
+    """A caffeine entry without fraction has caffeine_units unchanged (fraction=null)."""
+    r = client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _now()})
+    assert r.status_code == 201
+    d = r.json()
+    assert d["fraction"] is None
+    assert abs(d["caffeine_units"] - 1.0) < 0.0001
+
+
+def test_caffeine_summary_applies_fraction(client):
+    """Caffeine summary total correctly applies fraction multiplier."""
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _now()})
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _now(), "fraction": 0.5})
+    _confirm_all(client)
+
+    data = client.get("/api/caffeine-entries/summary").json()
+    assert len(data) == 1
+    # 1.0 + 0.5 = 1.5 units
+    assert abs(data[0]["total"] - 1.5) < 0.0001
+
+
 def test_caffeine_summary_period_all(client):
     """Period=all returns all confirmed entries."""
     client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=400)})
