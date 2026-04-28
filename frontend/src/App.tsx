@@ -36,6 +36,10 @@ function AppContent() {
   const [scannerOpen, setScannerOpen] = useState(false)
 
   useEffect(() => {
+    if (!username) queryClient.clear()
+  }, [username])
+
+  useEffect(() => {
     ;(async () => {
       const ok = await refreshAccessToken()
       if (ok) {
