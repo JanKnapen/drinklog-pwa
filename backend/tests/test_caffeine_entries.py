@@ -29,6 +29,12 @@ def test_create_caffeine_entry(client):
     assert abs(d["caffeine_units"] - 1.0) < 0.001
 
 
+def test_create_duplicate_custom_name_caffeine_entry_returns_409(client):
+    client.post("/api/caffeine-entries", json={"custom_name": "Coffee", "mg": 80, "timestamp": _now()})
+    r = client.post("/api/caffeine-entries", json={"custom_name": "Coffee", "mg": 80, "timestamp": _now()})
+    assert r.status_code == 409
+
+
 def test_caffeine_entries_sorted_newest_first(client):
     client.post("/api/caffeine-entries", json={"custom_name": "A", "mg": 80, "timestamp": _ts(2)})
     client.post("/api/caffeine-entries", json={"custom_name": "B", "mg": 80, "timestamp": _now()})
