@@ -28,8 +28,7 @@ interface QuickLogSnapshot {
 
 export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: string) => void; onScannerOpen?: (open: boolean) => void }) {
   const adapter = useModuleAdapter()
-  const { openSettings, updateSettings, settings } = useSettings()
-  const barcodeStrategy = settings.barcodeStrategy
+  const { openSettings, updateSettings } = useSettings()
   const { templates, entries, isEntriesFetched, activeModule } = adapter
 
   const [modal, setModal] = useState<'new' | 'enter' | 'other' | 'pending' | 'scanner' | 'scan-match' | null>(null)
@@ -38,7 +37,6 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
   const [scanMatchTemplate, setScanMatchTemplate] = useState<TrackerTemplate | null>(null)
   const [pendingScanTemplateId, setPendingScanTemplateId] = useState<string | null>(null)
   const [snapshot, setSnapshot] = useState<QuickLogSnapshot>({ todayTopTwo: [], alltimeItems: [], pendingDrinks: [] })
-  const [isFetching, setIsFetching] = useState(false)
 
   useEffect(() => { onScannerOpen?.(modal === 'scanner') }, [modal, onScannerOpen])
 
@@ -109,7 +107,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
   async function handleScan(code: string) {
     setModal(null)
     try {
-      const result = await lookupBarcode(code, activeModule, barcodeStrategy)
+      const result = await lookupBarcode(code, activeModule)
       if (result.source === 'local') {
         if (result.module && result.module !== activeModule && result.template_id) {
           updateSettings({ activeModule: result.module })
@@ -123,7 +121,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
           return
         }
       }
-      if ((result.source === 'off' || result.source === 'ah' || result.source === 'local') && result.name) {
+      if ((result.source === 'off' || result.source === 'local') && result.name) {
         setScanPrefill(result)
         setScanCode(code)
         setModal('new')
@@ -134,20 +132,6 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
       setModal('new')
     } catch {
       onToast('Barcode lookup failed')
-    }
-  }
-
-  async function handleStrategyChange(newStrategy: 1 | 2 | 3) {
-    if (!scanCode) return
-    setIsFetching(true)
-    updateSettings({ barcodeStrategy: newStrategy })
-    try {
-      const result = await lookupBarcode(scanCode, activeModule, newStrategy)
-      setScanPrefill(result)
-    } catch {
-      // keep existing prefill on network error
-    } finally {
-      setIsFetching(false)
     }
   }
 
@@ -249,9 +233,6 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
           prefill={scanPrefill}
           barcode={scanCode}
           onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(`Logged: ${name}`); setModal(null) }}
-          isFetching={isFetching}
-          onStrategyChange={handleStrategyChange}
-          barcodeStrategy={barcodeStrategy}
         />
       ) : (
         <NewCaffeineModal
@@ -262,9 +243,6 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
           prefill={scanPrefill}
           barcode={scanCode}
           onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(`Logged: ${name}`); setModal(null) }}
-          isFetching={isFetching}
-          onStrategyChange={handleStrategyChange}
-          barcodeStrategy={barcodeStrategy}
         />
       )}
       {activeModule === 'alcohol' ? (
@@ -332,10 +310,9 @@ function ActionCard({ title, subtitle, icon, onClick }: {
 }
 
 // NewAlcoholModal — uses useCreateEntry directly (module-specific modal, adapter bypass acceptable)
-function NewAlcoholModal({ open, onClose, templates, pendingDrinks, prefill, barcode, onLogged, isFetching, onStrategyChange, barcodeStrategy }: {
+function NewAlcoholModal({ open, onClose, templates, pendingDrinks, prefill, barcode, onLogged }: {
   open: boolean; onClose: () => void; templates: TrackerTemplate[]; pendingDrinks: TrackerEntry[]
   prefill?: BarcodeResult | null; barcode?: string | null; onLogged: (name: string) => void
-  isFetching?: boolean; onStrategyChange?: (s: 1 | 2 | 3) => void; barcodeStrategy?: 1 | 2 | 3
 }) {
   const createEntry = useCreateEntry()
   const createTemplate = useCreateTemplate()
@@ -424,23 +401,12 @@ function NewAlcoholModal({ open, onClose, templates, pendingDrinks, prefill, bar
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
-        {prefill ? (
-          <div className="bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2 flex flex-col gap-2">
-            {onStrategyChange && barcodeStrategy != null && (
-              <StrategyPill value={barcodeStrategy} onChange={onStrategyChange} />
-            )}
-            {prefill.strategy_used != null && (
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
-                {isFetching ? 'Fetching…' : `${(['OFF+', 'AH', 'Hybrid'] as const)[prefill.strategy_used - 1]} · ${prefill.actual_source ?? '—'} · ${prefill.latency_ms != null ? `${Math.round(prefill.latency_ms)}ms` : '—'}`}
-              </p>
-            )}
-          </div>
-        ) : barcode ? (
+        {!prefill && barcode ? (
           <p className="text-sm text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2">
             Not found in any source — fill in the details to save this barcode for future scans.
           </p>
         ) : null}
-        <div className={isFetching ? 'opacity-40 pointer-events-none' : ''}>
+        <div>
           <div className="flex flex-col gap-3">
             <Field label="Drink name">
               <input className={inputCls} placeholder="e.g. Lager, House Wine…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
@@ -456,7 +422,7 @@ function NewAlcoholModal({ open, onClose, templates, pendingDrinks, prefill, bar
         </div>
         <div className="flex gap-2">
           <Stepper value={count} onChange={setCount} half={half} onHalfChange={setHalf} />
-          <button onClick={handleSubmit} disabled={(!isValid) || (count === 0 && !half) || createTemplate.isPending || createEntry.isPending || !!isFetching} className={primaryBtn + ' flex-1'}>Log</button>
+          <button onClick={handleSubmit} disabled={(!isValid) || (count === 0 && !half) || createTemplate.isPending || createEntry.isPending} className={primaryBtn + ' flex-1'}>Log</button>
         </div>
       </div>
     </Modal>
@@ -464,10 +430,9 @@ function NewAlcoholModal({ open, onClose, templates, pendingDrinks, prefill, bar
 }
 
 // NewCaffeineModal — uses useCreateCaffeineEntry directly (module-specific modal)
-export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, prefill, barcode, onLogged, isFetching, onStrategyChange, barcodeStrategy }: {
+export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, prefill, barcode, onLogged }: {
   open: boolean; onClose: () => void; templates: TrackerTemplate[]; pendingDrinks: TrackerEntry[]
   prefill?: BarcodeResult | null; barcode?: string | null; onLogged: (name: string) => void
-  isFetching?: boolean; onStrategyChange?: (s: 1 | 2 | 3) => void; barcodeStrategy?: 1 | 2 | 3
 }) {
   const createEntry = useCreateCaffeineEntry()
   const createTemplate = useCreateCaffeineTemplate()
@@ -552,23 +517,12 @@ export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, pref
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
-        {prefill ? (
-          <div className="bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2 flex flex-col gap-2">
-            {onStrategyChange && barcodeStrategy != null && (
-              <StrategyPill value={barcodeStrategy} onChange={onStrategyChange} />
-            )}
-            {prefill.strategy_used != null && (
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
-                {isFetching ? 'Fetching…' : `${(['OFF+', 'AH', 'Hybrid'] as const)[prefill.strategy_used - 1]} · ${prefill.actual_source ?? '—'} · ${prefill.latency_ms != null ? `${Math.round(prefill.latency_ms)}ms` : '—'}`}
-              </p>
-            )}
-          </div>
-        ) : barcode ? (
+        {!prefill && barcode ? (
           <p className="text-sm text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2">
             Not found in any source — fill in the details to save this barcode for future scans.
           </p>
         ) : null}
-        <div className={isFetching ? 'opacity-40 pointer-events-none' : ''}>
+        <div>
           <div className="flex flex-col gap-3">
             <Field label="Drink name">
               <input className={inputCls} placeholder="e.g. Coffee, Energy Drink…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
@@ -580,7 +534,7 @@ export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, pref
         </div>
         <div className="flex gap-2">
           <Stepper value={count} onChange={setCount} half={half} onHalfChange={setHalf} />
-          <button onClick={handleSubmit} disabled={(!isValid) || (count === 0 && !half) || createTemplate.isPending || createEntry.isPending || !!isFetching} className={primaryBtn + ' flex-1'}>Log</button>
+          <button onClick={handleSubmit} disabled={(!isValid) || (count === 0 && !half) || createTemplate.isPending || createEntry.isPending} className={primaryBtn + ' flex-1'}>Log</button>
         </div>
       </div>
     </Modal>
@@ -796,28 +750,6 @@ function ScanMatchModal({ open, template, onClose, onLog, onLogged }: {
         </div>
       </div>
     </Modal>
-  )
-}
-
-function StrategyPill({ value, onChange }: { value: 1 | 2 | 3; onChange: (s: 1 | 2 | 3) => void }) {
-  const labels: Record<1 | 2 | 3, string> = { 1: 'OFF+', 2: 'AH', 3: 'Hybrid' }
-  return (
-    <div className="flex rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 text-xs font-medium">
-      {([1, 2, 3] as const).map((s) => (
-        <button
-          key={s}
-          onClick={() => onChange(s)}
-          className={
-            'px-2 py-1 transition-colors ' +
-            (value === s
-              ? 'bg-blue-500 text-white'
-              : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400')
-          }
-        >
-          {labels[s]}
-        </button>
-      ))}
-    </div>
   )
 }
 
