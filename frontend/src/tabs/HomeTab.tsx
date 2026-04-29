@@ -401,10 +401,7 @@ function NewAlcoholModal({ open, onClose, templates, pendingDrinks, prefill, bar
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
-        {prefill ? (
-          <div className="bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2 flex flex-col gap-2">
-          </div>
-        ) : barcode ? (
+        {!prefill && barcode ? (
           <p className="text-sm text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2">
             Not found in any source — fill in the details to save this barcode for future scans.
           </p>
@@ -520,10 +517,7 @@ export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, pref
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
-        {prefill ? (
-          <div className="bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2 flex flex-col gap-2">
-          </div>
-        ) : barcode ? (
+        {!prefill && barcode ? (
           <p className="text-sm text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2">
             Not found in any source — fill in the details to save this barcode for future scans.
           </p>
