@@ -1,3 +1,4 @@
+import logging
 from typing import Optional, Literal
 
 import httpx
@@ -12,6 +13,7 @@ from routers.auth import limiter
 from routers.parsers import parse_ml_from_text
 
 router = APIRouter(tags=["barcode"])
+logger = logging.getLogger("uvicorn.error")
 
 OFF_URL = "https://world.openfoodfacts.org/api/v2/product/{code}.json"
 
@@ -72,7 +74,8 @@ def _extract_off_caffeine(product: dict) -> tuple[Optional[float], Optional[floa
 async def _strategy_off_plus(code: str, module: str, client: httpx.AsyncClient) -> BarcodeResult:
     try:
         product = await _fetch_off(client, code)
-    except Exception:
+    except Exception as exc:
+        logger.warning("OFF lookup failed for barcode %s: %s", code, exc)
         return BarcodeResult(source="not_found")
 
     if not product:
