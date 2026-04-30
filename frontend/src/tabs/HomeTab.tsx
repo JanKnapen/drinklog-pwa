@@ -15,9 +15,9 @@ import type { TrackerTemplate, TrackerEntry } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
 import { useModuleAdapter } from '../hooks/useModuleAdapter'
 import { useCreateEntry } from '../api/entries'
-import { useCreateTemplate, useUpdateTemplate } from '../api/templates'
+import { useCreateTemplate, useUpdateTemplate, useTemplates } from '../api/templates'
 import { useCreateCaffeineEntry } from '../api/caffeine-entries'
-import { useCreateCaffeineTemplate, useUpdateCaffeineTemplate } from '../api/caffeine-templates'
+import { useCreateCaffeineTemplate, useUpdateCaffeineTemplate, useCaffeineTemplates } from '../api/caffeine-templates'
 import { lookupBarcode, type BarcodeResult } from '../api/barcode'
 
 interface QuickLogSnapshot {
@@ -224,7 +224,15 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
         )}
       </div>
 
-      {activeModule === 'alcohol' ? (
+      {scanCode ? (
+        <NewScanModal
+          open={modal === 'new'}
+          onClose={() => { setScanPrefill(null); setScanCode(null); setModal(null) }}
+          barcode={scanCode}
+          initialResult={scanPrefill}
+          onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(`Logged: ${name}`); setModal(null) }}
+        />
+      ) : activeModule === 'alcohol' ? (
         <NewAlcoholModal
           open={modal === 'new'}
           onClose={() => { setScanPrefill(null); setScanCode(null); setModal(null) }}
@@ -535,6 +543,240 @@ export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, pref
         <div className="flex gap-2">
           <Stepper value={count} onChange={setCount} half={half} onHalfChange={setHalf} />
           <button onClick={handleSubmit} disabled={(!isValid) || (count === 0 && !half) || createTemplate.isPending || createEntry.isPending} className={primaryBtn + ' flex-1'}>Log</button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// NewScanModal — unified modal for barcode scan path; shows module toggle and caches per-module results
+function NewScanModal({
+  open,
+  onClose,
+  barcode,
+  initialResult,
+  onLogged,
+}: {
+  open: boolean
+  onClose: () => void
+  barcode: string
+  initialResult: BarcodeResult | null
+  onLogged: (name: string) => void
+}) {
+  const { settings, updateSettings } = useSettings()
+  const { data: alcoholTemplatesRaw = [] } = useTemplates()
+  const { data: caffeineTemplatesRaw = [] } = useCaffeineTemplates()
+
+  // All mutation hooks called unconditionally (React rules)
+  const createAlcoholEntry = useCreateEntry()
+  const createAlcoholTemplate = useCreateTemplate()
+  const updateAlcoholTemplate = useUpdateTemplate()
+  const createCaffeineEntry = useCreateCaffeineEntry()
+  const createCaffeineTemplate = useCreateCaffeineTemplate()
+  const updateCaffeineTemplate = useUpdateCaffeineTemplate()
+
+  const [selectedModule, setSelectedModule] = useState<'alcohol' | 'caffeine'>(settings.activeModule)
+  const [isSwitching, setIsSwitching] = useState(false)
+  const [currentPrefill, setCurrentPrefill] = useState<BarcodeResult | null>(initialResult)
+  const resultCache = useRef<Map<'alcohol' | 'caffeine', BarcodeResult | null>>(new Map())
+
+  const [name, setName] = useState('')
+  const [ml, setMl] = useState('')
+  const [abv, setAbv] = useState('')
+  const [mg, setMg] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [ts, setTs] = useState<Date>(() => new Date())
+  const [count, setCount] = useState(1)
+  const [half, setHalf] = useState(false)
+
+  function applyResult(result: BarcodeResult | null, mod: 'alcohol' | 'caffeine') {
+    setCurrentPrefill(result)
+    if (result) {
+      setName(result.name ? `${result.name} Ⓑ` : '')
+      setMl(mod === 'alcohol' && result.ml != null ? String(result.ml) : '')
+      setAbv(mod === 'alcohol' && result.abv != null ? String(result.abv) : '')
+      setMg(mod === 'caffeine' && result.mg != null ? String(result.mg) : '')
+    } else {
+      setName(''); setMl(''); setAbv(''); setMg('')
+    }
+  }
+
+  // Seed cache and initialize form state on open.
+  // Component unmounts between scans (scanCode goes null → NewScanModal unmounts),
+  // so this effect primarily handles the first open of each scan session.
+  useEffect(() => {
+    if (!open) return
+    const initModule = settings.activeModule
+    setSelectedModule(initModule)
+    resultCache.current.clear()
+    resultCache.current.set(initModule, initialResult)
+    applyResult(initialResult, initModule)
+    setTs(new Date()); setError(null); setCount(1); setHalf(false)
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps -- intentional: only reset on open/close, not on every settings change
+
+  async function handleModuleSwitch(newModule: 'alcohol' | 'caffeine') {
+    if (newModule === selectedModule || isSwitching) return
+    updateSettings({ activeModule: newModule })
+    setSelectedModule(newModule)
+    setError(null)
+
+    if (resultCache.current.has(newModule)) {
+      applyResult(resultCache.current.get(newModule) ?? null, newModule)
+      return
+    }
+
+    setIsSwitching(true)
+    try {
+      const result = await lookupBarcode(barcode, newModule)
+      const prefill = (result.source === 'off' || result.source === 'local') && result.name ? result : null
+      resultCache.current.set(newModule, prefill)
+      applyResult(prefill, newModule)
+    } catch {
+      resultCache.current.set(newModule, null)
+      applyResult(null, newModule)
+    } finally {
+      setIsSwitching(false)
+    }
+  }
+
+  const duplicateAlcohol = alcoholTemplatesRaw.find((t) => t.name.toLowerCase() === name.trim().toLowerCase())
+  const duplicateCaffeine = caffeineTemplatesRaw.find((t) => t.name.toLowerCase() === name.trim().toLowerCase())
+  const isDuplicate = selectedModule === 'alcohol' ? !!duplicateAlcohol : !!duplicateCaffeine
+
+  const isValid = selectedModule === 'alcohol'
+    ? name.trim().length > 0 && !isNaN(parseFloat(ml)) && !isNaN(parseFloat(abv))
+    : name.trim().length > 0 && !isNaN(parseFloat(mg))
+
+  const mlMissing = currentPrefill != null && currentPrefill.ml == null && selectedModule === 'alcohol'
+  const abvMissing = currentPrefill != null && currentPrefill.abv == null && selectedModule === 'alcohol'
+  const mgMissing = currentPrefill != null && currentPrefill.mg == null && selectedModule === 'caffeine'
+  const dashedCls = ' border-dashed border-2 border-neutral-400 dark:border-neutral-500'
+  const fraction = half ? 0.5 : undefined
+  const isPending = createAlcoholTemplate.isPending || createAlcoholEntry.isPending ||
+    createCaffeineTemplate.isPending || createCaffeineEntry.isPending
+
+  function reset() {
+    setName(''); setMl(''); setAbv(''); setMg('')
+    setError(null); setTs(new Date()); setCount(1); setHalf(false)
+  }
+
+  async function handleSubmit() {
+    const timestamp = ts.toISOString()
+    try {
+      if (selectedModule === 'alcohol') {
+        let templateId: string
+        if (isDuplicate && duplicateAlcohol) {
+          templateId = duplicateAlcohol.id
+        } else {
+          const t = await createAlcoholTemplate.mutateAsync({
+            name: name.trim(), default_ml: parseFloat(ml), default_abv: parseFloat(abv), barcode,
+          })
+          templateId = t.id
+        }
+        for (let i = 0; i < count; i++) {
+          await createAlcoholEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
+        }
+        if (fraction != null) {
+          await createAlcoholEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp, fraction })
+        }
+        const totalCount = count + (fraction != null ? 1 : 0)
+        if (isDuplicate && duplicateAlcohol) {
+          await updateAlcoholTemplate.mutateAsync({ id: templateId, barcode, usage_count: duplicateAlcohol.usage_count + totalCount })
+        } else {
+          await updateAlcoholTemplate.mutateAsync({ id: templateId, usage_count: totalCount })
+        }
+      } else {
+        let templateId: string
+        if (isDuplicate && duplicateCaffeine) {
+          templateId = duplicateCaffeine.id
+        } else {
+          const t = await createCaffeineTemplate.mutateAsync({
+            name: name.trim(), default_mg: parseFloat(mg), barcode,
+          })
+          templateId = t.id
+        }
+        for (let i = 0; i < count; i++) {
+          await createCaffeineEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp })
+        }
+        if (fraction != null) {
+          await createCaffeineEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp, fraction })
+        }
+        const totalCount = count + (fraction != null ? 1 : 0)
+        if (isDuplicate && duplicateCaffeine) {
+          await updateCaffeineTemplate.mutateAsync({ id: templateId, barcode, usage_count: duplicateCaffeine.usage_count + totalCount })
+        } else {
+          await updateCaffeineTemplate.mutateAsync({ id: templateId, usage_count: totalCount })
+        }
+      }
+    } catch {
+      setError('Something went wrong, please try again')
+      return
+    }
+    const logged = name.trim()
+    reset()
+    onLogged(logged)
+  }
+
+  return (
+    <Modal open={open} onClose={() => { reset(); onClose() }} title="New Drink">
+      <div className="flex flex-col gap-3">
+        <Field label="When (month · day · hour)">
+          <TimestampPicker value={ts} onChange={setTs} />
+        </Field>
+        {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
+        {!currentPrefill ? (
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2">
+            Not found in any source — fill in the details to save this barcode for future scans.
+          </p>
+        ) : null}
+        <div className="flex flex-col gap-3">
+          <Field label="Drink name">
+            <input
+              className={inputCls}
+              placeholder={selectedModule === 'caffeine' ? 'e.g. Coffee, Energy Drink…' : 'e.g. Lager, House Wine…'}
+              value={name}
+              onChange={(e) => { setName(e.target.value); setError(null) }}
+            />
+          </Field>
+          <div className="flex rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-700">
+            {(['alcohol', 'caffeine'] as const).map((mod) => (
+              <button
+                key={mod}
+                onClick={() => handleModuleSwitch(mod)}
+                disabled={isSwitching}
+                className={`flex-1 py-2 text-sm font-medium transition-colors touch-manipulation ${
+                  selectedModule === mod
+                    ? `bg-blue-500 text-white${isSwitching ? ' animate-pulse' : ''}`
+                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300'
+                }`}
+              >
+                {mod === 'alcohol' ? 'Alcohol' : 'Caffeine'}
+              </button>
+            ))}
+          </div>
+          {selectedModule === 'alcohol' ? (
+            <>
+              <Field label="Amount (ml)">
+                <input className={inputCls + (mlMissing ? dashedCls : '')} inputMode="decimal" placeholder="330" value={ml} onChange={(e) => setMl(e.target.value)} />
+              </Field>
+              <Field label="ABV (%)">
+                <input className={inputCls + (abvMissing ? dashedCls : '')} inputMode="decimal" placeholder="5.0" value={abv} onChange={(e) => setAbv(e.target.value)} />
+              </Field>
+              <UnitPreview ml={ml} abv={abv} />
+            </>
+          ) : (
+            <Field label="Caffeine (mg)">
+              <input className={inputCls + (mgMissing ? dashedCls : '')} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
+            </Field>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Stepper value={count} onChange={setCount} half={half} onHalfChange={setHalf} />
+          <button
+            onClick={handleSubmit}
+            disabled={!isValid || (count === 0 && !half) || isPending || isSwitching}
+            className={primaryBtn + ' flex-1'}
+          >Log</button>
         </div>
       </div>
     </Modal>
