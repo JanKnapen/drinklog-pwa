@@ -156,7 +156,7 @@ A separate service for server operators to manage user accounts. It is **not** t
 
 The admin is two independent Docker services (`admin-backend`, `admin-frontend`) running alongside the main stack. They share the same `db_data` volume and therefore the same SQLite database. The admin backend imports models from `shared/models.py` (the same ORM models the main backend uses) — it does **not** have its own database or User table.
 
-Both admin services are exposed on all interfaces (not localhost-only) so they are reachable over LAN and Tailscale. `admin-backend` listens on port `8001`, `admin-frontend` on `8002`.
+Admin services listen on ports `8001` (admin-backend) and `8002` (admin-frontend), restricted to Tailscale peers only via `DOCKER-USER` iptables rules on the host (see Deployment Notes).
 
 ### Authentication (admin-specific)
 
@@ -280,10 +280,15 @@ Tailwind uses `darkMode: 'class'` — the `dark` class is toggled on `<html>` by
 `docker-compose.yml` runs four services on an `internal` bridge network:
 - `backend` — FastAPI, no exposed ports, `DATABASE_URL` points to a named volume at `/data/drinklog.db`. Reads env vars from `.env` (via `env_file: .env`).
 - `frontend` — nginx on port **80**, serves the Vite build, proxies `/api/` to `backend:8000`.
-- `admin-backend` — FastAPI on port **8001** (all interfaces), shares the same `db_data` volume. Reads env vars from `.env`.
-- `admin-frontend` — nginx on port **8002** (all interfaces), serves the admin Vite build, proxies `/api/` to `admin-backend:8000`.
+- `admin-backend` — FastAPI on port **8001**, shares the same `db_data` volume. Reads env vars from `.env`.
+- `admin-frontend` — nginx on port **8002**, serves the admin Vite build, proxies `/api/` to `admin-backend:8000`.
 
-Both admin ports are bound to all interfaces (not localhost-only) so they are accessible over LAN and Tailscale without extra tunneling.
+Admin ports are bound to `0.0.0.0` but restricted to Tailscale peers only via `DOCKER-USER` iptables rules on the host:
+```bash
+iptables -I DOCKER-USER ! -i tailscale0 -m conntrack --ctorigdstport 8001 -p tcp -j DROP
+iptables -I DOCKER-USER ! -i tailscale0 -m conntrack --ctorigdstport 8002 -p tcp -j DROP
+```
+Persisted with `netfilter-persistent save`. **Do not use UFW rules or `127.0.0.1` binding to restrict Docker ports** — Docker bypasses UFW by writing iptables rules directly, and `127.0.0.1` binding also blocks Tailscale (Tailscale traffic arrives with the Tailscale IP as destination, not loopback). The `DOCKER-USER` chain with `--ctorigdstport` (matches the pre-DNAT port) is the correct mechanism.
 
 **`.env` and `.env.example`** — `.env` is the live deployment file (gitignored) that holds real secrets on the server. `.env.example` is the committed template. **Whenever a new env var is introduced, it must be added to `.env.example`** with a placeholder value and a short comment explaining what it is. Never read or suggest values from `.env` — treat it as a secret file that Claude should not inspect or expose.
 
