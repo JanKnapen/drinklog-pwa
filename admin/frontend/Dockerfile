@@ -11,4 +11,5 @@ RUN --mount=type=cache,id=admin-frontend-node-modules,target=/app/node_modules \
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY admin/nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+USER nginx
+EXPOSE 8080

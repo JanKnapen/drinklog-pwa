@@ -19,7 +19,7 @@ services:
       dockerfile: frontend/Dockerfile
     container_name: drinklog-frontend
     ports:
-      - "80:80"
+      - "80:8080"
     depends_on:
       - backend
     networks:
@@ -48,7 +48,7 @@ services:
       dockerfile: admin/frontend/Dockerfile
     container_name: drinklog-admin-frontend
     ports:
-      - "8002:80"
+      - "8002:8080"
     depends_on:
       - admin-backend
     networks:

@@ -17,3 +17,5 @@ services:
       - /etc/ssl:/certs:ro
     ports:
       - "443:443"
+    cap_add:
+      - NET_BIND_SERVICE

@@ -15,7 +15,7 @@
 | 9   | 🟡 MEDIUM   | No numeric bounds on ml/abv/mg                   | ✅ Fixed — `Field(gt/ge/le)` bounds added to all create/update schemas in `schemas.py`                             |
 | 10  | 🟡 MEDIUM   | No refresh token rotation                        | ❌ Still open                                                                                                      |
 | 11  | 🟡 MEDIUM   | Admin 401 doesn't redirect to login              | ✅ Fixed — 401 clears token and reloads in `admin/frontend/src/api/client.ts`                                      |
-| 12  | 🔵 LOW      | Containers run as root                           | ❌ Still open                                                                                                      |
+| 12  | 🔵 LOW      | Containers run as root                           | ✅ Fixed — backends use gosu entrypoint to chown /data then drop to app user; nginx uses USER nginx on port 8080   |
 | 13  | 🔵 LOW      | No nginx body size limits                        | ✅ Fixed — `client_max_body_size 64k` added to both nginx configs                                                  |
 | 14  | 🔵 LOW      | No audit log for admin ops                       | ❌ Still open                                                                                                      |
 | 15  | 🔵 LOW      | Silent exception swallowing in barcode           | ⚠️ Partially fixed — strategy 2/3 removed, but `_strategy_off_plus` still has bare `except Exception:` at line 74 |
