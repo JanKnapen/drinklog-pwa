@@ -1,13 +1,14 @@
 from typing import Optional, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import DrinkTemplate, CaffeineTemplate, User
 from routers.deps import get_current_user
+from routers.auth import limiter
 from routers.parsers import parse_ml_from_text
 
 router = APIRouter(tags=["barcode"])
@@ -90,7 +91,9 @@ async def _strategy_off_plus(code: str, module: str, client: httpx.AsyncClient) 
 
 
 @router.get("/barcode/{code}", response_model=BarcodeResult)
+@limiter.limit("15/minute")
 async def lookup_barcode(
+    request: Request,
     code: str,
     module: str = Query(..., pattern="^(alcohol|caffeine)$"),
     db: Session = Depends(get_db),
