@@ -27,6 +27,11 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
   const res = await fetch(path, { ...init, headers });
+  if (res.status === 401) {
+    clearToken();
+    window.location.reload();
+    throw new ApiError(401, 'Session expired');
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new ApiError(res.status, text);

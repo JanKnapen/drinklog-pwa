@@ -14,7 +14,7 @@
 | 8   | 🟡 MEDIUM   | No password minimum length                       | ✅ Fixed — 16-character minimum enforced via Pydantic validator on create/change-password schemas                  |
 | 9   | 🟡 MEDIUM   | No numeric bounds on ml/abv/mg                   | ✅ Fixed — `Field(gt/ge/le)` bounds added to all create/update schemas in `schemas.py`                             |
 | 10  | 🟡 MEDIUM   | No refresh token rotation                        | ❌ Still open                                                                                                      |
-| 11  | 🟡 MEDIUM   | Admin 401 doesn't redirect to login              | ❌ Still open                                                                                                      |
+| 11  | 🟡 MEDIUM   | Admin 401 doesn't redirect to login              | ✅ Fixed — 401 clears token and reloads in `admin/frontend/src/api/client.ts`                                      |
 | 12  | 🔵 LOW      | Containers run as root                           | ❌ Still open                                                                                                      |
 | 13  | 🔵 LOW      | No nginx body size limits                        | ✅ Fixed — `client_max_body_size 64k` added to both nginx configs                                                  |
 | 14  | 🔵 LOW      | No audit log for admin ops                       | ❌ Still open                                                                                                      |
