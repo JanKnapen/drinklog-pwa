@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -22,9 +22,23 @@ class CreateUserRequest(BaseModel):
     username: str
     password: str
 
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 16:
+            raise ValueError("Password must be at least 16 characters")
+        return v
+
 
 class ChangePasswordRequest(BaseModel):
     new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 16:
+            raise ValueError("Password must be at least 16 characters")
+        return v
 
 
 @router.post("/admin/login")

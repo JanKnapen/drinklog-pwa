@@ -11,7 +11,7 @@
 | 5   | 🟠 HIGH     | JWT secrets fall back silently                   | ✅ Fixed — startup check in both `main.py` files; skipped when `DEBUG=true` (set by `docker-compose.dev.yml`)      |
 | 6   | 🟠 HIGH     | Barcode rate limit too loose                     | ✅ Fixed — `@limiter.limit("15/minute")` added to barcode endpoint                                                |
 | 7   | 🟠 HIGH     | `_check_barcode_cross_module` not scoped to user | ✅ Fixed — both routers now pass and filter by `user_id`                                                           |
-| 8   | 🟡 MEDIUM   | No password minimum length                       | ❌ Still open                                                                                                      |
+| 8   | 🟡 MEDIUM   | No password minimum length                       | ✅ Fixed — 16-character minimum enforced via Pydantic validator on create/change-password schemas                  |
 | 9   | 🟡 MEDIUM   | No numeric bounds on ml/abv/mg                   | ❌ Still open                                                                                                      |
 | 10  | 🟡 MEDIUM   | No refresh token rotation                        | ❌ Still open                                                                                                      |
 | 11  | 🟡 MEDIUM   | Admin 401 doesn't redirect to login              | ❌ Still open                                                                                                      |
