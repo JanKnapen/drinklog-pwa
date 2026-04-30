@@ -9,6 +9,8 @@ PUBLIC_CONFIG = {
     'caffeine_unit_divisor': CAFFEINE_UNIT_DIVISOR,
 }
 
+DEBUG = os.getenv("DEBUG", "false").lower() in ("1", "true")
+
 JWT_ACCESS_SECRET = os.getenv("JWT_ACCESS_SECRET", secrets.token_hex(32))
 JWT_REFRESH_SECRET = os.getenv("JWT_REFRESH_SECRET", secrets.token_hex(32))
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))

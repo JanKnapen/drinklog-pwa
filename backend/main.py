@@ -13,8 +13,16 @@ from database import Base, engine
 from routers import templates, entries, caffeine_templates, caffeine_entries
 from routers import barcode
 from routers.auth import router as auth_router, limiter
-from config import PUBLIC_CONFIG, ADMIN_SEED_USERNAME, ADMIN_SEED_PASSWORD
+from config import PUBLIC_CONFIG, ADMIN_SEED_USERNAME, ADMIN_SEED_PASSWORD, DEBUG
 from auth import hash_password
+
+if not DEBUG:
+    _missing = [k for k in ("JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET") if not os.getenv(k)]
+    if _missing:
+        raise RuntimeError(
+            f"Required env vars not set: {', '.join(_missing)}. "
+            "Set them in .env or set DEBUG=true to suppress this check."
+        )
 
 Base.metadata.create_all(bind=engine)
 
