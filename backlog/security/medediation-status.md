@@ -7,7 +7,7 @@
 | 1   | 🔴 CRITICAL | Admin ports exposed                              | ✅ Fixed — DOCKER-USER iptables rules restrict ports 8001/8002 to Tailscale only                                   |
 | 2   | 🔴 CRITICAL | No security headers in nginx                     | ✅ Fixed — headers added to both nginx configs                                                                     |
 | 3   | 🔴 CRITICAL | Template name uniqueness global                  | **Fixed**                                                                                                         |
-| 4   | 🟠 HIGH     | CORS wildcard methods/headers                    | ❌ Still open                                                                                                      |
+| 4   | 🟠 HIGH     | CORS wildcard methods/headers                    | ✅ Fixed — explicit methods and headers in both backends                                                           |
 | 5   | 🟠 HIGH     | JWT secrets fall back silently                   | ❌ Still open — `config.py` still uses random fallback, no startup check in `main.py`                              |
 | 6   | 🟠 HIGH     | Barcode rate limit too loose                     | ⚠️ Changed — multi-strategy infra was removed; barcode endpoint now has **no rate limit at all**                  |
 | 7   | 🟠 HIGH     | `_check_barcode_cross_module` not scoped to user | ✅ Fixed — both routers now pass and filter by `user_id`                                                           |
