@@ -17,7 +17,7 @@
 | 11  | 🟡 MEDIUM   | Admin 401 doesn't redirect to login              | ✅ Fixed — 401 clears token and reloads in `admin/frontend/src/api/client.ts`                                      |
 | 12  | 🔵 LOW      | Containers run as root                           | ✅ Fixed — backends use gosu entrypoint to chown /data then drop to app user; nginx uses USER nginx on port 8080   |
 | 13  | 🔵 LOW      | No nginx body size limits                        | ✅ Fixed — `client_max_body_size 64k` added to both nginx configs                                                  |
-| 14  | 🔵 LOW      | No audit log for admin ops                       | ❌ Still open                                                                                                      |
+| 14  | 🔵 LOW      | No audit log for admin ops                       | ✅ Fixed — `logger.warning` on create, password change, and delete in `admin/backend/routers/admin.py`             |
 | 15  | 🔵 LOW      | Silent exception swallowing in barcode           | ⚠️ Partially fixed — strategy 2/3 removed, but `_strategy_off_plus` still has bare `except Exception:` at line 74 |
 
 ---

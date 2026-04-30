@@ -1,8 +1,12 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+logger = logging.getLogger(__name__)
 
 from database import get_db
 from auth import create_admin_token, hash_password
@@ -77,6 +81,7 @@ def create_user(
     db.add(user)
     db.commit()
     db.refresh(user)
+    logger.warning("admin: created user id=%d username=%s", user.id, user.username)
     return {"id": user.id, "username": user.username}
 
 
@@ -92,6 +97,7 @@ def update_password(
         raise HTTPException(status_code=404, detail="User not found")
     user.hashed_password = hash_password(body.new_password)
     db.commit()
+    logger.warning("admin: changed password for user id=%d username=%s", user.id, user.username)
     return {"message": "updated"}
 
 
@@ -111,4 +117,5 @@ def delete_user(
     db.query(CaffeineTemplate).filter(CaffeineTemplate.user_id == user_id).delete()
     db.delete(user)
     db.commit()
+    logger.warning("admin: deleted user id=%d username=%s", user.id, user.username)
     return {"message": "deleted"}
