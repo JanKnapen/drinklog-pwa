@@ -83,16 +83,18 @@ def _migrate():
                 ))
                 conn.commit()
 
-        # Drop old global name unique index (SQLAlchemy names it uq_{table}_name)
-        existing_indexes = {i["name"] for i in inspector.get_indexes(table)}
-        old_name_index = f"uq_{table}_name"
-        if old_name_index in existing_indexes:
-            with engine.connect() as conn:
-                conn.execute(text(f"DROP INDEX IF EXISTS {old_name_index}"))
-                conn.commit()
-            existing_indexes.discard(old_name_index)
+        # Drop any unique index covering only the name column (global constraint)
+        # — scan by columns rather than by name since SQLAlchemy's auto-generated
+        #   name varies across versions and init paths
+        all_indexes = inspector.get_indexes(table)
+        for idx in all_indexes:
+            if idx.get("unique") and idx.get("column_names") == ["name"]:
+                with engine.connect() as conn:
+                    conn.execute(text(f"DROP INDEX IF EXISTS \"{idx['name']}\""))
+                    conn.commit()
 
         # Per-user name uniqueness
+        existing_indexes = {i["name"] for i in inspector.get_indexes(table)}
         user_name_index = f"uq_{table}_user_name"
         if user_name_index not in existing_indexes:
             with engine.connect() as conn:
