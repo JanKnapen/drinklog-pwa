@@ -114,11 +114,11 @@ Two-token JWT pattern. All data endpoints require a valid access token.
 
 ### Token architecture
 - **Access token** — 15-min lifetime. Returned in the login response body. Stored in a module-level variable in `frontend/src/api/client.ts` — never written to localStorage, sessionStorage, or any cookie. Sent as `Authorization: Bearer <token>` on every request.
-- **Refresh token** — 30-day lifetime. Set by the server as an `httpOnly; SameSite=Strict; Secure` cookie named `refresh_token`. JavaScript cannot read it. Used only by `POST /api/auth/refresh` to issue a new access token silently.
+- **Refresh token** — 30-day lifetime. Set by the server as an `httpOnly; SameSite=Strict; Secure` cookie named `refresh_token`. JavaScript cannot read it. Used only by `POST /api/auth/refresh` to issue a new access token and a new refresh token (rotation). Each token carries a `jti` (UUID) that is stored in the `refresh_tokens` DB table. On refresh the old jti is deleted and a new one is inserted. If the jti is not found in the DB (already consumed), all refresh tokens for that user are wiped — reuse/theft detected. Expired tokens are purged from the table on each startup.
 
 ### Backend
 
-**`backend/auth.py`** — `hash_password` / `verify_password` (using `bcrypt` directly) and `create_access_token` / `create_refresh_token` / `decode_*` (using `PyJWT`). Do not use `passlib` or `python-jose` — both are abandoned and have known issues with modern Python environments.
+**`backend/auth.py`** — `hash_password` / `verify_password` (using `bcrypt` directly) and `create_access_token` / `create_refresh_token` / `decode_*` (using `PyJWT`). Do not use `passlib` or `python-jose` — both are abandoned and have known issues with modern Python environments. **`create_refresh_token` returns a tuple `(token, jti, expires_at)`** — not a plain string. All callers must unpack all three values; the jti and expires_at are needed to store the token in the `refresh_tokens` table.
 
 **`backend/routers/deps.py`** — `get_current_user` dependency. Validates the `Authorization: Bearer` header and returns the `User` ORM object. Every data router (`entries`, `templates`, `caffeine_entries`, `caffeine_templates`, `barcode`) must include this as a dependency on every endpoint. Every query in those routers filters by `user_id == current_user.id` — no cross-user leakage is possible.
 
