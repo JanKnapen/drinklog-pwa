@@ -205,12 +205,12 @@ Camera requires `window.isSecureContext` (HTTPS). Dev setup uses Tailscale certs
 
 `barcode` column exists on both `DrinkTemplate` and `CaffeineTemplate`. Uniqueness is enforced in two layers:
 
-1. **Per-table (DB level):** `unique=True` on the SQLAlchemy column + a partial unique index `uq_{table}_barcode` (`WHERE barcode IS NOT NULL`) created by `_migrate()` for existing DBs. `_migrate()` runs on every startup and is idempotent.
-2. **Cross-table (application level):** `_check_barcode_cross_module()` helper in both `routers/templates.py` and `routers/caffeine_templates.py` queries the opposite module's table and raises HTTP 409 before any write.
+1. **Per-table (DB level):** A partial composite unique index `uq_{table}_barcode_user` on `(barcode, user_id)` (`WHERE barcode IS NOT NULL`) created by `_migrate()` for existing DBs. `_migrate()` runs on every startup and is idempotent. (Older DBs may have the old global `uq_{table}_barcode` index on `(barcode)` alone — `_migrate()` drops it and replaces it with the per-user one.)
+2. **Cross-table (application level):** `_check_barcode_cross_module()` helper in both `routers/templates.py` and `routers/caffeine_templates.py` queries the opposite module's table filtered by `user_id` and raises HTTP 409 before any write.
 
 ### Barcode lookup endpoint
 
-`GET /api/barcode/{code}?module=alcohol|caffeine&strategy=1|2|3` searches **both** local DB tables first (barcodes are globally unique, match can only exist in one table). On a miss it calls an external API determined by `strategy`. The `module` param controls which nutrient fields to extract from external APIs. The response includes a `module` field (`"alcohol"` | `"caffeine"` | `null`) for local matches; `null` for external and not-found results.
+`GET /api/barcode/{code}?module=alcohol|caffeine&strategy=1|2|3` searches **both** local DB tables first (barcodes are unique per user per module, so a match can only exist in one table for the requesting user). On a miss it calls an external API determined by `strategy`. The `module` param controls which nutrient fields to extract from external APIs. The response includes a `module` field (`"alcohol"` | `"caffeine"` | `null`) for local matches; `null` for external and not-found results.
 
 ### Retrieval strategies (dev-testing infrastructure)
 
