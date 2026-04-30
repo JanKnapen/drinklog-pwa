@@ -69,4 +69,8 @@ describe('handleCalcKey', () => {
   it('= commits plain number without eval', () => {
     expect(handleCalcKey('=', '80')).toEqual({ expr: '80', commit: '80' })
   })
+  it('= commits rounded result for floating-point expressions', () => {
+    const result = handleCalcKey('=', '0.1+0.2')
+    expect(result.commit).toBe('0.3')
+  })
 })
