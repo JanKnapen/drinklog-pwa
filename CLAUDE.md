@@ -300,6 +300,12 @@ Persisted with `netfilter-persistent save`. **Do not use UFW rules or `127.0.0.1
 - `ADMIN_MASTER_PASSWORD` — required unconditionally; admin backend refuses to start without it even in dev.
 - `ADMIN_JWT_SECRET` — admin backend refuses to start if unset and `DEBUG` is not `true`. If unset in dev, random secret generated per restart.
 
+**Non-root containers:**
+- Backend containers use a `gosu` entrypoint (`backend/entrypoint.sh`, `admin/backend/entrypoint.sh`) that runs as root, `chown -R app:app /data` (handles existing root-owned volumes), then `exec gosu app uvicorn` to drop privileges. Do not remove the `chown` — it is what allows existing databases to survive the transition.
+- Frontend containers use `nginxinc/nginx-unprivileged:alpine` (not `nginx:alpine`) — the standard image lacks pre-configured permissions for non-root operation and crashes with permission errors on `/var/cache/nginx`. nginx configs are copied with `COPY --chown=nginx:nginx` so the nginx entrypoint's envsubst step can overwrite them at startup.
+- Nginx listens on port **8080** internally; docker-compose maps host 80 → container 8080 and host 8002 → container 8080. Do not change `listen` back to 80 — the non-root nginx user cannot bind to privileged ports.
+- `docker-compose.dev.yml` overrides `user: "0"` on the frontend service — the Tailscale SSL cert key on the host (`/etc/ssl/`) is root-only readable, so dev must run as root. Production does not mount certs and stays non-root.
+
 `nginx.conf` is at the project root and is baked into the frontend image at build time (`frontend/Dockerfile`). `admin/nginx.conf` is baked into the admin-frontend image. To change proxy behavior or headers, edit the relevant config and rebuild with `docker compose up --build`.
 
 Both configs include security headers (CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`) and `client_max_body_size 64k`. **Do not tighten the CSP without accounting for these two constraints:**
