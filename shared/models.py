@@ -24,7 +24,7 @@ class DrinkTemplate(Base):
     __tablename__ = "drink_templates"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
     default_ml: Mapped[float] = mapped_column(Float, nullable=False)
     default_abv: Mapped[float] = mapped_column(Float, nullable=False)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -73,7 +73,7 @@ class CaffeineTemplate(Base):
     __tablename__ = "caffeine_templates"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    name: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
     default_mg: Mapped[float] = mapped_column(Float, nullable=False)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
     barcode: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)

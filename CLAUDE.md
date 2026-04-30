@@ -201,12 +201,17 @@ Native `BarcodeDetector` Web API is unavailable in iOS WKWebView (the PWA runtim
 
 Camera requires `window.isSecureContext` (HTTPS). Dev setup uses Tailscale certs via `docker-compose.dev.yml` + `nginx.dev.conf.template` with `${TAILSCALE_HOSTNAME}` envsubst.
 
-### Barcode column and uniqueness
+### Template uniqueness constraints
 
-`barcode` column exists on both `DrinkTemplate` and `CaffeineTemplate`. Uniqueness is enforced in two layers:
+Both `name` and `barcode` on `DrinkTemplate` / `CaffeineTemplate` are unique **per user**, not globally. They are intentionally **not** marked `unique=True` on the model — that would create a global DB constraint and cause `IntegrityError` 500s when two users share the same name or barcode. Uniqueness is enforced via migration indexes instead.
 
-1. **Per-table (DB level):** A partial composite unique index `uq_{table}_barcode_user` on `(barcode, user_id)` (`WHERE barcode IS NOT NULL`) created by `_migrate()` for existing DBs. `_migrate()` runs on every startup and is idempotent. (Older DBs may have the old global `uq_{table}_barcode` index on `(barcode)` alone — `_migrate()` drops it and replaces it with the per-user one.)
-2. **Cross-table (application level):** `_check_barcode_cross_module()` helper in both `routers/templates.py` and `routers/caffeine_templates.py` queries the opposite module's table filtered by `user_id` and raises HTTP 409 before any write.
+**Name** — composite unique index `uq_{table}_user_name ON (user_id, name)` created by `_migrate()`. Older DBs may have the old global `uq_{table}_name` index — `_migrate()` drops it and replaces it.
+
+**Barcode** — partial composite unique index `uq_{table}_barcode_user ON (barcode, user_id) WHERE barcode IS NOT NULL` created by `_migrate()`. Older DBs may have the global `uq_{table}_barcode` index — same drop-and-replace pattern.
+
+Application-level uniqueness checks (the `if db.query(...).filter(...user_id...).first()` blocks before each write) catch the common case and return a clean 409 with a descriptive message. A global `IntegrityError` exception handler in `backend/main.py` acts as a safety net for race conditions — any constraint violation that slips through returns a 409 JSON response instead of a 500 traceback. Do not remove it; it keeps logs clean and provides a correct HTTP status to the frontend.
+
+**Cross-table barcode:** `_check_barcode_cross_module()` helper in both `routers/templates.py` and `routers/caffeine_templates.py` queries the opposite module's table filtered by `user_id` and raises HTTP 409 before any write.
 
 ### Barcode lookup endpoint
 

@@ -10,6 +10,7 @@ import { useTemplates, useCreateTemplate, useUpdateTemplate } from '../api/templ
 import { useEntries } from '../api/entries'
 import { useCaffeineTemplates, useCreateCaffeineTemplate, useUpdateCaffeineTemplate } from '../api/caffeine-templates'
 import { useCaffeineEntries } from '../api/caffeine-entries'
+import { ApiError } from '../api/client'
 
 export default function ManageTab() {
   const adapter = useModuleAdapter()
@@ -149,14 +150,15 @@ function EditAlcoholTemplate({ open, templateId, onClose }: {
       setError(`"${trimmed}" has an unconfirmed entry — confirm it first`)
       return
     }
+    const onError = (err: Error) => setError(err instanceof ApiError ? err.detail : 'Something went wrong, please try again')
     if (isEdit) {
       const data: Parameters<typeof updateTemplate.mutate>[0] = { id: template.id, name: trimmed }
       if (!mlAbvLocked) { data.default_ml = mlNum; data.default_abv = abvNum }
-      updateTemplate.mutate(data, { onSuccess: () => { reset(); onClose() } })
+      updateTemplate.mutate(data, { onSuccess: () => { reset(); onClose() }, onError })
     } else {
       createTemplate.mutate(
         { name: trimmed, default_ml: mlNum, default_abv: abvNum },
-        { onSuccess: () => { reset(); onClose() } },
+        { onSuccess: () => { reset(); onClose() }, onError },
       )
     }
   }
@@ -216,14 +218,15 @@ export function EditCaffeineTemplate({ open, templateId, onClose }: {
       setError(`"${trimmed}" has an unconfirmed entry — confirm it first`)
       return
     }
+    const onError = (err: Error) => setError(err instanceof ApiError ? err.detail : 'Something went wrong, please try again')
     if (isEdit) {
       const data: { id: string; name: string; default_mg?: number } = { id: template.id, name: trimmed }
       if (!mgLocked) data.default_mg = mgNum
-      updateTemplate.mutate(data, { onSuccess: () => { reset(); onClose() } })
+      updateTemplate.mutate(data, { onSuccess: () => { reset(); onClose() }, onError })
     } else {
       createTemplate.mutate(
         { name: trimmed, default_mg: mgNum },
-        { onSuccess: () => { reset(); onClose() } },
+        { onSuccess: () => { reset(); onClose() }, onError },
       )
     }
   }

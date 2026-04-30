@@ -1,10 +1,12 @@
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text, inspect as sa_inspect
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import Base, engine
@@ -57,6 +59,50 @@ def _migrate_user_id_columns():
             conn.commit()
 
 
+_TEMPLATE_TABLE_SCHEMAS = {
+    "drink_templates": """
+        CREATE TABLE drink_templates_new (
+            id VARCHAR NOT NULL PRIMARY KEY,
+            name VARCHAR NOT NULL,
+            default_ml FLOAT NOT NULL,
+            default_abv FLOAT NOT NULL,
+            usage_count INTEGER,
+            barcode VARCHAR,
+            user_id INTEGER NOT NULL REFERENCES users(id)
+        )
+    """,
+    "caffeine_templates": """
+        CREATE TABLE caffeine_templates_new (
+            id VARCHAR NOT NULL PRIMARY KEY,
+            name VARCHAR NOT NULL,
+            default_mg FLOAT NOT NULL,
+            usage_count INTEGER,
+            barcode VARCHAR,
+            user_id INTEGER NOT NULL REFERENCES users(id)
+        )
+    """,
+}
+
+
+def _recreate_template_table_without_name_unique(table: str) -> None:
+    """Recreate a template table to drop the inline UNIQUE on name.
+
+    SQLite doesn't support DROP CONSTRAINT. When the original CREATE TABLE
+    included UNIQUE on name, SQLite creates a sqlite_autoindex that can only
+    be removed by recreating the table.
+    """
+    with engine.connect() as conn:
+        conn.execute(text("PRAGMA foreign_keys = OFF"))
+        conn.execute(text(_TEMPLATE_TABLE_SCHEMAS[table]))
+        cols = [c[1] for c in conn.execute(text(f"PRAGMA table_info('{table}')")).fetchall()]
+        col_list = ", ".join(cols)
+        conn.execute(text(f"INSERT INTO {table}_new ({col_list}) SELECT {col_list} FROM {table}"))
+        conn.execute(text(f"DROP TABLE {table}"))
+        conn.execute(text(f"ALTER TABLE {table}_new RENAME TO {table}"))
+        conn.execute(text("PRAGMA foreign_keys = ON"))
+        conn.commit()
+
+
 def _migrate():
     inspector = sa_inspect(engine)
     for table in ("drink_templates", "caffeine_templates"):
@@ -78,6 +124,37 @@ def _migrate():
                 conn.execute(text(
                     f"CREATE UNIQUE INDEX IF NOT EXISTS {new_index_name} "
                     f"ON {table}(barcode, user_id) WHERE barcode IS NOT NULL"
+                ))
+                conn.commit()
+
+        # Remove the global unique constraint on name. SQLAlchemy baked this into
+        # the original CREATE TABLE as an inline UNIQUE, which SQLite names
+        # sqlite_autoindex_{table}_N. These cannot be dropped with DROP INDEX —
+        # the table must be recreated. We detect them by the sqlite_autoindex_
+        # prefix + unique flag + covering only the name column.
+        with engine.connect() as conn:
+            indexes = conn.execute(text(f"PRAGMA index_list('{table}')")).fetchall()
+            has_inline_name_unique = any(
+                idx[1].startswith("sqlite_autoindex_") and idx[2] == 1
+                and [c[2] for c in conn.execute(text(f"PRAGMA index_info('{idx[1]}')")).fetchall()] == ["name"]
+                for idx in indexes
+            )
+
+        if has_inline_name_unique:
+            _recreate_template_table_without_name_unique(table)
+
+        # Per-user name uniqueness
+        with engine.connect() as conn:
+            existing = {
+                row[1]
+                for row in conn.execute(text(f"PRAGMA index_list('{table}')")).fetchall()
+            }
+        user_name_index = f"uq_{table}_user_name"
+        if user_name_index not in existing:
+            with engine.connect() as conn:
+                conn.execute(text(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {user_name_index} "
+                    f"ON {table}(user_id, name)"
                 ))
                 conn.commit()
 
@@ -111,6 +188,14 @@ _migrate()
 app = FastAPI(title="DrinkLog API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
+    return JSONResponse(
+        status_code=409,
+        content={"detail": "A record with this name or value already exists"},
+    )
 
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS", "http://localhost,http://localhost:5173"
