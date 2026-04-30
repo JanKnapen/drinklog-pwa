@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect } from 'react'
-import { inputCls } from './FormFields'
 import { CalculatorKeyboard } from './CalculatorKeyboard'
 
 // ─── Pure logic (exported for tests) ────────────────────────────────────────
@@ -16,7 +15,7 @@ export function evaluateExpression(expr: string): number | null {
     .replace(/−/g, '-')
     .replace(/×/g, '*')
     .replace(/÷/g, '/')
-    .replace(/[^0-9.\+\-\*\/]/g, '')
+    .replace(/[^0-9.+\-*/]/g, '')
   if (!sanitised.trim()) return null
   try {
     // eslint-disable-next-line no-new-func
@@ -28,39 +27,17 @@ export function evaluateExpression(expr: string): number | null {
   }
 }
 
+// Handles only operator toolbar keys — digits/backspace/decimal are native keyboard's job.
 export function handleCalcKey(
   key: string,
   expr: string,
 ): { expr: string; commit: string | null } {
-  if (key === '⌫') {
-    return { expr: expr.slice(0, -1), commit: null }
-  }
-
   if (key === '=') {
-    if (!OPERATORS_RE.test(expr)) {
-      // Plain number — commit as-is
-      const n = parseFloat(expr)
-      if (isNaN(n)) return { expr, commit: null }
-      return { expr, commit: expr }
-    }
     const result = evaluateExpression(expr)
     if (result === null) return { expr, commit: null }
     const str = formatResult(result)
     return { expr: str, commit: str }
   }
-
-  if (key === '.') {
-    // Find last operator index to isolate current number segment
-    const chars = [...expr]
-    const lastOpIdx = chars.reduce(
-      (max, char, i) => (OPERATORS_RE.test(char) ? i : max),
-      -1,
-    )
-    const segment = expr.slice(lastOpIdx + 1)
-    if (segment.includes('.')) return { expr, commit: null }
-    return { expr: expr + '.', commit: null }
-  }
-
   return { expr: expr + key, commit: null }
 }
 
@@ -81,48 +58,83 @@ export function CalcInput({ value, onChange, className, placeholder, disabled }:
   const [expr, setExpr] = useState(value)
   const [isOpen, setIsOpen] = useState(false)
   const [isError, setIsError] = useState(false)
+  const [bottom, setBottom] = useState(0)
+  const lastCommitted = useRef(value)
 
-  // Keep expr in sync when value changes externally (e.g. prefill from barcode)
+  // Sync when external value changes (e.g. barcode prefill) and keyboard is not open
   useEffect(() => {
-    if (!isOpen) setExpr(value)
+    if (!isOpen) {
+      setExpr(value)
+      lastCommitted.current = value
+    }
   }, [value, isOpen])
 
-  function handleOpen() {
-    if (disabled) return
+  // Track native keyboard height via visualViewport so toolbar stays above it
+  useEffect(() => {
+    if (!isOpen || !isMobile.current) return
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => {
+      const kh = window.innerHeight - vv.height - vv.offsetTop
+      setBottom(Math.max(0, kh))
+    }
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    update()
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+    }
+  }, [isOpen])
+
+  function handleFocus() {
     setExpr(value)
+    lastCommitted.current = value
     setIsError(false)
     setIsOpen(true)
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setExpr(e.target.value)
+    setIsError(false)
+  }
+
+  function handleBlur() {
+    if (expr && OPERATORS_RE.test(expr)) {
+      const result = evaluateExpression(expr)
+      if (result !== null) {
+        const str = formatResult(result)
+        onChange(str)
+        setExpr(str)
+        lastCommitted.current = str
+      } else {
+        setExpr(lastCommitted.current) // revert invalid expression
+      }
+    } else {
+      const n = parseFloat(expr)
+      if (!isNaN(n)) {
+        onChange(expr)
+        lastCommitted.current = expr
+      } else {
+        setExpr(lastCommitted.current) // revert empty / non-numeric
+      }
+    }
+    setIsOpen(false)
+    setIsError(false)
   }
 
   function handleKey(key: string) {
     const { expr: nextExpr, commit } = handleCalcKey(key, expr)
     setExpr(nextExpr)
-
     if (commit !== null) {
       onChange(commit)
-      setIsOpen(false)
+      lastCommitted.current = commit
       setIsError(false)
     } else if (key === '=') {
-      // = was pressed but evaluation failed
       setIsError(true)
     } else {
       setIsError(false)
     }
-  }
-
-  function handleDismiss() {
-    if (expr) {
-      if (OPERATORS_RE.test(expr)) {
-        const result = evaluateExpression(expr)
-        if (result !== null) onChange(formatResult(result))
-        // If invalid, revert — don't call onChange
-      } else {
-        const n = parseFloat(expr)
-        if (!isNaN(n)) onChange(expr)
-      }
-    }
-    setIsOpen(false)
-    setIsError(false)
   }
 
   if (!isMobile.current) {
@@ -140,31 +152,18 @@ export function CalcInput({ value, onChange, className, placeholder, disabled }:
 
   return (
     <>
-      {/* Display div — replaces the <input> visually */}
-      <div
-        className={`${className ?? inputCls} flex items-center cursor-pointer ${
-          isOpen ? 'ring-2 ring-blue-500 outline-none' : ''
-        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-        onPointerDown={handleOpen}
-      >
-        {value ? (
-          <span>
-            {value}
-            {isOpen && <span className="ml-0.5 text-blue-500">|</span>}
-          </span>
-        ) : (
-          <span className="text-neutral-400 dark:text-neutral-500">{placeholder}</span>
-        )}
-      </div>
-
-      {/* Backdrop — catches outside taps */}
+      <input
+        className={className}
+        inputMode="decimal"
+        placeholder={placeholder}
+        value={expr}
+        disabled={disabled}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+      />
       {isOpen && (
-        <div className="fixed inset-0 z-[50]" onPointerDown={handleDismiss} />
-      )}
-
-      {/* Calculator keyboard — portal-rendered above backdrop */}
-      {isOpen && (
-        <CalculatorKeyboard expression={expr} isError={isError} onKey={handleKey} />
+        <CalculatorKeyboard bottom={bottom} isError={isError} onKey={handleKey} />
       )}
     </>
   )

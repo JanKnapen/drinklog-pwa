@@ -37,40 +37,31 @@ describe('evaluateExpression', () => {
   })
 })
 
+// handleCalcKey only handles the operator toolbar keys (+, −, ×, ÷, =).
+// Digits, backspace, and decimal are handled by the native keyboard input.
 describe('handleCalcKey', () => {
-  it('appends digit to expression', () => {
-    expect(handleCalcKey('8', '')).toEqual({ expr: '8', commit: null })
-  })
-  it('appends operator', () => {
+  it('appends + operator', () => {
     expect(handleCalcKey('+', '80')).toEqual({ expr: '80+', commit: null })
   })
-  it('appends decimal when segment has none', () => {
-    expect(handleCalcKey('.', '80')).toEqual({ expr: '80.', commit: null })
+  it('appends − operator', () => {
+    expect(handleCalcKey('−', '100')).toEqual({ expr: '100−', commit: null })
   })
-  it('ignores decimal when segment already has one', () => {
-    expect(handleCalcKey('.', '80.5')).toEqual({ expr: '80.5', commit: null })
+  it('appends × operator', () => {
+    expect(handleCalcKey('×', '5')).toEqual({ expr: '5×', commit: null })
   })
-  it('allows decimal in new segment after operator', () => {
-    expect(handleCalcKey('.', '80+')).toEqual({ expr: '80+.', commit: null })
-  })
-  it('removes last character on backspace', () => {
-    expect(handleCalcKey('⌫', '80+')).toEqual({ expr: '80', commit: null })
-  })
-  it('no-ops backspace on empty expression', () => {
-    expect(handleCalcKey('⌫', '')).toEqual({ expr: '', commit: null })
+  it('appends ÷ operator', () => {
+    expect(handleCalcKey('÷', '100')).toEqual({ expr: '100÷', commit: null })
   })
   it('= evaluates and returns commit', () => {
-    const result = handleCalcKey('=', '80+40')
-    expect(result.commit).toBe('120')
+    expect(handleCalcKey('=', '80+40')).toEqual({ expr: '120', commit: '120' })
   })
   it('= returns null commit on invalid expression', () => {
     expect(handleCalcKey('=', '80+')).toEqual({ expr: '80+', commit: null })
   })
-  it('= commits plain number without eval', () => {
+  it('= commits a plain number', () => {
     expect(handleCalcKey('=', '80')).toEqual({ expr: '80', commit: '80' })
   })
   it('= commits rounded result for floating-point expressions', () => {
-    const result = handleCalcKey('=', '0.1+0.2')
-    expect(result.commit).toBe('0.3')
+    expect(handleCalcKey('=', '0.1+0.2')).toEqual({ expr: '0.3', commit: '0.3' })
   })
 })
