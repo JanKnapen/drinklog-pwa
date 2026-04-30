@@ -238,8 +238,7 @@ export function EditCaffeineTemplate({ open, templateId, onClose }: {
           <input className={inputCls} value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
         </Field>
         <Field label={`Caffeine (mg)${mgLocked ? ' — locked' : ''}`}>
-          <CalcInput className={inputCls + (mgLocked ? ' opacity-50 cursor-not-allowed' : '')}
-            value={mg} onChange={setMg} disabled={mgLocked} />
+          <CalcInput className={inputCls} value={mg} onChange={setMg} disabled={mgLocked} />
         </Field>
         {mgLocked && <p className="text-xs text-neutral-400">Caffeine amount is locked because this template has confirmed entries.</p>}
         <button onClick={handleSave} disabled={!isValid} className={primaryBtn}>Save</button>
