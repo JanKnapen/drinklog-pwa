@@ -293,11 +293,12 @@ Persisted with `netfilter-persistent save`. **Do not use UFW rules or `127.0.0.1
 **`.env` and `.env.example`** — `.env` is the live deployment file (gitignored) that holds real secrets on the server. `.env.example` is the committed template. **Whenever a new env var is introduced, it must be added to `.env.example`** with a placeholder value and a short comment explaining what it is. Never read or suggest values from `.env` — treat it as a secret file that Claude should not inspect or expose.
 
 **Env vars** (set in `.env` on the server, documented in `.env.example`):
+- `DEBUG` — set to `true` to skip JWT secret validation at startup. `docker-compose.dev.yml` sets this automatically for `make dev`. Never set in production. Does **not** bypass the `ADMIN_MASTER_PASSWORD` check — that is always required regardless.
 - `ADMIN_SEED_USERNAME` / `ADMIN_SEED_PASSWORD` — bootstrap the first user on a fresh database. Ignored once any user exists. Backend refuses to start if the User table is empty and these are unset.
-- `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` — secrets for signing tokens. If unset, random values are generated per process restart, which invalidates all existing tokens on every redeploy. Always set these in production.
+- `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` — secrets for signing tokens. Both backends refuse to start if these are unset and `DEBUG` is not `true`. If unset in dev, random values are generated per process restart (all sessions invalidated on restart).
 - `ACCESS_TOKEN_EXPIRE_MINUTES` (default: 15) / `REFRESH_TOKEN_EXPIRE_DAYS` (default: 30) — optional overrides.
-- `ADMIN_MASTER_PASSWORD` — required; admin backend refuses to start without it.
-- `ADMIN_JWT_SECRET` — if unset, random secret generated per restart (admin re-login required after every restart). Always set in production.
+- `ADMIN_MASTER_PASSWORD` — required unconditionally; admin backend refuses to start without it even in dev.
+- `ADMIN_JWT_SECRET` — admin backend refuses to start if unset and `DEBUG` is not `true`. If unset in dev, random secret generated per restart.
 
 `nginx.conf` is at the project root and is baked into the frontend image at build time (`frontend/Dockerfile`). `admin/nginx.conf` is baked into the admin-frontend image. To change proxy behavior or headers, edit the relevant config and rebuild with `docker compose up --build`.
 
