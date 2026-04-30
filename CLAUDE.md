@@ -299,7 +299,13 @@ Persisted with `netfilter-persistent save`. **Do not use UFW rules or `127.0.0.1
 - `ADMIN_MASTER_PASSWORD` — required; admin backend refuses to start without it.
 - `ADMIN_JWT_SECRET` — if unset, random secret generated per restart (admin re-login required after every restart). Always set in production.
 
-`nginx.conf` is at the project root and is baked into the frontend image at build time (`frontend/Dockerfile`). To change proxy behavior, edit `nginx.conf` and rebuild with `docker compose up --build`.
+`nginx.conf` is at the project root and is baked into the frontend image at build time (`frontend/Dockerfile`). `admin/nginx.conf` is baked into the admin-frontend image. To change proxy behavior or headers, edit the relevant config and rebuild with `docker compose up --build`.
+
+Both configs include security headers (CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`) and `client_max_body_size 64k`. **Do not tighten the CSP without accounting for these two constraints:**
+- `style-src 'unsafe-inline'` — required by Tailwind (injects inline styles at runtime)
+- `script-src 'wasm-unsafe-eval'` — required by the ZXing barcode scanner (uses WebAssembly); main app only, not admin
+
+HSTS is not set in nginx — it is handled by Cloudflare for the main app. Do not add it; Cloudflare and nginx both setting it causes duplicate headers.
 
 The Vite build uses `build:docker` script (skips `tsc`) inside Docker; the full `build` script (with type-checking) is for local CI.
 
