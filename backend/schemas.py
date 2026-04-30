@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, field_validator, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_validator, field_serializer
 
 
 def _to_naive_utc(v: datetime | None) -> datetime | None:
@@ -28,15 +28,15 @@ class DrinkTemplateResponse(BaseModel):
 
 class DrinkTemplateCreate(BaseModel):
     name: str
-    default_ml: float
-    default_abv: float
+    default_ml: float = Field(gt=0, le=5000)
+    default_abv: float = Field(ge=0, le=100)
     barcode: Optional[str] = None
 
 
 class DrinkTemplateUpdate(BaseModel):
     name: Optional[str] = None
-    default_ml: Optional[float] = None
-    default_abv: Optional[float] = None
+    default_ml: Optional[float] = Field(default=None, gt=0, le=5000)
+    default_abv: Optional[float] = Field(default=None, ge=0, le=100)
     usage_count: Optional[int] = None
     barcode: Optional[str] = None
 
@@ -63,8 +63,8 @@ class DrinkEntryResponse(BaseModel):
 class DrinkEntryCreate(BaseModel):
     template_id: Optional[str] = None
     custom_name: Optional[str] = None
-    ml: float
-    abv: float
+    ml: float = Field(gt=0, le=5000)
+    abv: float = Field(ge=0, le=100)
     timestamp: datetime
     fraction: Optional[float] = None
 
@@ -76,8 +76,8 @@ class DrinkEntryCreate(BaseModel):
 
 class DrinkEntryUpdate(BaseModel):
     custom_name: Optional[str] = None
-    ml: Optional[float] = None
-    abv: Optional[float] = None
+    ml: Optional[float] = Field(default=None, gt=0, le=5000)
+    abv: Optional[float] = Field(default=None, ge=0, le=100)
     timestamp: Optional[datetime] = None
 
     @field_validator("timestamp")
@@ -114,13 +114,13 @@ class CaffeineTemplateResponse(BaseModel):
 
 class CaffeineTemplateCreate(BaseModel):
     name: str
-    default_mg: float
+    default_mg: float = Field(gt=0, le=2000)
     barcode: Optional[str] = None
 
 
 class CaffeineTemplateUpdate(BaseModel):
     name: Optional[str] = None
-    default_mg: Optional[float] = None
+    default_mg: Optional[float] = Field(default=None, gt=0, le=2000)
     usage_count: Optional[int] = None
     barcode: Optional[str] = None
 
@@ -146,7 +146,7 @@ class CaffeineEntryResponse(BaseModel):
 class CaffeineEntryCreate(BaseModel):
     template_id: Optional[str] = None
     custom_name: Optional[str] = None
-    mg: float
+    mg: float = Field(gt=0, le=2000)
     timestamp: datetime
     fraction: Optional[float] = None
 
@@ -158,7 +158,7 @@ class CaffeineEntryCreate(BaseModel):
 
 class CaffeineEntryUpdate(BaseModel):
     custom_name: Optional[str] = None
-    mg: Optional[float] = None
+    mg: Optional[float] = Field(default=None, gt=0, le=2000)
     timestamp: Optional[datetime] = None
 
     @field_validator("timestamp")
