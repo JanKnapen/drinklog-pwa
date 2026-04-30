@@ -124,6 +124,8 @@ Two-token JWT pattern. All data endpoints require a valid access token.
 
 **`backend/routers/auth.py`** — login / refresh / logout / me endpoints. Login is rate-limited to 5 requests/minute per IP via `slowapi`. The `limiter` instance is created in `auth.py` and registered on the FastAPI app in `main.py`. To rate-limit any other endpoint, import this same `limiter` from `routers.auth` (don't create a new instance — only one can be registered on `app.state`) and add `request: Request` as the first parameter of the handler (slowapi requires it to extract the key).
 
+**Logging** — use `logging.getLogger("uvicorn.error")` (not `__name__`) when adding log statements to any backend router. Using `__name__` produces unformatted output with no level prefix; `"uvicorn.error"` uses uvicorn's already-configured formatter so log lines are consistent with uvicorn's own output.
+
 **Seed mechanism** — on startup, `_ensure_seed_user()` (called from `_migrate()`) checks if the `User` table is empty. If empty and `ADMIN_SEED_USERNAME` / `ADMIN_SEED_PASSWORD` env vars are unset, it raises `RuntimeError` and refuses to start. If the env vars are set, it creates the seed user. Once any user exists the env vars are ignored.
 
 **`_migrate_user_id_columns()`** — adds `user_id` column to all four data tables for existing databases and backfills `NULL` rows with the seed user's ID. Runs after `_ensure_seed_user()` so the seed user's ID is always available for the backfill. Both functions are idempotent.
