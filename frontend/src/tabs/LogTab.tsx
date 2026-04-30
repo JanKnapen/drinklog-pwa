@@ -4,6 +4,7 @@ import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import TimestampPicker from '../components/TimestampPicker'
 import { Field, UnitPreview, inputCls, primaryBtn } from '../components/FormFields'
+import { CalcInput } from '../components/CalcInput'
 import { groupByDate, localMidnightISO, todayKey, toLocalDateKey } from '../utils'
 import type { TrackerEntry, DrinkEntry, CaffeineEntry } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
@@ -368,7 +369,7 @@ function EditCaffeineEntryForm({ entry, onClose }: { entry: CaffeineEntry; onClo
               </Field>
             )}
             <Field label="Caffeine (mg)">
-              <input className={inputCls} inputMode="decimal" value={mg} onChange={(e) => setMg(e.target.value)} />
+              <CalcInput className={inputCls} value={mg} onChange={setMg} />
             </Field>
           </>
         )}

@@ -3,6 +3,7 @@ import { PlusIcon, PencilIcon, TrashIcon, Cog6ToothIcon } from '@heroicons/react
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import { Field, inputCls, primaryBtn } from '../components/FormFields'
+import { CalcInput } from '../components/CalcInput'
 import type { TrackerTemplate } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
 import { useModuleAdapter } from '../hooks/useModuleAdapter'
@@ -237,8 +238,8 @@ export function EditCaffeineTemplate({ open, templateId, onClose }: {
           <input className={inputCls} value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
         </Field>
         <Field label={`Caffeine (mg)${mgLocked ? ' — locked' : ''}`}>
-          <input className={inputCls + (mgLocked ? ' opacity-50 cursor-not-allowed' : '')}
-            inputMode="decimal" value={mg} onChange={(e) => setMg(e.target.value)} disabled={mgLocked} />
+          <CalcInput className={inputCls + (mgLocked ? ' opacity-50 cursor-not-allowed' : '')}
+            value={mg} onChange={setMg} disabled={mgLocked} />
         </Field>
         {mgLocked && <p className="text-xs text-neutral-400">Caffeine amount is locked because this template has confirmed entries.</p>}
         <button onClick={handleSave} disabled={!isValid} className={primaryBtn}>Save</button>
