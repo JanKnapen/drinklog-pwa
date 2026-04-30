@@ -1,10 +1,12 @@
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text, inspect as sa_inspect
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import Base, engine
@@ -81,6 +83,25 @@ def _migrate():
                 ))
                 conn.commit()
 
+        # Drop old global name unique index (SQLAlchemy names it uq_{table}_name)
+        existing_indexes = {i["name"] for i in inspector.get_indexes(table)}
+        old_name_index = f"uq_{table}_name"
+        if old_name_index in existing_indexes:
+            with engine.connect() as conn:
+                conn.execute(text(f"DROP INDEX IF EXISTS {old_name_index}"))
+                conn.commit()
+            existing_indexes.discard(old_name_index)
+
+        # Per-user name uniqueness
+        user_name_index = f"uq_{table}_user_name"
+        if user_name_index not in existing_indexes:
+            with engine.connect() as conn:
+                conn.execute(text(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {user_name_index} "
+                    f"ON {table}(user_id, name)"
+                ))
+                conn.commit()
+
     # Add fraction column to entry tables if missing
     for table in ("drink_entries", "caffeine_entries"):
         existing_cols = {c["name"] for c in inspector.get_columns(table)}
@@ -111,6 +132,14 @@ _migrate()
 app = FastAPI(title="DrinkLog API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
+    return JSONResponse(
+        status_code=409,
+        content={"detail": "A record with this name or value already exists"},
+    )
 
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS", "http://localhost,http://localhost:5173"
