@@ -8,8 +8,7 @@ COPY frontend/ .
 RUN --mount=type=cache,id=frontend-node-modules,target=/app/node_modules \
     npm run build:docker
 
-FROM nginx:alpine
+FROM nginxinc/nginx-unprivileged:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-USER nginx
 EXPOSE 8080
