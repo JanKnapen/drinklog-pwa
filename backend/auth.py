@@ -1,5 +1,6 @@
 import bcrypt
 import jwt
+import secrets
 from datetime import datetime, timedelta, timezone
 from config import JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
 
@@ -17,9 +18,11 @@ def create_access_token(data: dict) -> str:
     return jwt.encode({**data, "exp": expire, "type": "access"}, JWT_ACCESS_SECRET, algorithm="HS256")
 
 
-def create_refresh_token(data: dict) -> str:
+def create_refresh_token(data: dict) -> tuple[str, str, datetime]:
+    jti = secrets.token_urlsafe(32)
     expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    return jwt.encode({**data, "exp": expire, "type": "refresh"}, JWT_REFRESH_SECRET, algorithm="HS256")
+    token = jwt.encode({**data, "exp": expire, "type": "refresh", "jti": jti}, JWT_REFRESH_SECRET, algorithm="HS256")
+    return token, jti, expire
 
 
 def decode_access_token(token: str) -> dict:

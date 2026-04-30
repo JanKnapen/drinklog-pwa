@@ -13,7 +13,7 @@
 | 7   | 🟠 HIGH     | `_check_barcode_cross_module` not scoped to user | ✅ Fixed — both routers now pass and filter by `user_id`                                                           |
 | 8   | 🟡 MEDIUM   | No password minimum length                       | ✅ Fixed — 16-character minimum enforced via Pydantic validator on create/change-password schemas                  |
 | 9   | 🟡 MEDIUM   | No numeric bounds on ml/abv/mg                   | ✅ Fixed — `Field(gt/ge/le)` bounds added to all create/update schemas in `schemas.py`                             |
-| 10  | 🟡 MEDIUM   | No refresh token rotation                        | ❌ Still open                                                                                                      |
+| 10  | 🟡 MEDIUM   | No refresh token rotation                        | ✅ Fixed — jti-based rotation with reuse detection; `refresh_tokens` table stores active tokens                    |
 | 11  | 🟡 MEDIUM   | Admin 401 doesn't redirect to login              | ✅ Fixed — 401 clears token and reloads in `admin/frontend/src/api/client.ts`                                      |
 | 12  | 🔵 LOW      | Containers run as root                           | ✅ Fixed — backends use gosu entrypoint to chown /data then drop to app user; nginx uses USER nginx on port 8080   |
 | 13  | 🔵 LOW      | No nginx body size limits                        | ✅ Fixed — `client_max_body_size 64k` added to both nginx configs                                                  |

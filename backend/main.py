@@ -15,6 +15,7 @@ from routers import barcode
 from routers.auth import router as auth_router, limiter
 from config import PUBLIC_CONFIG, ADMIN_SEED_USERNAME, ADMIN_SEED_PASSWORD, DEBUG
 from auth import hash_password
+from models import RefreshToken  # noqa: F401 — ensures table is created by create_all
 
 if not DEBUG:
     _missing = [k for k in ("JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET") if not os.getenv(k)]
@@ -190,6 +191,12 @@ def _migrate():
     # Auth migration
     _ensure_seed_user()  # must run before backfill
     _migrate_user_id_columns()
+
+    # Purge expired refresh tokens
+    from datetime import datetime as _dt
+    with Session(engine) as session:
+        session.query(RefreshToken).filter(RefreshToken.expires_at < _dt.utcnow()).delete()
+        session.commit()
 
 _migrate()
 
