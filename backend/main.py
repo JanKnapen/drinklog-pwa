@@ -66,12 +66,18 @@ def _migrate():
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN barcode VARCHAR"))
                 conn.commit()
         existing_indexes = {i["name"] for i in inspector.get_indexes(table)}
-        index_name = f"uq_{table}_barcode"
-        if index_name not in existing_indexes:
+        old_index_name = f"uq_{table}_barcode"
+        if old_index_name in existing_indexes:
+            with engine.connect() as conn:
+                conn.execute(text(f"DROP INDEX IF EXISTS {old_index_name}"))
+                conn.commit()
+            existing_indexes.discard(old_index_name)
+        new_index_name = f"uq_{table}_barcode_user"
+        if new_index_name not in existing_indexes:
             with engine.connect() as conn:
                 conn.execute(text(
-                    f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
-                    f"ON {table}(barcode) WHERE barcode IS NOT NULL"
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {new_index_name} "
+                    f"ON {table}(barcode, user_id) WHERE barcode IS NOT NULL"
                 ))
                 conn.commit()
 

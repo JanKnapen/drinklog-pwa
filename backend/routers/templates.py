@@ -9,10 +9,10 @@ from schemas import DrinkTemplateCreate, DrinkTemplateUpdate, DrinkTemplateRespo
 router = APIRouter(tags=["templates"])
 
 
-def _check_barcode_cross_module(barcode: str | None, db: Session) -> None:
+def _check_barcode_cross_module(barcode: str | None, user_id: int, db: Session) -> None:
     if not barcode:
         return
-    if db.query(CaffeineTemplate).filter(CaffeineTemplate.barcode == barcode).first():
+    if db.query(CaffeineTemplate).filter(CaffeineTemplate.user_id == user_id, CaffeineTemplate.barcode == barcode).first():
         raise HTTPException(status_code=409, detail="This barcode is already assigned to a caffeine template")
 
 
@@ -49,7 +49,7 @@ def create_template(
         DrinkTemplate.user_id == current_user.id, DrinkTemplate.barcode == data.barcode
     ).first():
         raise HTTPException(status_code=409, detail="A template with this barcode already exists")
-    _check_barcode_cross_module(data.barcode, db)
+    _check_barcode_cross_module(data.barcode, current_user.id, db)
     template = DrinkTemplate(**data.model_dump(), user_id=current_user.id)
     db.add(template)
     db.commit()
@@ -96,7 +96,7 @@ def update_template(
             DrinkTemplate.id != template_id,
         ).first():
             raise HTTPException(status_code=409, detail="A template with this barcode already exists")
-        _check_barcode_cross_module(data.barcode, db)
+        _check_barcode_cross_module(data.barcode, current_user.id, db)
         template.barcode = data.barcode
 
     has_confirmed = any(e.is_marked for e in template.entries)
