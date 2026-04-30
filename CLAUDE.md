@@ -122,7 +122,7 @@ Two-token JWT pattern. All data endpoints require a valid access token.
 
 **`backend/routers/deps.py`** — `get_current_user` dependency. Validates the `Authorization: Bearer` header and returns the `User` ORM object. Every data router (`entries`, `templates`, `caffeine_entries`, `caffeine_templates`, `barcode`) must include this as a dependency on every endpoint. Every query in those routers filters by `user_id == current_user.id` — no cross-user leakage is possible.
 
-**`backend/routers/auth.py`** — login / refresh / logout / me endpoints. Login is rate-limited to 5 requests/minute per IP via `slowapi`. The `limiter` instance is created in `auth.py` and registered on the FastAPI app in `main.py`.
+**`backend/routers/auth.py`** — login / refresh / logout / me endpoints. Login is rate-limited to 5 requests/minute per IP via `slowapi`. The `limiter` instance is created in `auth.py` and registered on the FastAPI app in `main.py`. To rate-limit any other endpoint, import this same `limiter` from `routers.auth` (don't create a new instance — only one can be registered on `app.state`) and add `request: Request` as the first parameter of the handler (slowapi requires it to extract the key).
 
 **Seed mechanism** — on startup, `_ensure_seed_user()` (called from `_migrate()`) checks if the `User` table is empty. If empty and `ADMIN_SEED_USERNAME` / `ADMIN_SEED_PASSWORD` env vars are unset, it raises `RuntimeError` and refuses to start. If the env vars are set, it creates the seed user. Once any user exists the env vars are ignored.
 
