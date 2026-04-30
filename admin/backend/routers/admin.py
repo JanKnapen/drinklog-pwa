@@ -6,7 +6,7 @@ from pydantic import BaseModel, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 
 from database import get_db
 from auth import create_admin_token, hash_password
