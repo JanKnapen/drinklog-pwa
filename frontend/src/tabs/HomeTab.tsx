@@ -10,6 +10,7 @@ import Modal from '../components/Modal'
 import BarcodeScanner from '../components/BarcodeScanner'
 import TimestampPicker from '../components/TimestampPicker'
 import { Field, UnitPreview, inputCls, primaryBtn } from '../components/FormFields'
+import { CalcInput } from '../components/CalcInput'
 import { toLocalDateKey, todayKey } from '../utils'
 import type { TrackerTemplate, TrackerEntry } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
@@ -536,7 +537,7 @@ export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, pref
               <input className={inputCls} placeholder="e.g. Coffee, Energy Drink…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
             </Field>
             <Field label="Caffeine (mg)">
-              <input className={inputCls + (mgMissing ? dashedCls : '')} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
+              <CalcInput className={inputCls + (mgMissing ? dashedCls : '')} placeholder="80" value={mg} onChange={setMg} />
             </Field>
           </div>
         </div>
@@ -766,7 +767,7 @@ function NewScanModal({
             </>
           ) : (
             <Field label="Caffeine (mg)">
-              <input className={inputCls + (mgMissing ? dashedCls : '')} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
+              <CalcInput className={inputCls + (mgMissing ? dashedCls : '')} placeholder="80" value={mg} onChange={setMg} />
             </Field>
           )}
         </div>
@@ -844,7 +845,7 @@ export function EnterCaffeineModal({ open, onClose, onLogged }: { open: boolean;
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
         <Field label="Caffeine (mg)">
-          <input className={inputCls} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
+          <CalcInput className={inputCls} placeholder="80" value={mg} onChange={setMg} />
         </Field>
         <button onClick={handleSubmit} disabled={!isValid} className={primaryBtn}>Log</button>
       </div>
