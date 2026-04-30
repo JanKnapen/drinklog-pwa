@@ -10,6 +10,7 @@ services:
       - DEBUG=true
 
   frontend:
+    user: "0"  # dev only: root needed to read root-owned SSL cert key from host /etc/ssl mount
     env_file:
       - .env
     volumes:
