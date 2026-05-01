@@ -62,11 +62,11 @@ class DrinkEntryResponse(BaseModel):
 
 class DrinkEntryCreate(BaseModel):
     template_id: Optional[str] = None
-    custom_name: Optional[str] = None
+    custom_name: Optional[str] = Field(default=None, max_length=200)
     ml: float = Field(gt=0, le=5000)
     abv: float = Field(ge=0, le=100)
     timestamp: datetime
-    fraction: Optional[float] = None
+    fraction: Optional[float] = Field(default=None, gt=0, le=1)
 
     @field_validator("timestamp")
     @classmethod
@@ -75,7 +75,7 @@ class DrinkEntryCreate(BaseModel):
 
 
 class DrinkEntryUpdate(BaseModel):
-    custom_name: Optional[str] = None
+    custom_name: Optional[str] = Field(default=None, max_length=200)
     ml: Optional[float] = Field(default=None, gt=0, le=5000)
     abv: Optional[float] = Field(default=None, ge=0, le=100)
     timestamp: Optional[datetime] = None
@@ -145,10 +145,10 @@ class CaffeineEntryResponse(BaseModel):
 
 class CaffeineEntryCreate(BaseModel):
     template_id: Optional[str] = None
-    custom_name: Optional[str] = None
+    custom_name: Optional[str] = Field(default=None, max_length=200)
     mg: float = Field(gt=0, le=2000)
     timestamp: datetime
-    fraction: Optional[float] = None
+    fraction: Optional[float] = Field(default=None, gt=0, le=1)
 
     @field_validator("timestamp")
     @classmethod
@@ -157,7 +157,7 @@ class CaffeineEntryCreate(BaseModel):
 
 
 class CaffeineEntryUpdate(BaseModel):
-    custom_name: Optional[str] = None
+    custom_name: Optional[str] = Field(default=None, max_length=200)
     mg: Optional[float] = Field(default=None, gt=0, le=2000)
     timestamp: Optional[datetime] = None
 
