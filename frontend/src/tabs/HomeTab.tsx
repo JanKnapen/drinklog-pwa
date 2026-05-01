@@ -377,11 +377,8 @@ function NewAlcoholModal({ open, onClose, templates, pendingDrinks, prefill, bar
         if (fraction != null) {
           await createEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp, fraction })
         }
-        const totalCount = count + (fraction != null ? 1 : 0)
         if (isDuplicate && duplicateTemplate) {
-          await updateTemplate.mutateAsync({ id: templateId, barcode, usage_count: duplicateTemplate.usage_count + totalCount })
-        } else {
-          await updateTemplate.mutateAsync({ id: templateId, usage_count: totalCount })
+          await updateTemplate.mutateAsync({ id: templateId, barcode })
         }
       } catch {
         setError('Something went wrong, please try again')
@@ -493,11 +490,8 @@ export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, pref
         if (fraction != null) {
           await createEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp, fraction })
         }
-        const totalCount = count + (fraction != null ? 1 : 0)
         if (isDuplicate && duplicateTemplate) {
-          await updateTemplate.mutateAsync({ id: templateId, barcode, usage_count: duplicateTemplate.usage_count + totalCount })
-        } else {
-          await updateTemplate.mutateAsync({ id: templateId, usage_count: totalCount })
+          await updateTemplate.mutateAsync({ id: templateId, barcode })
         }
       } catch {
         setError('Something went wrong, please try again')
@@ -679,11 +673,8 @@ function NewScanModal({
         if (fraction != null) {
           await createAlcoholEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp, fraction })
         }
-        const totalCount = count + (fraction != null ? 1 : 0)
         if (isDuplicate && duplicateAlcohol) {
-          await updateAlcoholTemplate.mutateAsync({ id: templateId, barcode, usage_count: duplicateAlcohol.usage_count + totalCount })
-        } else {
-          await updateAlcoholTemplate.mutateAsync({ id: templateId, usage_count: totalCount })
+          await updateAlcoholTemplate.mutateAsync({ id: templateId, barcode })
         }
       } else {
         let templateId: string
@@ -701,11 +692,8 @@ function NewScanModal({
         if (fraction != null) {
           await createCaffeineEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp, fraction })
         }
-        const totalCount = count + (fraction != null ? 1 : 0)
         if (isDuplicate && duplicateCaffeine) {
-          await updateCaffeineTemplate.mutateAsync({ id: templateId, barcode, usage_count: duplicateCaffeine.usage_count + totalCount })
-        } else {
-          await updateCaffeineTemplate.mutateAsync({ id: templateId, usage_count: totalCount })
+          await updateCaffeineTemplate.mutateAsync({ id: templateId, barcode })
         }
       }
     } catch {

@@ -34,7 +34,6 @@ export function useUpdateTemplate() {
       name?: string
       default_ml?: number
       default_abv?: number
-      usage_count?: number
       barcode?: string
     }) =>
       apiFetch<DrinkTemplate>(`/api/templates/${id}`, {

@@ -75,7 +75,7 @@ Both modules share the same structural rules:
 - **Router ordering:** `confirm-all` endpoint must be registered before `/{entry_id}` in both `routers/entries.py` and `routers/caffeine_entries.py` or FastAPI matches `"confirm-all"` as an ID.
 - **Entry editing:** template-linked entries can only have their timestamp changed (HTTP 400 for any other field); enforced on both backend and frontend. Both `entries.py` and `caffeine_entries.py` implement this consistently — the check strips `timestamp` from the payload and raises 400 only if non-timestamp fields remain.
 - **Name / custom_name invariant:** a template name and an unconfirmed entry `custom_name` with the same value cannot coexist (HTTP 409). Confirm-all auto-promotes pending entries into templates. Two unconfirmed entries also cannot share the same `custom_name` (HTTP 409 on `POST /entries` and `POST /caffeine-entries`); the frontend enforces this too with an inline error before the request is made.
-- **`CaffeineTemplateUpdate` includes `usage_count`** (same as `DrinkTemplateUpdate`) — needed so the frontend can increment it when logging from a template button.
+- **`usage_count` is incremented server-side** — `POST /entries` and `POST /caffeine-entries` increment the linked template's `usage_count` directly when a `template_id` is present. `DrinkTemplateUpdate` and `CaffeineTemplateUpdate` do **not** expose `usage_count` — it is not client-writable.
 
 ### Frontend state management
 
@@ -135,6 +135,8 @@ Two-token JWT pattern. All data endpoints require a valid access token.
 **`backend/routers/deps.py`** — `get_current_user` dependency. Validates the `Authorization: Bearer` header and returns the `User` ORM object. Every data router (`entries`, `templates`, `caffeine_entries`, `caffeine_templates`, `barcode`) must include this as a dependency on every endpoint. Every query in those routers filters by `user_id == current_user.id` — no cross-user leakage is possible.
 
 **`backend/routers/auth.py`** — login / refresh / logout / me endpoints. Login is rate-limited to 5 requests/minute per IP via `slowapi`. The `limiter` instance is created in `auth.py` and registered on the FastAPI app in `main.py`. To rate-limit any other endpoint, import this same `limiter` from `routers.auth` (don't create a new instance — only one can be registered on `app.state`) and add `request: Request` as the first parameter of the handler (slowapi requires it to extract the key). Login also has an in-memory per-IP **lockout**: 10 failed attempts within 15 minutes returns HTTP 423 with `Retry-After: 900`; the counter resets on a successful login. State lives in `_failures` / `_failures_lock` at module level in `routers/auth.py` (and the same pattern in `admin/backend/routers/admin.py`). **Test gotcha:** slowapi's 5/minute limit fires before the lockout handler, so in tests attempts 6+ are blocked by the rate limiter and never reach `_record_failure`. Lockout tests must call `limiter.reset()` before each failed request so all 10 reach the handler — see `test_login_locked_out_after_10_failures` in both test suites for the pattern.
+
+**Rate limiter IP extraction** — `slowapi`'s default `get_remote_address` reads `request.client.host`, which is the nginx container's internal Docker IP behind the proxy — not the real client IP. Both auth routers define `_get_real_ip(request)` which reads the `X-Real-IP` header nginx sets, falling back to `request.client.host`. Always use `_get_real_ip` as the `Limiter(key_func=...)` and for lockout tracking. Do not switch back to `get_remote_address`.
 
 **Logging** — use `logging.getLogger("uvicorn.error")` (not `__name__`) when adding log statements to any backend router. Using `__name__` produces unformatted output with no level prefix; `"uvicorn.error"` uses uvicorn's already-configured formatter so log lines are consistent with uvicorn's own output.
 
@@ -217,7 +219,7 @@ Camera requires `window.isSecureContext` (HTTPS). Dev setup uses Tailscale certs
 
 ### Template uniqueness constraints
 
-Both `name` and `barcode` on `DrinkTemplate` / `CaffeineTemplate` are unique **per user**, not globally. They are intentionally **not** marked `unique=True` on the model — that would create a global DB constraint and cause `IntegrityError` 500s when two users share the same name or barcode. Uniqueness is enforced via migration indexes instead.
+Both `name` and `barcode` on `DrinkTemplate` / `CaffeineTemplate` are unique **per user**, not globally. They are intentionally **not** marked `unique=True` on the model — `unique=True` on a SQLAlchemy column causes SQLite to bake a global `sqlite_autoindex` into the `CREATE TABLE` statement, which `_migrate()` cannot remove by name and which would block two users from sharing the same product name or barcode. Uniqueness is enforced via migration indexes instead.
 
 **Name** — composite unique index `uq_{table}_user_name ON (user_id, name)` created by `_migrate()`. Older DBs may have the old global `uq_{table}_name` index — `_migrate()` drops it and replaces it.
 

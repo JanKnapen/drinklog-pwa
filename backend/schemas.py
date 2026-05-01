@@ -37,7 +37,6 @@ class DrinkTemplateUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     default_ml: Optional[float] = Field(default=None, gt=0, le=5000)
     default_abv: Optional[float] = Field(default=None, ge=0, le=100)
-    usage_count: Optional[int] = None
     barcode: Optional[str] = None
 
 
@@ -121,7 +120,6 @@ class CaffeineTemplateCreate(BaseModel):
 class CaffeineTemplateUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     default_mg: Optional[float] = Field(default=None, gt=0, le=2000)
-    usage_count: Optional[int] = None
     barcode: Optional[str] = None
 
 

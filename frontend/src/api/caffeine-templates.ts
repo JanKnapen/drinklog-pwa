@@ -29,7 +29,7 @@ export function useUpdateCaffeineTemplate() {
     mutationFn: ({
       id,
       ...data
-    }: { id: string; name?: string; default_mg?: number; usage_count?: number; barcode?: string }) =>
+    }: { id: string; name?: string; default_mg?: number; barcode?: string }) =>
       apiFetch<CaffeineTemplate>(`/api/caffeine-templates/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(data),

@@ -86,9 +86,6 @@ def update_template(
             raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
         template.name = data.name
 
-    if data.usage_count is not None:
-        template.usage_count = data.usage_count
-
     if data.barcode is not None:
         if db.query(DrinkTemplate).filter(
             DrinkTemplate.user_id == current_user.id,

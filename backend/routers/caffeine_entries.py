@@ -117,6 +117,12 @@ def create_caffeine_entry(
             raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
     entry = CaffeineEntry(**data.model_dump(), user_id=current_user.id)
     db.add(entry)
+    if data.template_id:
+        template = db.query(CaffeineTemplate).filter(
+            CaffeineTemplate.id == data.template_id, CaffeineTemplate.user_id == current_user.id
+        ).first()
+        if template:
+            template.usage_count += 1
     db.commit()
     db.refresh(entry)
     return entry
