@@ -16,13 +16,22 @@ from sqlalchemy.orm import sessionmaker
 from shared.models import Base
 from database import get_db
 from main import app
-from routers.admin import limiter
+from routers.admin import limiter, _failures, _failures_lock
 
 
 @pytest.fixture(autouse=True)
 def reset_rate_limiter():
     limiter.reset()
     yield
+
+
+@pytest.fixture(autouse=True)
+def reset_lockout():
+    with _failures_lock:
+        _failures.clear()
+    yield
+    with _failures_lock:
+        _failures.clear()
 
 
 @pytest.fixture
