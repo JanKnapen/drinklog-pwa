@@ -36,7 +36,10 @@ function AppContent() {
   const [scannerOpen, setScannerOpen] = useState(false)
 
   useEffect(() => {
-    if (!username) queryClient.clear()
+    if (!username) {
+      queryClient.clear()
+      caches.delete('api-cache')
+    }
   }, [username])
 
   useEffect(() => {

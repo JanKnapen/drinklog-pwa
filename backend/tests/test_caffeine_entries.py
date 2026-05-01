@@ -254,3 +254,18 @@ def test_caffeine_summary_sorted_ascending(client):
     data = client.get("/api/caffeine-entries/summary").json()
     dates = [row["date"] for row in data]
     assert dates == sorted(dates)
+
+
+def test_fraction_below_zero_rejected(client):
+    r = client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _now(), "fraction": -0.1})
+    assert r.status_code == 422
+
+
+def test_fraction_above_one_rejected(client):
+    r = client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _now(), "fraction": 1.1})
+    assert r.status_code == 422
+
+
+def test_custom_name_too_long_rejected(client):
+    r = client.post("/api/caffeine-entries", json={"custom_name": "A" * 201, "mg": 80, "timestamp": _now()})
+    assert r.status_code == 422

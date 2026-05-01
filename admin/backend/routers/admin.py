@@ -1,4 +1,7 @@
 import logging
+import time
+from collections import defaultdict
+from threading import Lock
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -16,6 +19,35 @@ from shared.models import User, DrinkEntry, DrinkTemplate, CaffeineEntry, Caffei
 
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
+
+_LOCKOUT_WINDOW = 15 * 60
+_MAX_FAILURES = 10
+_LOCKOUT_DURATION = 15 * 60
+
+_failures: dict[str, list[float]] = defaultdict(list)
+_failures_lock = Lock()
+
+
+def _check_lockout(ip: str) -> None:
+    now = time.time()
+    with _failures_lock:
+        _failures[ip] = [t for t in _failures[ip] if now - t < _LOCKOUT_WINDOW]
+        if len(_failures[ip]) >= _MAX_FAILURES:
+            raise HTTPException(
+                status_code=423,
+                detail="Too many failed login attempts. Try again later.",
+                headers={"Retry-After": str(_LOCKOUT_DURATION)},
+            )
+
+
+def _record_failure(ip: str) -> None:
+    with _failures_lock:
+        _failures[ip].append(time.time())
+
+
+def _clear_failures(ip: str) -> None:
+    with _failures_lock:
+        _failures.pop(ip, None)
 
 
 class LoginRequest(BaseModel):
@@ -48,8 +80,12 @@ class ChangePasswordRequest(BaseModel):
 @router.post("/admin/login")
 @limiter.limit("5/minute")
 def login(request: Request, body: LoginRequest):
+    ip = get_remote_address(request)
+    _check_lockout(ip)
     if body.password != ADMIN_MASTER_PASSWORD:
+        _record_failure(ip)
         raise HTTPException(status_code=401, detail="Invalid password")
+    _clear_failures(ip)
     return {"access_token": create_admin_token()}
 
 

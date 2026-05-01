@@ -122,7 +122,7 @@ Two-token JWT pattern. All data endpoints require a valid access token.
 
 **`backend/routers/deps.py`** — `get_current_user` dependency. Validates the `Authorization: Bearer` header and returns the `User` ORM object. Every data router (`entries`, `templates`, `caffeine_entries`, `caffeine_templates`, `barcode`) must include this as a dependency on every endpoint. Every query in those routers filters by `user_id == current_user.id` — no cross-user leakage is possible.
 
-**`backend/routers/auth.py`** — login / refresh / logout / me endpoints. Login is rate-limited to 5 requests/minute per IP via `slowapi`. The `limiter` instance is created in `auth.py` and registered on the FastAPI app in `main.py`. To rate-limit any other endpoint, import this same `limiter` from `routers.auth` (don't create a new instance — only one can be registered on `app.state`) and add `request: Request` as the first parameter of the handler (slowapi requires it to extract the key).
+**`backend/routers/auth.py`** — login / refresh / logout / me endpoints. Login is rate-limited to 5 requests/minute per IP via `slowapi`. The `limiter` instance is created in `auth.py` and registered on the FastAPI app in `main.py`. To rate-limit any other endpoint, import this same `limiter` from `routers.auth` (don't create a new instance — only one can be registered on `app.state`) and add `request: Request` as the first parameter of the handler (slowapi requires it to extract the key). Login also has an in-memory per-IP **lockout**: 10 failed attempts within 15 minutes returns HTTP 423 with `Retry-After: 900`; the counter resets on a successful login. State lives in `_failures` / `_failures_lock` at module level in `routers/auth.py` (and the same pattern in `admin/backend/routers/admin.py`). **Test gotcha:** slowapi's 5/minute limit fires before the lockout handler, so in tests attempts 6+ are blocked by the rate limiter and never reach `_record_failure`. Lockout tests must call `limiter.reset()` before each failed request so all 10 reach the handler — see `test_login_locked_out_after_10_failures` in both test suites for the pattern.
 
 **Logging** — use `logging.getLogger("uvicorn.error")` (not `__name__`) when adding log statements to any backend router. Using `__name__` produces unformatted output with no level prefix; `"uvicorn.error"` uses uvicorn's already-configured formatter so log lines are consistent with uvicorn's own output.
 
@@ -140,13 +140,13 @@ Two-token JWT pattern. All data endpoints require a valid access token.
 
 **`username` in `SettingsContext`** — session-only state, not persisted to localStorage. Populated from `GET /api/auth/me` after every successful refresh. Cleared on logout. The login/logout state of the app is derived solely from whether `username` is non-null.
 
-**Query cache cleared on logout** — `AppContent` in `App.tsx` has a `useEffect` that calls `queryClient.clear()` whenever `username` becomes `null`. This prevents stale data from the previous session being visible to a different user who logs in on the same device. Do not remove it.
+**Query cache cleared on logout** — `AppContent` in `App.tsx` has a `useEffect` that calls `queryClient.clear()` and `caches.delete('api-cache')` whenever `username` becomes `null`. The `caches.delete` wipes the service worker's runtime cache so a logged-out device cannot see cached API responses offline. Do not remove either call.
 
-**`secure=True` on the refresh cookie** — the cookie is only sent over HTTPS. Local dev without TLS will not receive the cookie and the silent refresh will always fail. Use the Tailscale dev setup (`docker-compose.dev.yml`) for end-to-end auth testing.
+**`secure=True` on the refresh cookie** — the cookie is only sent over HTTPS. Local dev without TLS will not receive the cookie and the silent refresh will always fail. Use the Tailscale dev setup (`docker-compose.local.yml`) for end-to-end auth testing.
 
 ### Tests
 
-`backend/tests/test_auth.py` — uses a separate `auth_client` fixture with its own in-memory DB (does not use the shared `client` fixture from `conftest.py`). Has an autouse `reset_rate_limiter` fixture that clears slowapi's state before each test to prevent rate-limit state bleeding between tests.
+``backend/tests/test_auth.py` — uses a separate `auth_client` fixture with its own in-memory DB (does not use the shared `client` fixture from `conftest.py`). Has autouse `reset_rate_limiter` and `reset_lockout` fixtures that clear slowapi state and the `_failures` dict before each test to prevent state bleeding between tests. The same two fixtures exist in `admin/backend/tests/conftest.py`.
 
 `conftest.py` — `override_get_current_user` creates or reuses a `testadmin` user in the test DB. This means all non-auth tests run as `testadmin` without needing a token.
 
@@ -277,6 +277,12 @@ Tailwind uses `darkMode: 'class'` — the `dark` class is toggled on `<html>` by
 - **Never commit without explicit user instruction.** Do not commit after completing a task — always wait for the user to say "commit this" or similar before running any `git commit` command.
 - **Before committing:** review whether the changes introduce anything non-obvious that future sessions would need to know (hidden constraints, invariants, intentional workarounds). If so, update CLAUDE.md first. Don't document UI details or anything self-evident from reading the code.
 
+## Security Constraints
+
+- **Never read, print, or suggest values from `.env`** — treat it as a secret file that must not be inspected or exposed under any circumstances.
+- **Never set `DEBUG=true` in any production config** — it bypasses JWT secret startup validation in both backends. `DEBUG=true` is only valid in test commands and `docker-compose.dev.yml`.
+- **Admin ports `:8001`/`:8002` are Tailscale-only** — they are restricted via host-level `DOCKER-USER` iptables rules. Never suggest binding them to `0.0.0.0` without those rules in place, exposing them through nginx, or making them reachable from the public internet.
+
 ## Deployment Notes
 
 `docker-compose.yml` runs four services on an `internal` bridge network:
@@ -318,4 +324,6 @@ HSTS is not set in nginx — it is handled by Cloudflare for the main app. Do no
 
 The Vite build uses `build:docker` script (skips `tsc`) inside Docker; the full `build` script (with type-checking) is for local CI.
 
-Service worker (`vite-plugin-pwa`, `registerType: 'autoUpdate'`) caches API responses with a NetworkFirst strategy, 10s timeout.
+Service worker (`vite-plugin-pwa`, `registerType: 'autoUpdate'`) caches non-auth API responses with a NetworkFirst strategy. The `urlPattern` is `/^\/api\/(?!auth\/).*/` — auth endpoints (`/api/auth/*`) are deliberately excluded; caching them would allow a stale refresh response to bypass the login screen when offline. Timeout is 5s, max 50 entries, 5-minute expiration. Do not broaden the pattern back to `/^\/api\/.*/` or remove the negative lookahead.
+
+**`overrides` in `frontend/package.json`** — forces `serialize-javascript@^7.0.5` to resolve HIGH CVEs. The dependency chain `workbox-build` → `@rollup/plugin-terser@0.4.4` pins `serialize-javascript@6.x`; the override forces 7.x without upgrading the plugin. Do not remove it until `workbox-build` ships with `@rollup/plugin-terser ≥1.0.0`.

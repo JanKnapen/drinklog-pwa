@@ -376,3 +376,23 @@ def test_summary_applies_fraction(client):
     assert len(data) == 1
     expected = (330 * 5.0 / 100 / 15) + (330 * 5.0 / 100 / 15 * 0.5)
     assert abs(data[0]["total"] - expected) < 0.0001
+
+
+def test_fraction_below_zero_rejected(client):
+    r = client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": _now(), "fraction": -0.1})
+    assert r.status_code == 422
+
+
+def test_fraction_above_one_rejected(client):
+    r = client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": _now(), "fraction": 1.1})
+    assert r.status_code == 422
+
+
+def test_fraction_zero_rejected(client):
+    r = client.post("/api/entries", json={"ml": 330, "abv": 5.0, "timestamp": _now(), "fraction": 0.0})
+    assert r.status_code == 422
+
+
+def test_custom_name_too_long_rejected(client):
+    r = client.post("/api/entries", json={"custom_name": "A" * 201, "ml": 330, "abv": 5.0, "timestamp": _now()})
+    assert r.status_code == 422
