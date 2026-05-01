@@ -39,7 +39,7 @@ services:
     volumes:
       - db_data:/data
     networks:
-      - internal
+      - admin-internal
     restart: unless-stopped
 
   admin-frontend:
@@ -52,7 +52,7 @@ services:
     depends_on:
       - admin-backend
     networks:
-      - internal
+      - admin-internal
     restart: unless-stopped
 
 volumes:
@@ -60,4 +60,6 @@ volumes:
 
 networks:
   internal:
+    driver: bridge
+  admin-internal:
     driver: bridge
