@@ -118,6 +118,12 @@ def create_entry(
             raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
     entry = DrinkEntry(**data.model_dump(), user_id=current_user.id)
     db.add(entry)
+    if data.template_id:
+        template = db.query(DrinkTemplate).filter(
+            DrinkTemplate.id == data.template_id, DrinkTemplate.user_id == current_user.id
+        ).first()
+        if template:
+            template.usage_count += 1
     db.commit()
     db.refresh(entry)
     return entry

@@ -115,7 +115,6 @@ export function useModuleAdapter(): ModuleAdapter {
         const raw = caffeineTemplates.find((r) => r.id === t.id)!
         createCaffeineEntry.mutate(
           { template_id: raw.id, mg: raw.default_mg, timestamp: new Date().toISOString() },
-          { onSuccess: () => updateCaffeineTemplate.mutate({ id: raw.id, usage_count: raw.usage_count + 1 }) },
         )
       },
       logFromTemplateWithOptions: async (t, count, timestamp, fraction) => {
@@ -126,7 +125,6 @@ export function useModuleAdapter(): ModuleAdapter {
         if (fraction != null) {
           await createCaffeineEntry.mutateAsync({ template_id: raw.id, mg: raw.default_mg, timestamp, fraction })
         }
-        updateCaffeineTemplate.mutate({ id: raw.id, usage_count: raw.usage_count + count + (fraction != null ? 1 : 0) })
       },
       logFromPendingEntry: async (e, count, timestamp, fraction) => {
         const raw = caffeineEntries.find((r) => r.id === e.id)!
@@ -162,7 +160,6 @@ export function useModuleAdapter(): ModuleAdapter {
       const raw = drinkTemplates.find((r) => r.id === t.id)!
       createDrinkEntry.mutate(
         { template_id: raw.id, ml: raw.default_ml, abv: raw.default_abv, timestamp: new Date().toISOString() },
-        { onSuccess: () => updateDrinkTemplate.mutate({ id: raw.id, usage_count: raw.usage_count + 1 }) },
       )
     },
     logFromTemplateWithOptions: async (t, count, timestamp, fraction) => {
@@ -173,7 +170,6 @@ export function useModuleAdapter(): ModuleAdapter {
       if (fraction != null) {
         await createDrinkEntry.mutateAsync({ template_id: raw.id, ml: raw.default_ml, abv: raw.default_abv, timestamp, fraction })
       }
-      updateDrinkTemplate.mutate({ id: raw.id, usage_count: raw.usage_count + count + (fraction != null ? 1 : 0) })
     },
     logFromPendingEntry: async (e, count, timestamp, fraction) => {
       const raw = drinkEntries.find((r) => r.id === e.id)!
