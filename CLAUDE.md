@@ -8,6 +8,18 @@ DrinkLog is a self-hosted PWA for tracking consumption. It supports two modes �
 
 **Stack:** React 18 + Vite + TypeScript + TailwindCSS (frontend) · FastAPI + SQLAlchemy + SQLite (backend) · Docker Compose with nginx
 
+## Icons
+
+The app icon source is `frontend/public/favicon.svg` (also copied to `admin/frontend/public/favicon.svg`). The PNG variants are generated from it via `npx sharp-cli` (available as a dev dependency in `frontend/`). If the SVG is updated, regenerate from `frontend/`:
+
+```bash
+npx sharp-cli --input public/favicon.svg --output public/icons/icon-192x192.png resize 192 192
+npx sharp-cli --input public/favicon.svg --output public/icons/icon-512x512.png resize 512 512
+npx sharp-cli --input public/favicon.svg --output public/apple-touch-icon.png resize 180 180
+```
+
+Also copy the updated SVG to `admin/frontend/public/favicon.svg`.
+
 ## Development Commands
 
 **Backend** (from `backend/`):
