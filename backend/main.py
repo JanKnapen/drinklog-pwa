@@ -50,7 +50,8 @@ def _migrate_user_id_columns():
     inspector = sa_inspect(engine)
     with Session(engine) as session:
         seed_user = session.query(User).first()
-        assert seed_user is not None  # guaranteed by _ensure_seed_user
+        if seed_user is None:
+            raise RuntimeError("Seed user missing after _ensure_seed_user — this is a bug")
         seed_user_id = seed_user.id
 
     tables = ["drink_entries", "drink_templates", "caffeine_entries", "caffeine_templates"]
@@ -193,9 +194,11 @@ def _migrate():
     _migrate_user_id_columns()
 
     # Purge expired refresh tokens
-    from datetime import datetime as _dt
+    from datetime import datetime as _dt, timezone as _tz
     with Session(engine) as session:
-        session.query(RefreshToken).filter(RefreshToken.expires_at < _dt.utcnow()).delete()
+        session.query(RefreshToken).filter(
+            RefreshToken.expires_at < _dt.now(_tz.utc).replace(tzinfo=None)
+        ).delete()
         session.commit()
 
 _migrate()

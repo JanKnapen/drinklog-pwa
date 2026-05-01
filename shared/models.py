@@ -28,7 +28,7 @@ class DrinkTemplate(Base):
     default_ml: Mapped[float] = mapped_column(Float, nullable=False)
     default_abv: Mapped[float] = mapped_column(Float, nullable=False)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
-    barcode: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
+    barcode: Mapped[str | None] = mapped_column(String, nullable=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     entries: Mapped[list["DrinkEntry"]] = relationship(
@@ -76,7 +76,7 @@ class CaffeineTemplate(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     default_mg: Mapped[float] = mapped_column(Float, nullable=False)
     usage_count: Mapped[int] = mapped_column(Integer, default=0)
-    barcode: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
+    barcode: Mapped[str | None] = mapped_column(String, nullable=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     entries: Mapped[list["CaffeineEntry"]] = relationship(

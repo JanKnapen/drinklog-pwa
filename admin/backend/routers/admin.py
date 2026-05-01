@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, field_validator
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -17,7 +16,14 @@ from routers.deps import get_admin_user
 from config import ADMIN_MASTER_PASSWORD
 from shared.models import User, DrinkEntry, DrinkTemplate, CaffeineEntry, CaffeineTemplate
 
-limiter = Limiter(key_func=get_remote_address)
+
+def _get_real_ip(request: Request) -> str:
+    return request.headers.get("X-Real-IP") or (
+        request.client.host if request.client else "127.0.0.1"
+    )
+
+
+limiter = Limiter(key_func=_get_real_ip)
 router = APIRouter()
 
 _LOCKOUT_WINDOW = 15 * 60
@@ -80,7 +86,7 @@ class ChangePasswordRequest(BaseModel):
 @router.post("/admin/login")
 @limiter.limit("5/minute")
 def login(request: Request, body: LoginRequest):
-    ip = get_remote_address(request)
+    ip = _get_real_ip(request)
     _check_lockout(ip)
     if body.password != ADMIN_MASTER_PASSWORD:
         _record_failure(ip)

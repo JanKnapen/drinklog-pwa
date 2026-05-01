@@ -69,7 +69,7 @@ def confirm_all(
 
 @router.get("/entries", response_model=list[DrinkEntryResponse])
 def list_entries(
-    limit: int = Query(default=100, ge=1),
+    limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     confirmed_only: bool = False,
     db: Session = Depends(get_db),

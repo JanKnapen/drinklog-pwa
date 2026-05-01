@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 import jwt
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from database import get_db
 from models import User, RefreshToken
@@ -15,7 +14,14 @@ from schemas import LoginRequest, TokenResponse
 from config import REFRESH_TOKEN_EXPIRE_DAYS
 from routers.deps import get_current_user
 
-limiter = Limiter(key_func=get_remote_address)
+
+def _get_real_ip(request: Request) -> str:
+    return request.headers.get("X-Real-IP") or (
+        request.client.host if request.client else "127.0.0.1"
+    )
+
+
+limiter = Limiter(key_func=_get_real_ip)
 
 router = APIRouter()
 
@@ -74,7 +80,7 @@ def _clear_refresh_cookie(response: Response) -> None:
 @router.post("/auth/login", response_model=TokenResponse)
 @limiter.limit("5/minute")
 async def login(request: Request, data: LoginRequest, response: Response, db: Session = Depends(get_db)):
-    ip = get_remote_address(request)
+    ip = _get_real_ip(request)
     _check_lockout(ip)
     user = db.query(User).filter(User.username == data.username).first()
     if not user or not verify_password(data.password, user.hashed_password):

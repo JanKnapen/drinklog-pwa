@@ -68,7 +68,7 @@ def confirm_all_caffeine(
 
 @router.get("/caffeine-entries", response_model=list[CaffeineEntryResponse])
 def list_caffeine_entries(
-    limit: int = Query(default=100, ge=1),
+    limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     confirmed_only: bool = False,
     db: Session = Depends(get_db),
