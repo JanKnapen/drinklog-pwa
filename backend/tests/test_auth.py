@@ -8,7 +8,7 @@ from database import Base, get_db
 from main import app
 from models import User
 from auth import hash_password
-from routers.auth import limiter
+from routers.auth import limiter, _failures, _failures_lock
 
 
 @pytest.fixture(autouse=True)
@@ -16,6 +16,15 @@ def reset_rate_limiter():
     """Reset the rate limiter before each test so limits don't bleed across tests."""
     limiter.reset()
     yield
+
+
+@pytest.fixture(autouse=True)
+def reset_lockout():
+    with _failures_lock:
+        _failures.clear()
+    yield
+    with _failures_lock:
+        _failures.clear()
 
 
 @pytest.fixture
@@ -131,4 +140,35 @@ def test_protected_endpoint_requires_auth(auth_client):
 def test_protected_endpoint_with_valid_token(auth_client):
     tokens = _login(auth_client)
     resp = auth_client.get("/api/entries", headers={"Authorization": f"Bearer {tokens['access_token']}"})
+    assert resp.status_code == 200
+
+
+def _fail_login(client, n):
+    """Make n failed login attempts, resetting the rate limiter each time."""
+    for _ in range(n):
+        limiter.reset()
+        client.post("/api/auth/login", json={"username": "alice", "password": "wrong"})
+
+
+def test_login_locked_out_after_10_failures(auth_client):
+    _fail_login(auth_client, 10)
+    limiter.reset()
+    resp = auth_client.post("/api/auth/login", json={"username": "alice", "password": "wrong"})
+    assert resp.status_code == 423
+    assert "Retry-After" in resp.headers
+
+
+def test_login_lockout_cleared_on_success(auth_client):
+    _fail_login(auth_client, 9)
+    limiter.reset()
+    resp = auth_client.post("/api/auth/login", json={"username": "alice", "password": "password123"})
+    assert resp.status_code == 200
+    resp = auth_client.post("/api/auth/login", json={"username": "alice", "password": "wrong"})
+    assert resp.status_code == 401
+
+
+def test_login_lockout_does_not_block_correct_password_before_threshold(auth_client):
+    _fail_login(auth_client, 9)
+    limiter.reset()
+    resp = auth_client.post("/api/auth/login", json={"username": "alice", "password": "password123"})
     assert resp.status_code == 200

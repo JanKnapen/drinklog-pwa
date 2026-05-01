@@ -1,3 +1,7 @@
+import time
+from collections import defaultdict
+from threading import Lock
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 import jwt
@@ -14,6 +18,35 @@ from routers.deps import get_current_user
 limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter()
+
+_LOCKOUT_WINDOW = 15 * 60
+_MAX_FAILURES = 10
+_LOCKOUT_DURATION = 15 * 60
+
+_failures: dict[str, list[float]] = defaultdict(list)
+_failures_lock = Lock()
+
+
+def _check_lockout(ip: str) -> None:
+    now = time.time()
+    with _failures_lock:
+        _failures[ip] = [t for t in _failures[ip] if now - t < _LOCKOUT_WINDOW]
+        if len(_failures[ip]) >= _MAX_FAILURES:
+            raise HTTPException(
+                status_code=423,
+                detail="Too many failed login attempts. Try again later.",
+                headers={"Retry-After": str(_LOCKOUT_DURATION)},
+            )
+
+
+def _record_failure(ip: str) -> None:
+    with _failures_lock:
+        _failures[ip].append(time.time())
+
+
+def _clear_failures(ip: str) -> None:
+    with _failures_lock:
+        _failures.pop(ip, None)
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:
@@ -41,16 +74,17 @@ def _clear_refresh_cookie(response: Response) -> None:
 @router.post("/auth/login", response_model=TokenResponse)
 @limiter.limit("5/minute")
 async def login(request: Request, data: LoginRequest, response: Response, db: Session = Depends(get_db)):
+    ip = get_remote_address(request)
+    _check_lockout(ip)
     user = db.query(User).filter(User.username == data.username).first()
     if not user or not verify_password(data.password, user.hashed_password):
+        _record_failure(ip)
         raise HTTPException(status_code=401, detail="Invalid credentials")
-
+    _clear_failures(ip)
     access_token = create_access_token({"sub": user.username})
     refresh_token, jti, expires_at = create_refresh_token({"sub": user.username})
-
     db.add(RefreshToken(jti=jti, user_id=user.id, expires_at=expires_at.replace(tzinfo=None)))
     db.commit()
-
     _set_refresh_cookie(response, refresh_token)
     return TokenResponse(access_token=access_token, username=user.username)
 
