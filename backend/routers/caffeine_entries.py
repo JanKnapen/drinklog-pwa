@@ -107,14 +107,6 @@ def create_caffeine_entry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if data.custom_name:
-        existing = db.query(CaffeineEntry).filter(
-            CaffeineEntry.user_id == current_user.id,
-            CaffeineEntry.custom_name == data.custom_name,
-            CaffeineEntry.is_marked == False,
-        ).first()
-        if existing:
-            raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
     entry = CaffeineEntry(**data.model_dump(), user_id=current_user.id)
     db.add(entry)
     if data.template_id:
