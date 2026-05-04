@@ -14,14 +14,14 @@ from schemas import (
     EntrySummaryItem,
 )
 
-router = APIRouter(tags=["entries"])
+router = APIRouter(tags=["alcohol-entries"])
 
 
-# IMPORTANT: /entries/confirm-all must be registered BEFORE /entries/{entry_id}
+# IMPORTANT: /alcohol-entries/confirm-all must be registered BEFORE /alcohol-entries/{entry_id}
 # so FastAPI doesn't treat "confirm-all" as an entry_id.
 
 
-@router.post("/entries/confirm-all")
+@router.post("/alcohol-entries/confirm-all")
 def confirm_all(
     req: ConfirmAllRequest,
     db: Session = Depends(get_db),
@@ -67,7 +67,7 @@ def confirm_all(
     return {"confirmed": len(entries)}
 
 
-@router.get("/entries", response_model=list[DrinkEntryResponse])
+@router.get("/alcohol-entries", response_model=list[DrinkEntryResponse])
 def list_entries(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -102,7 +102,7 @@ def list_entries(
     return combined
 
 
-@router.post("/entries", response_model=DrinkEntryResponse, status_code=201)
+@router.post("/alcohol-entries", response_model=DrinkEntryResponse, status_code=201)
 def create_entry(
     data: DrinkEntryCreate,
     db: Session = Depends(get_db),
@@ -121,7 +121,7 @@ def create_entry(
     return entry
 
 
-@router.get("/entries/summary", response_model=list[EntrySummaryItem])
+@router.get("/alcohol-entries/summary", response_model=list[EntrySummaryItem])
 def entries_summary(
     period: Literal["week", "month", "year", "all"] = Query(default="all"),
     db: Session = Depends(get_db),
@@ -150,7 +150,7 @@ def entries_summary(
     return [EntrySummaryItem(date=row.date, total=round(row.total, 6)) for row in rows]
 
 
-@router.put("/entries/{entry_id}", response_model=DrinkEntryResponse)
+@router.put("/alcohol-entries/{entry_id}", response_model=DrinkEntryResponse)
 def update_entry(
     entry_id: str,
     data: DrinkEntryUpdate,
@@ -173,7 +173,7 @@ def update_entry(
     return entry
 
 
-@router.delete("/entries/{entry_id}", status_code=204)
+@router.delete("/alcohol-entries/{entry_id}", status_code=204)
 def delete_entry(
     entry_id: str,
     db: Session = Depends(get_db),

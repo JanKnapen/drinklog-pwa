@@ -7,7 +7,7 @@ export const TEMPLATES_KEY = ['templates'] as const
 export function useTemplates() {
   return useQuery({
     queryKey: TEMPLATES_KEY,
-    queryFn: () => apiFetch<DrinkTemplate[]>('/api/templates'),
+    queryFn: () => apiFetch<DrinkTemplate[]>('/api/alcohol-templates'),
   })
 }
 
@@ -15,7 +15,7 @@ export function useCreateTemplate() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: { name: string; default_ml: number; default_abv: number; barcode?: string }) =>
-      apiFetch<DrinkTemplate>('/api/templates', {
+      apiFetch<DrinkTemplate>('/api/alcohol-templates', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -36,7 +36,7 @@ export function useUpdateTemplate() {
       default_abv?: number
       barcode?: string
     }) =>
-      apiFetch<DrinkTemplate>(`/api/templates/${id}`, {
+      apiFetch<DrinkTemplate>(`/api/alcohol-templates/${id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
@@ -48,7 +48,7 @@ export function useDeleteTemplate() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) =>
-      apiFetch<void>(`/api/templates/${id}`, { method: 'DELETE' }),
+      apiFetch<void>(`/api/alcohol-templates/${id}`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: TEMPLATES_KEY }),
   })
 }

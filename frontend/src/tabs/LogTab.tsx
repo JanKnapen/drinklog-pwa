@@ -124,7 +124,7 @@ export default function LogTab() {
   async function handleLoadMore() {
     setLoadingMore(true)
     try {
-      const path = activeModule === 'alcohol' ? '/api/entries' : '/api/caffeine-entries'
+      const path = activeModule === 'alcohol' ? '/api/alcohol-entries' : '/api/caffeine-entries'
       const more = await apiFetch<typeof rawEntries>(
         `${path}?confirmed_only=true&limit=100&offset=${nextOffset}`
       )
