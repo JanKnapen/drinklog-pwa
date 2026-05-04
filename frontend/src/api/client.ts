@@ -1,4 +1,5 @@
 let accessToken: string | null = null
+let refreshPromise: Promise<boolean> | null = null
 
 export function setAccessToken(token: string): void {
   accessToken = token
@@ -9,15 +10,21 @@ export function clearAccessToken(): void {
 }
 
 export async function refreshAccessToken(): Promise<boolean> {
-  try {
-    const data = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' })
-    if (!data.ok) return false
-    const json = await data.json()
-    setAccessToken(json.access_token)
-    return true
-  } catch {
-    return false
-  }
+  if (refreshPromise) return refreshPromise
+  refreshPromise = (async () => {
+    try {
+      const data = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' })
+      if (!data.ok) return false
+      const json = await data.json()
+      setAccessToken(json.access_token)
+      return true
+    } catch {
+      return false
+    } finally {
+      refreshPromise = null
+    }
+  })()
+  return refreshPromise
 }
 
 export class ApiError extends Error {
