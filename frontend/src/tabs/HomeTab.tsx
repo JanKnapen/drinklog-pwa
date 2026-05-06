@@ -17,6 +17,7 @@ import { useModuleAdapter } from '../hooks/useModuleAdapter'
 import { useCreateEntry } from '../api/entries'
 import { useCreateTemplate, useUpdateTemplate, useTemplates } from '../api/templates'
 import { useCreateCaffeineEntry } from '../api/caffeine-entries'
+import { AuthError } from '../api/client'
 import { useCreateCaffeineTemplate, useUpdateCaffeineTemplate, useCaffeineTemplates } from '../api/caffeine-templates'
 import { lookupBarcode, type BarcodeResult } from '../api/barcode'
 
@@ -193,7 +194,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
             </p>
             <div className="flex flex-col gap-2">
               {todayTopTwo.map(({ template }) => (
-                <TemplateButton key={template.id} template={template} onClick={async () => { try { await adapter.logFromTemplate(template); onToast(`Logged: ${template.name}`) } catch { /* reload handles auth failure */ } }} />
+                <TemplateButton key={template.id} template={template} onClick={async () => { try { await adapter.logFromTemplate(template); onToast(`Logged: ${template.name}`) } catch (e) { if (!(e instanceof AuthError)) onToast('Something went wrong') } }} />
               ))}
 
               {todayTopTwo.length > 0 && alltimeItems.length > 0 && (
@@ -201,7 +202,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
               )}
 
               {alltimeItems.map((t) => (
-                <TemplateButton key={t.id} template={t} onClick={async () => { try { await adapter.logFromTemplate(t); onToast(`Logged: ${t.name}`) } catch { /* reload handles auth failure */ } }} />
+                <TemplateButton key={t.id} template={t} onClick={async () => { try { await adapter.logFromTemplate(t); onToast(`Logged: ${t.name}`) } catch (e) { if (!(e instanceof AuthError)) onToast('Something went wrong') } }} />
               ))}
 
               {pendingDrinks.length > 0 && (
