@@ -88,6 +88,8 @@ API layer lives in `frontend/src/api/`:
 
 Query keys: `['entries']`, `['templates']`, `['caffeine-entries']`, `['caffeine-templates']`. Mutations invalidate both entry and template keys for their module where needed.
 
+**`mutate()` vs `mutateAsync()`** — use `mutate()` only for true fire-and-forget operations (deletes, timestamp updates) where no UI feedback depends on success. If a toast, callback, or state change must only happen on success, use `mutateAsync()` and `await` it — `mutate()` returns `void` immediately and any code after it runs regardless of outcome. Catch blocks around `mutateAsync` should narrow to the specific error type rather than swallowing all exceptions (e.g. `catch (e) { if (!(e instanceof AuthError)) onToast('Something went wrong') }`).
+
 ### Module adapter pattern
 
 **All four tabs use only `useModuleAdapter()`** (`frontend/src/hooks/useModuleAdapter.ts`) — no direct API imports in the main tab component. The adapter reads `activeModule` from `SettingsContext`, calls all hooks unconditionally (React rules), then returns module-appropriate normalised data:
@@ -146,11 +148,17 @@ Two-token JWT pattern. All data endpoints require a valid access token.
 
 ### Frontend
 
-**`apiFetch` 401 retry** — on a 401 response, `apiFetch` attempts one silent refresh via `POST /api/auth/refresh`. If the refresh succeeds, the original request is retried. If the refresh fails, the in-memory token is cleared and the page reloads to show the login screen. The retry is one-shot — it does not loop.
+**`apiFetch` 401 retry** — on a 401 response, `apiFetch` attempts one silent refresh via `POST /api/auth/refresh`. If the refresh succeeds, the original request is retried. If the refresh fails, the in-memory token is cleared and `window.location.reload()` is called, returning the user to the login screen. The retry is one-shot — it does not loop.
+
+**`refreshPromise` deduplication lock** — `refreshAccessToken()` in `client.ts` uses a module-level `refreshPromise` variable so that concurrent 401 retries (e.g. TanStack Query refetching all queries on window focus) share a single refresh HTTP call. Without this, each concurrent 401 would fire its own `POST /api/auth/refresh`, the second call would arrive after the first had already rotated the jti, triggering reuse detection and wiping the entire session. Do not bypass or remove this lock when modifying the refresh path.
+
+**TanStack Query retry config** — the `QueryClient` in `App.tsx` is configured with a `retry` function that returns `false` for `AuthError`. Without this, TanStack Query's `retry: 1` default would re-fire failed queries after an auth failure, causing a second round of 401s → a second (now-failing) refresh call → a compounding broken session. Do not replace the retry function with a plain number.
 
 **`credentials: 'include'`** — all `fetch` calls in `client.ts` must use `credentials: 'include'` so the browser sends the `httpOnly` refresh cookie. This is already set in the `fetchWithAuth` helper. Any new API calls added outside `apiFetch` must also include this or refresh will silently fail.
 
 **Startup flow** — `AppContent` in `App.tsx` calls `refreshAccessToken()` before rendering any tab. A blank screen is shown during this check to avoid a flash of the login screen. If refresh fails (cookie absent or expired), `<LoginView />` is rendered.
+
+**Background resume refresh** — `AppContent` registers a `visibilitychange` listener that proactively calls `refreshAccessToken()` when the app returns from background after ≥14 minutes (1-minute buffer before the 15-minute access token expiry). This pre-empts TanStack Query's window-focus refetches, which would otherwise all hit 401 simultaneously before any token is available. The `refreshPromise` lock ensures only one HTTP call fires regardless of the race.
 
 **`username` in `SettingsContext`** — session-only state, not persisted to localStorage. Populated from `GET /api/auth/me` after every successful refresh. Cleared on logout. The login/logout state of the app is derived solely from whether `username` is non-null.
 
