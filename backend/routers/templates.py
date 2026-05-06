@@ -6,7 +6,7 @@ from models import DrinkTemplate, DrinkEntry, CaffeineTemplate, User
 from routers.deps import get_current_user
 from schemas import DrinkTemplateCreate, DrinkTemplateUpdate, DrinkTemplateResponse
 
-router = APIRouter(tags=["templates"])
+router = APIRouter(tags=["alcohol-templates"])
 
 
 def _check_barcode_cross_module(barcode: str | None, user_id: int, db: Session) -> None:
@@ -16,7 +16,7 @@ def _check_barcode_cross_module(barcode: str | None, user_id: int, db: Session) 
         raise HTTPException(status_code=409, detail="This barcode is already assigned to a caffeine template")
 
 
-@router.get("/templates", response_model=list[DrinkTemplateResponse])
+@router.get("/alcohol-templates", response_model=list[DrinkTemplateResponse])
 def list_templates(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -29,7 +29,7 @@ def list_templates(
     )
 
 
-@router.post("/templates", response_model=DrinkTemplateResponse, status_code=201)
+@router.post("/alcohol-templates", response_model=DrinkTemplateResponse, status_code=201)
 def create_template(
     data: DrinkTemplateCreate,
     db: Session = Depends(get_db),
@@ -57,7 +57,7 @@ def create_template(
     return template
 
 
-@router.put("/templates/{template_id}", response_model=DrinkTemplateResponse)
+@router.put("/alcohol-templates/{template_id}", response_model=DrinkTemplateResponse)
 def update_template(
     template_id: str,
     data: DrinkTemplateUpdate,
@@ -108,7 +108,7 @@ def update_template(
     return template
 
 
-@router.delete("/templates/{template_id}", status_code=204)
+@router.delete("/alcohol-templates/{template_id}", status_code=204)
 def delete_template(
     template_id: str,
     db: Session = Depends(get_db),

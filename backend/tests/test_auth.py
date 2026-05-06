@@ -133,13 +133,13 @@ def test_me_with_invalid_token(auth_client):
 
 
 def test_protected_endpoint_requires_auth(auth_client):
-    resp = auth_client.get("/api/entries")
+    resp = auth_client.get("/api/alcohol-entries")
     assert resp.status_code == 401
 
 
 def test_protected_endpoint_with_valid_token(auth_client):
     tokens = _login(auth_client)
-    resp = auth_client.get("/api/entries", headers={"Authorization": f"Bearer {tokens['access_token']}"})
+    resp = auth_client.get("/api/alcohol-entries", headers={"Authorization": f"Bearer {tokens['access_token']}"})
     assert resp.status_code == 200
 
 

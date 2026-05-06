@@ -75,7 +75,7 @@ Both modules share the same structural rules:
 - **Router ordering:** `confirm-all` endpoint must be registered before `/{entry_id}` in both `routers/entries.py` and `routers/caffeine_entries.py` or FastAPI matches `"confirm-all"` as an ID.
 - **Entry editing:** template-linked entries can only have their timestamp changed (HTTP 400 for any other field); enforced on both backend and frontend. Both `entries.py` and `caffeine_entries.py` implement this consistently — the check strips `timestamp` from the payload and raises 400 only if non-timestamp fields remain.
 - **Name / custom_name invariant:** a template name and an unconfirmed entry `custom_name` with the same value cannot coexist (HTTP 409). Confirm-all auto-promotes pending entries into templates. Multiple unconfirmed entries with the same `custom_name` are allowed — confirm-all handles them correctly by linking all to one template. The frontend enforces against duplicate names when the user types a new drink name in `NewAlcohol/CaffeineModal` (inline error before the request), but `logFromPendingEntry` intentionally creates duplicate-named entries.
-- **`usage_count` is incremented server-side** — `POST /entries` and `POST /caffeine-entries` increment the linked template's `usage_count` directly when a `template_id` is present. `DrinkTemplateUpdate` and `CaffeineTemplateUpdate` do **not** expose `usage_count` — it is not client-writable.
+- **`usage_count` is incremented server-side** — `POST /alcohol-entries` and `POST /caffeine-entries` increment the linked template's `usage_count` directly when a `template_id` is present. `DrinkTemplateUpdate` and `CaffeineTemplateUpdate` do **not** expose `usage_count` — it is not client-writable.
 
 ### Frontend state management
 
@@ -283,6 +283,14 @@ App-level settings live in `SettingsContext` (`frontend/src/contexts/SettingsCon
 Tailwind uses `darkMode: 'class'` — the `dark` class is toggled on `<html>` by `SettingsContext`. **An inline script in `index.html`** applies the `dark` class synchronously before first render to prevent a flash of light mode on app launch. Do not remove it.
 
 **`theme-color` meta tag limitation:** iOS PWA only reads `theme-color` at launch — dynamic JS updates to it have no effect while the app is running. The status bar color therefore follows the OS preference (via two `media`-based meta tags) and only reflects the user's in-app theme choice after a full app restart.
+
+## Refactoring and Simple Changes
+
+For mechanical changes where the "what" is already fully determined by the request — renames, URL changes, moving files, extracting constants, reformatting — implement directly without invoking brainstorming or planning workflows. These tasks need good execution, not a design ceremony.
+
+Only use brainstorming/planning/subagent workflows when the task involves genuine design choices, multiple independent subsystems, or non-obvious trade-offs.
+
+Good code quality and refactoring are always welcome when touching existing code (cleaning up a function you're already editing, fixing an inconsistency you notice). Do not hold back on quality — just don't gate simple tasks behind unnecessary process.
 
 ## Git Conventions
 

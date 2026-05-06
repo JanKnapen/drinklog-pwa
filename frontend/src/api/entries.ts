@@ -12,7 +12,7 @@ function buildEntriesUrl(limit = 100, offset = 0, confirmedOnly = false) {
   if (offset !== 0) params.set('offset', String(offset))
   if (confirmedOnly) params.set('confirmed_only', 'true')
   const qs = params.toString()
-  return qs ? `/api/entries?${qs}` : '/api/entries'
+  return qs ? `/api/alcohol-entries?${qs}` : '/api/alcohol-entries'
 }
 
 export function useEntries(params?: { limit?: number; offset?: number; confirmedOnly?: boolean }) {
@@ -28,7 +28,7 @@ export function useEntries(params?: { limit?: number; offset?: number; confirmed
 export function useEntrySummary(period: 'week' | 'month' | 'year' | 'all') {
   return useQuery({
     queryKey: [...ENTRIES_SUMMARY_KEY, period] as const,
-    queryFn: () => apiFetch<EntrySummaryItem[]>(`/api/entries/summary?period=${period}`),
+    queryFn: () => apiFetch<EntrySummaryItem[]>(`/api/alcohol-entries/summary?period=${period}`),
     staleTime: period === 'year' || period === 'all' ? Infinity : undefined,
     placeholderData: keepPreviousData,
   })
@@ -44,7 +44,7 @@ export function useCreateEntry() {
       abv: number
       timestamp: string
       fraction?: number
-    }) => apiFetch<DrinkEntry>('/api/entries', { method: 'POST', body: JSON.stringify(data) }),
+    }) => apiFetch<DrinkEntry>('/api/alcohol-entries', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ENTRIES_KEY })
       qc.invalidateQueries({ queryKey: TEMPLATES_KEY })
@@ -60,7 +60,7 @@ export function useUpdateEntry() {
       id,
       ...data
     }: { id: string; custom_name?: string; ml?: number; abv?: number; timestamp?: string }) =>
-      apiFetch<DrinkEntry>(`/api/entries/${id}`, {
+      apiFetch<DrinkEntry>(`/api/alcohol-entries/${id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
@@ -75,7 +75,7 @@ export function useDeleteEntry() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) =>
-      apiFetch<void>(`/api/entries/${id}`, { method: 'DELETE' }),
+      apiFetch<void>(`/api/alcohol-entries/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ENTRIES_KEY })
       qc.invalidateQueries({ queryKey: ENTRIES_SUMMARY_KEY })
@@ -87,7 +87,7 @@ export function useConfirmAll() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (cutoff: string) =>
-      apiFetch<{ confirmed: number }>('/api/entries/confirm-all', {
+      apiFetch<{ confirmed: number }>('/api/alcohol-entries/confirm-all', {
         method: 'POST',
         body: JSON.stringify({ cutoff }),
       }),
