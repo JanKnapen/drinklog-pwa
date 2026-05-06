@@ -25,7 +25,7 @@ export interface ModuleAdapter {
   isEntriesFetched: boolean
   activeModule: 'alcohol' | 'caffeine'
   moduleTitle: string
-  logFromTemplate: (t: TrackerTemplate) => void
+  logFromTemplate: (t: TrackerTemplate) => Promise<void>
   logFromTemplateWithOptions: (t: TrackerTemplate, count: number, timestamp: string, fraction?: number) => Promise<void>
   logFromPendingEntry: (e: TrackerEntry, count: number, timestamp: string, fraction?: number) => Promise<void>
   confirmAll: (cutoff: Date) => Promise<void>
@@ -113,9 +113,9 @@ export function useModuleAdapter(): ModuleAdapter {
       moduleTitle: 'CaffeineLog',
       logFromTemplate: (t) => {
         const raw = caffeineTemplates.find((r) => r.id === t.id)!
-        createCaffeineEntry.mutate(
+        return createCaffeineEntry.mutateAsync(
           { template_id: raw.id, mg: raw.default_mg, timestamp: new Date().toISOString() },
-        )
+        ).then(() => {})
       },
       logFromTemplateWithOptions: async (t, count, timestamp, fraction) => {
         const raw = caffeineTemplates.find((r) => r.id === t.id)!
@@ -158,9 +158,9 @@ export function useModuleAdapter(): ModuleAdapter {
     moduleTitle: 'DrinkLog',
     logFromTemplate: (t) => {
       const raw = drinkTemplates.find((r) => r.id === t.id)!
-      createDrinkEntry.mutate(
+      return createDrinkEntry.mutateAsync(
         { template_id: raw.id, ml: raw.default_ml, abv: raw.default_abv, timestamp: new Date().toISOString() },
-      )
+      ).then(() => {})
     },
     logFromTemplateWithOptions: async (t, count, timestamp, fraction) => {
       const raw = drinkTemplates.find((r) => r.id === t.id)!

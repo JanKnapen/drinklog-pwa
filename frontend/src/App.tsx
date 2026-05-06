@@ -1,10 +1,10 @@
-import { useState, lazy, Suspense, useEffect } from 'react'
+import { useState, useRef, lazy, Suspense, useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import BottomNav, { type Tab } from './components/BottomNav'
 import { SettingsProvider, useSettings } from './contexts/SettingsContext'
 import SettingsModal from './components/SettingsModal'
 import LoginView from './components/LoginView'
-import { apiFetch, refreshAccessToken } from './api/client'
+import { apiFetch, refreshAccessToken, AuthError } from './api/client'
 
 const HomeTab = lazy(() => import('./tabs/HomeTab'))
 const LogTab = lazy(() => import('./tabs/LogTab'))
@@ -13,7 +13,10 @@ const DataTab = lazy(() => import('./tabs/DataTab'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, staleTime: 10_000 },
+    queries: {
+      retry: (failureCount, error) => !(error instanceof AuthError) && failureCount < 1,
+      staleTime: 10_000,
+    },
   },
 })
 
@@ -34,12 +37,35 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<Tab>('home')
   const [toast, setToast] = useState<string | null>(null)
   const [scannerOpen, setScannerOpen] = useState(false)
+  const hiddenAtRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!username) {
       queryClient.clear()
       caches.delete('api-cache')
     }
+  }, [username])
+
+  // Proactively refresh the access token when the app returns from background if the
+  // 15-minute access token has likely expired, before TanStack Query's refetches fire.
+  // The refreshAccessToken lock ensures only one HTTP call fires even if concurrent
+  // 401 retries also call it.
+  useEffect(() => {
+    if (!username) return
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAtRef.current = Date.now()
+        return
+      }
+      if (document.visibilityState !== 'visible') return
+      const hiddenMs = hiddenAtRef.current != null ? Date.now() - hiddenAtRef.current : Infinity
+      hiddenAtRef.current = null
+      if (hiddenMs < 14 * 60 * 1000) return
+      const ok = await refreshAccessToken()
+      if (!ok) window.location.reload()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [username])
 
   useEffect(() => {

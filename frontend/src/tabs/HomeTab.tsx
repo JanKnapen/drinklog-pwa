@@ -193,7 +193,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
             </p>
             <div className="flex flex-col gap-2">
               {todayTopTwo.map(({ template }) => (
-                <TemplateButton key={template.id} template={template} onClick={() => { adapter.logFromTemplate(template); onToast(`Logged: ${template.name}`) }} />
+                <TemplateButton key={template.id} template={template} onClick={async () => { try { await adapter.logFromTemplate(template); onToast(`Logged: ${template.name}`) } catch { /* reload handles auth failure */ } }} />
               ))}
 
               {todayTopTwo.length > 0 && alltimeItems.length > 0 && (
@@ -201,7 +201,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
               )}
 
               {alltimeItems.map((t) => (
-                <TemplateButton key={t.id} template={t} onClick={() => { adapter.logFromTemplate(t); onToast(`Logged: ${t.name}`) }} />
+                <TemplateButton key={t.id} template={t} onClick={async () => { try { await adapter.logFromTemplate(t); onToast(`Logged: ${t.name}`) } catch { /* reload handles auth failure */ } }} />
               ))}
 
               {pendingDrinks.length > 0 && (

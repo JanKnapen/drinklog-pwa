@@ -57,6 +57,7 @@ export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
       return retry.json()
     }
     clearAccessToken()
+    window.location.reload()
     throw new AuthError()
   }
 
