@@ -2,13 +2,18 @@ import { useState, useEffect } from 'react';
 import { getToken, clearToken } from './api/client';
 import LoginView from './views/LoginView';
 import UsersView from './views/UsersView';
+import ImportReviewView from './views/ImportReviewView';
+
+const isReviewTab = window.location.pathname === '/import-review';
 
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
 
   useEffect(() => {
-    setAuthed(!!getToken());
+    if (!isReviewTab) setAuthed(!!getToken());
   }, []);
+
+  if (isReviewTab) return <ImportReviewView />;
 
   if (authed === null) return null;
 
