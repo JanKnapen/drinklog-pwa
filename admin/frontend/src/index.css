@@ -6,3 +6,9 @@ html, body, #root {
   height: 100%;
   overflow: hidden;
 }
+
+@layer utilities {
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  }
+}

@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { getToken, clearToken } from './api/client';
 import LoginView from './views/LoginView';
 import UsersView from './views/UsersView';
+import ImportReviewView from './views/ImportReviewView';
+
+const isReviewTab = window.location.pathname === '/import-review';
 
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -15,6 +18,8 @@ export default function App() {
   if (!authed) {
     return <LoginView onLogin={() => setAuthed(true)} />;
   }
+
+  if (isReviewTab) return <ImportReviewView />;
 
   return (
     <div className="h-full flex flex-col bg-gray-50 overflow-hidden">

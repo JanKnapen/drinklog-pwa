@@ -63,6 +63,7 @@ class DrinkEntry(Base):
     )
 
     fraction: Mapped[float | None] = mapped_column(Float, nullable=True)
+    imported: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     @property
     def standard_units(self) -> float:
@@ -110,6 +111,7 @@ class CaffeineEntry(Base):
     )
 
     fraction: Mapped[float | None] = mapped_column(Float, nullable=True)
+    imported: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     @property
     def caffeine_units(self) -> float:

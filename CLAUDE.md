@@ -189,6 +189,7 @@ The admin uses a **single master password** pattern, not per-user credentials. T
 - **Login:** `POST /api/admin/login` with `{ password }`. Validated against `ADMIN_MASTER_PASSWORD` env var (plain string comparison — no hashing needed because this is a server secret, not a user password). Returns a short-lived JWT.
 - **Admin token** — 60-minute lifetime (default). Signed with `ADMIN_JWT_SECRET`. Payload carries `{ type: "admin" }` — `get_admin_user` dependency in `routers/deps.py` validates this claim.
 - **Token storage** — stored in `sessionStorage` (survives page refresh, cleared on tab close). Unlike the main app, there is no `httpOnly` cookie or refresh mechanism. Logging out clears `sessionStorage`.
+- **Import session handoff** — when navigating to `/import-review`, an `ImportSession` object (including the JWT) is written to `localStorage` under key `drinklog-import-session` so the review page can read it after the same-tab navigation. The review page reads and immediately removes it on mount. This is an intentional trade-off: the token briefly lives in `localStorage` (which persists across sessions) instead of `sessionStorage`. Acceptable given the Tailscale-only network boundary; the 60-minute token lifetime limits exposure if the tab crashes before the remove runs.
 - **Rate limiting** — login is rate-limited to 5 requests/minute per IP via `slowapi` (same library as the main backend).
 - **`ADMIN_MASTER_PASSWORD` is required at startup** — `main.py` raises `RuntimeError` and refuses to start if the env var is unset or empty.
 - **`ADMIN_JWT_SECRET`** — if unset, a random secret is generated per process restart (same pattern as main app JWT secrets). Always set this in production or the admin will require re-login after every restart.
@@ -211,9 +212,13 @@ The admin uses a **single master password** pattern, not per-user credentials. T
 - `src/App.tsx` — checks `sessionStorage` for a token on mount; renders `LoginView` or `UsersView` accordingly.
 - `src/views/UsersView.tsx` — inline modal components (`ModalOverlay`, `LabeledInput`, `ModalActions`) rather than a shared Modal component.
 
-**Viewport:** `index.html` uses `maximum-scale=1` in the viewport meta tag (same as the main app) to prevent Chrome on iOS from rendering the page zoomed in. Modern iOS ignores `maximum-scale=1` when focusing an input, so input auto-zoom still works.
+**Viewport:** `index.html` uses `maximum-scale=1, viewport-fit=cover` in the viewport meta tag. `viewport-fit=cover` is required here (unlike the main app, which intentionally omits it) because the admin runs in the browser, not as a standalone PWA — without it `env(safe-area-inset-bottom)` always returns 0 and the footer overlaps the iPhone home indicator. The main app's "do not re-add viewport-fit=cover" note applies only to the main app's `frontend/index.html`.
+
+**`pb-safe` utility** — defined in `admin/frontend/src/index.css` as `max(1rem, env(safe-area-inset-bottom, 0px))` inside `@layer utilities`. The `@layer utilities` wrapper is required; a plain CSS class outside a Tailwind layer is overridden by Tailwind's generated utilities at build time. Apply `pb-safe` to any fixed footer that would otherwise overlap the iPhone home indicator.
 
 **`html, body, #root { height: 100%; overflow: hidden }`** in `index.css` — same pattern as the main app, required so the admin fills the full viewport on mobile without document-level scroll.
+
+**SPA routing** — the admin uses no router library. Sub-pages are detected via `window.location.pathname` (e.g. `pathname === '/import-review'`). The auth check in `App.tsx` must always run before any pathname-based render branch — rendering a sub-page before `authed` is resolved would bypass the login gate.
 
 ## Barcode Scanner
 
