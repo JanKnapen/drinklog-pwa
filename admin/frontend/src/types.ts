@@ -16,10 +16,14 @@ export interface TemplateOption {
 }
 
 export interface RawImportEntry {
-  name: string;
+  name?: string;
   date?: string;
   timestamp?: string;
   count?: number;
+  // Anonymous entry fields (used when name is absent)
+  ml?: number;
+  abv?: number;
+  mg?: number;
 }
 
 export interface ImportSession {
@@ -34,6 +38,7 @@ export interface DrinkMapping {
   drink_name: string;
   mode: 'existing' | 'new';
   template_id?: string;
+  template_name?: string;
   ml?: number;
   abv?: number;
   mg?: number;

@@ -191,7 +191,7 @@ The admin uses a **single master password** pattern, not per-user credentials. T
 - **Login:** `POST /api/admin/login` with `{ password }`. Validated against `ADMIN_MASTER_PASSWORD` env var (plain string comparison — no hashing needed because this is a server secret, not a user password). Returns a short-lived JWT.
 - **Admin token** — 60-minute lifetime (default). Signed with `ADMIN_JWT_SECRET`. Payload carries `{ type: "admin" }` — `get_admin_user` dependency in `routers/deps.py` validates this claim.
 - **Token storage** — stored in `sessionStorage` (survives page refresh, cleared on tab close). Unlike the main app, there is no `httpOnly` cookie or refresh mechanism. Logging out clears `sessionStorage`.
-- **Import session handoff** — when navigating to `/import-review`, an `ImportSession` object (including the JWT) is written to `localStorage` under key `drinklog-import-session` so the review page can read it after the same-tab navigation. The review page reads and immediately removes it on mount. This is an intentional trade-off: the token briefly lives in `localStorage` (which persists across sessions) instead of `sessionStorage`. Acceptable given the Tailscale-only network boundary; the 60-minute token lifetime limits exposure if the tab crashes before the remove runs.
+- **Import session handoff** — when navigating to `/import-review`, an `ImportSession` object (including the JWT) is written to `sessionStorage` under key `drinklog-import-session` so the review page can read it after the same-tab navigation. The review page reads and immediately removes it on mount. `sessionStorage` is correct here: it persists through same-tab navigations, is isolated to the tab, and is automatically cleared when the tab closes — no long-lived exposure.
 - **Rate limiting** — login is rate-limited to 5 requests/minute per IP via `slowapi` (same library as the main backend).
 - **`ADMIN_MASTER_PASSWORD` is required at startup** — `main.py` raises `RuntimeError` and refuses to start if the env var is unset or empty.
 - **`ADMIN_JWT_SECRET`** — if unset, a random secret is generated per process restart (same pattern as main app JWT secrets). Always set this in production or the admin will require re-login after every restart.
@@ -203,6 +203,14 @@ The admin uses a **single master password** pattern, not per-user credentials. T
 - `POST /api/admin/users` — creates a user (409 if username exists); passwords are hashed with `bcrypt`
 - `PATCH /api/admin/users/{id}/password` — replaces password hash
 - `DELETE /api/admin/users/{id}` — **explicitly** deletes all child rows (DrinkEntry, CaffeineEntry, DrinkTemplate, CaffeineTemplate) before deleting the user. There is no DB-level cascade; the explicit delete loop is intentional.
+- `GET /api/admin/users/{id}/templates?module=alcohol|caffeine` — returns the user's templates for the import mapping UI.
+- `POST /api/admin/users/{id}/import` — bulk import. Accepts named entries (linked to a template via mappings) and anonymous entries (no template, no name). Cap: 50,000 total DB rows per request.
+
+**Import entry types** — the import endpoint accepts two kinds of entries in the same payload. *Named* entries carry a `name` field and are matched to a `DrinkMapping` (existing template or new template). *Anonymous* entries carry only `ml`+`abv` or `mg` and are inserted directly with `template_id=None, custom_name=None` — this is the one place in the codebase where an entry intentionally has both fields null. They appear in the main app log with no name but with correct values.
+
+**`drink_name` vs `template_name` in `DrinkMapping`** — `drink_name` is the immutable key used to match raw entries to their mapping (stays equal to the original name from the file). `template_name` is the user-editable name used when finding or creating the template. They can differ if the admin renames the drink during review. Never swap them: using `template_name` as the lookup key would break entry matching.
+
+**Template ownership in import** — every template DB query in the import endpoint must include `user_id == user_id` in the filter, including the pre-fetch query and the `usage_count` batch-update. Omitting `user_id` allows a crafted `template_id` to reference another user's template, corrupting that template's `usage_count` and producing entries that join to an invisible template.
 
 `ALLOWED_ORIGINS` env var (comma-separated) controls CORS. Defaults to `http://localhost,http://localhost:5174`.
 

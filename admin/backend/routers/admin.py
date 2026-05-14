@@ -185,19 +185,31 @@ def get_user_templates(
 
 
 class ImportEntry(BaseModel):
-    name: str = Field(max_length=200)
+    name: str | None = Field(default=None, max_length=200)
     date: str | None = Field(default=None, max_length=50)
     timestamp: str | None = Field(default=None, max_length=50)
-    count: int = Field(default=1, ge=1, le=1000)
+    count: float = Field(default=1.0, gt=0, le=1000)
+
+    @field_validator("count")
+    @classmethod
+    def count_half_steps_only(cls, v: float) -> float:
+        if abs(round(v * 2) - v * 2) > 1e-9 or round(v * 2) < 1:
+            raise ValueError("count must be a positive whole number or x.5 (e.g. 1, 1.5, 2)")
+        return v
+    # Anonymous entry fields (used when name is absent)
+    ml: float | None = Field(default=None, gt=0, le=5000)
+    abv: float | None = Field(default=None, ge=0, le=100)
+    mg: float | None = Field(default=None, gt=0, le=2000)
 
 
 class DrinkMapping(BaseModel):
     drink_name: str = Field(max_length=200)
     mode: Literal["existing", "new"]
-    template_id: str | None = None
-    ml: float | None = None
-    abv: float | None = None
-    mg: float | None = None
+    template_id: str | None = Field(default=None, max_length=36)  # UUID length
+    template_name: str | None = Field(default=None, max_length=200)
+    ml: float | None = Field(default=None, gt=0, le=5000)
+    abv: float | None = Field(default=None, ge=0, le=100)
+    mg: float | None = Field(default=None, gt=0, le=2000)
 
 
 class ImportRequest(BaseModel):
@@ -225,19 +237,22 @@ def import_entries(
                 raise HTTPException(status_code=422, detail=f"Missing template_id for '{mapping.drink_name}'")
             name_to_template_id[mapping.drink_name] = mapping.template_id
         else:
+            effective_name = (mapping.template_name or mapping.drink_name).strip()
+            if not effective_name:
+                raise HTTPException(status_code=422, detail=f"Missing template name for '{mapping.drink_name}'")
             if body.module == "alcohol":
                 if mapping.ml is None or mapping.abv is None:
                     raise HTTPException(status_code=422, detail=f"Missing ml/abv for '{mapping.drink_name}'")
                 existing = db.query(DrinkTemplate).filter(
                     DrinkTemplate.user_id == user_id,
-                    DrinkTemplate.name == mapping.drink_name,
+                    DrinkTemplate.name == effective_name,
                 ).first()
                 if existing:
-                    template_id = existing.id
+                    raise HTTPException(status_code=409, detail=f"Template '{effective_name}' already exists")
                 else:
                     t = DrinkTemplate(
                         id=str(uuid.uuid4()),
-                        name=mapping.drink_name,
+                        name=effective_name,
                         default_ml=mapping.ml,
                         default_abv=mapping.abv,
                         usage_count=0,
@@ -251,14 +266,14 @@ def import_entries(
                     raise HTTPException(status_code=422, detail=f"Missing mg for '{mapping.drink_name}'")
                 existing = db.query(CaffeineTemplate).filter(
                     CaffeineTemplate.user_id == user_id,
-                    CaffeineTemplate.name == mapping.drink_name,
+                    CaffeineTemplate.name == effective_name,
                 ).first()
                 if existing:
-                    template_id = existing.id
+                    raise HTTPException(status_code=409, detail=f"Template '{effective_name}' already exists")
                 else:
                     t = CaffeineTemplate(
                         id=str(uuid.uuid4()),
-                        name=mapping.drink_name,
+                        name=effective_name,
                         default_mg=mapping.mg,
                         usage_count=0,
                         user_id=user_id,
@@ -271,7 +286,8 @@ def import_entries(
     # Pre-build lookup dicts to avoid O(N²) scans inside the entry loop
     name_to_mapping: dict[str, DrinkMapping] = {m.drink_name: m for m in body.mappings}
 
-    # Pre-fetch templates for "existing" mappings so the inner loop makes no DB calls
+    # Pre-fetch templates for "existing" mappings so the inner loop makes no DB calls.
+    # Filter by user_id to prevent cross-user template references (H1).
     template_id_to_defaults: dict[str, tuple] = {}
     existing_template_ids = {
         tid for m in body.mappings
@@ -280,11 +296,32 @@ def import_entries(
         if tid
     }
     if body.module == "alcohol":
-        for t in db.query(DrinkTemplate).filter(DrinkTemplate.id.in_(existing_template_ids)).all():
+        for t in db.query(DrinkTemplate).filter(
+            DrinkTemplate.id.in_(existing_template_ids),
+            DrinkTemplate.user_id == user_id,
+        ).all():
             template_id_to_defaults[t.id] = (t.default_ml, t.default_abv)
     else:
-        for t in db.query(CaffeineTemplate).filter(CaffeineTemplate.id.in_(existing_template_ids)).all():
+        for t in db.query(CaffeineTemplate).filter(
+            CaffeineTemplate.id.in_(existing_template_ids),
+            CaffeineTemplate.user_id == user_id,
+        ).all():
             template_id_to_defaults[t.id] = (t.default_mg,)
+
+    # Reject any "existing" template_id that wasn't found for this user (H1).
+    for m in body.mappings:
+        if m.mode == "existing":
+            tid = name_to_template_id.get(m.drink_name)
+            if tid and tid not in template_id_to_defaults:
+                raise HTTPException(status_code=404, detail=f"Template not found for '{m.drink_name}'")
+
+    # Guard against very large imports: cap total DB rows before writing (M4).
+    total_rows = sum(
+        int(e.count) + (1 if round(e.count * 2) % 2 == 1 else 0)
+        for e in body.entries
+    )
+    if total_rows > 50_000:
+        raise HTTPException(status_code=422, detail=f"Import would create {total_rows} rows; maximum is 50,000")
 
     # Track usage_count increments per template
     usage_increments: dict[str, int] = {}
@@ -304,51 +341,102 @@ def import_entries(
         else:
             raise HTTPException(status_code=422, detail="Each entry must have 'date' or 'timestamp'")
 
-        template_id = name_to_template_id.get(entry.name)
-        if not template_id:
-            raise HTTPException(status_code=422, detail=f"No mapping for drink name '{entry.name}'")
+        full = int(entry.count)
+        has_half = round(entry.count * 2) % 2 == 1  # True when count has a .5 part
+        fractions: list[float | None] = [None] * full + ([0.5] if has_half else [])
 
-        mapping = name_to_mapping[entry.name]
-        usage_increments[template_id] = usage_increments.get(template_id, 0) + entry.count
+        if entry.name:
+            # Named entry — resolve via mapping
+            template_id = name_to_template_id.get(entry.name)
+            if not template_id:
+                raise HTTPException(status_code=422, detail=f"No mapping for drink name '{entry.name}'")
 
-        for _ in range(entry.count):
+            mapping = name_to_mapping[entry.name]
+            usage_increments[template_id] = usage_increments.get(template_id, 0) + len(fractions)
+
+            for fraction in fractions:
+                if body.module == "alcohol":
+                    ml = mapping.ml if mapping.mode == "new" else None
+                    abv = mapping.abv if mapping.mode == "new" else None
+                    if ml is None or abv is None:
+                        ml, abv = template_id_to_defaults[template_id]
+                    e = DrinkEntry(
+                        id=str(uuid.uuid4()),
+                        template_id=template_id,
+                        ml=ml,
+                        abv=abv,
+                        fraction=fraction,
+                        timestamp=ts,
+                        is_marked=True,
+                        imported=True,
+                        user_id=user_id,
+                    )
+                else:
+                    mg = mapping.mg if mapping.mode == "new" else None
+                    if mg is None:
+                        (mg,) = template_id_to_defaults[template_id]
+                    e = CaffeineEntry(
+                        id=str(uuid.uuid4()),
+                        template_id=template_id,
+                        mg=mg,
+                        fraction=fraction,
+                        timestamp=ts,
+                        is_marked=True,
+                        imported=True,
+                        user_id=user_id,
+                    )
+                db.add(e)
+                inserted += 1
+        else:
+            # Anonymous entry — no template, values carried inline
             if body.module == "alcohol":
-                ml = mapping.ml if mapping.mode == "new" else None
-                abv = mapping.abv if mapping.mode == "new" else None
-                if ml is None or abv is None:
-                    ml, abv = template_id_to_defaults[template_id]
-                e = DrinkEntry(
-                    id=str(uuid.uuid4()),
-                    template_id=template_id,
-                    ml=ml,
-                    abv=abv,
-                    timestamp=ts,
-                    is_marked=True,
-                    imported=True,
-                    user_id=user_id,
-                )
+                if entry.ml is None or entry.abv is None:
+                    raise HTTPException(status_code=422, detail="Anonymous alcohol entry requires 'ml' and 'abv'")
+                for fraction in fractions:
+                    e = DrinkEntry(
+                        id=str(uuid.uuid4()),
+                        template_id=None,
+                        custom_name=None,
+                        ml=entry.ml,
+                        abv=entry.abv,
+                        fraction=fraction,
+                        timestamp=ts,
+                        is_marked=True,
+                        imported=True,
+                        user_id=user_id,
+                    )
+                    db.add(e)
+                    inserted += 1
             else:
-                mg = mapping.mg if mapping.mode == "new" else None
-                if mg is None:
-                    (mg,) = template_id_to_defaults[template_id]
-                e = CaffeineEntry(
-                    id=str(uuid.uuid4()),
-                    template_id=template_id,
-                    mg=mg,
-                    timestamp=ts,
-                    is_marked=True,
-                    imported=True,
-                    user_id=user_id,
-                )
-            db.add(e)
-            inserted += 1
+                if entry.mg is None:
+                    raise HTTPException(status_code=422, detail="Anonymous caffeine entry requires 'mg'")
+                for fraction in fractions:
+                    e = CaffeineEntry(
+                        id=str(uuid.uuid4()),
+                        template_id=None,
+                        custom_name=None,
+                        mg=entry.mg,
+                        fraction=fraction,
+                        timestamp=ts,
+                        is_marked=True,
+                        imported=True,
+                        user_id=user_id,
+                    )
+                    db.add(e)
+                    inserted += 1
 
-    # Batch-update usage_count
+    # Batch-update usage_count — filter by user_id to prevent cross-user writes (H1).
     for template_id, increment in usage_increments.items():
         if body.module == "alcohol":
-            t = db.query(DrinkTemplate).filter(DrinkTemplate.id == template_id).first()
+            t = db.query(DrinkTemplate).filter(
+                DrinkTemplate.id == template_id,
+                DrinkTemplate.user_id == user_id,
+            ).first()
         else:
-            t = db.query(CaffeineTemplate).filter(CaffeineTemplate.id == template_id).first()
+            t = db.query(CaffeineTemplate).filter(
+                CaffeineTemplate.id == template_id,
+                CaffeineTemplate.user_id == user_id,
+            ).first()
         if t:
             t.usage_count = (t.usage_count or 0) + increment
 
