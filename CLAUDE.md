@@ -122,6 +122,8 @@ The quick-log section shows exactly 5 buttons total, filled in this order:
 
 The Today and New drinks buttons consume slots from the 5-button total, pushing out lower-ranked Most used buttons.
 
+**Snapshot refresh invariant:** The quick-log buttons are derived from a `snapshot` state built by `refreshSnapshot()`, which reads `templatesRef` and `entriesRef`. The `isEntriesFetched` effect is the primary trigger — but it only fires when `isEntriesFetched` *changes*. `LogTab` fetches entries but not templates, so after a logout/login cycle on LogTab, entries are already cached (`isEntriesFetched = true`) when HomeTab mounts, but templates are not yet loaded. The effect fires once with empty templates, builds an empty snapshot, then never re-fires (because `isEntriesFetched` stays `true`). To handle this, `templates` is included in the `isEntriesFetched` effect's dep array so the snapshot rebuilds whenever templates arrive while entries are already fetched. Do not remove `templates` from that dep array.
+
 ## Authentication
 
 Two-token JWT pattern. All data endpoints require a valid access token.
