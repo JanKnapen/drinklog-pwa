@@ -58,7 +58,7 @@ function validateMappings(
     if (m.mode === 'existing') {
       if (!m.templateId) return false;
     } else {
-      if (!m.templateName.trim()) return false;
+      if (!m.templateName.trim() || m.templateNameError) return false;
       if (module === 'alcohol') {
         if (!m.ml || parseFloat(m.ml) <= 0) return false;
         if (m.abv === '' || parseFloat(m.abv) < 0 || parseFloat(m.abv) > 100) return false;
@@ -166,17 +166,28 @@ export default function ImportReviewView() {
     updateMapping(name, { [field]: value, [errorKey]: error });
   }
 
+  function templateNameError(forName: string, value: string): string {
+    const trimmed = value.trim();
+    if (!trimmed) return 'Required';
+    if (templates.some(t => t.name.toLowerCase() === trimmed.toLowerCase())) return 'Template already exists';
+    const duplicate = Object.entries(mappings).some(
+      ([n, m]) => n !== forName && m.mode === 'new' && m.templateName.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (duplicate) return 'Duplicate name in this import';
+    return '';
+  }
+
   function runValidation(name: string) {
     const m = mappings[name];
     if (!m || m.mode !== 'new' || !session) return;
-    const templateNameError = !m.templateName.trim() ? 'Required' : '';
+    const tnError = templateNameError(name, m.templateName);
     if (session.module === 'alcohol') {
       const mlError = !m.ml || parseFloat(m.ml) <= 0 ? 'Must be greater than 0' : '';
       const abvError = m.abv === '' || parseFloat(m.abv) < 0 || parseFloat(m.abv) > 100 ? 'Must be 0–100' : '';
-      updateMapping(name, { templateNameError, mlError, abvError });
+      updateMapping(name, { templateNameError: tnError, mlError, abvError });
     } else {
       const mgError = !m.mg || parseFloat(m.mg) <= 0 ? 'Must be greater than 0' : '';
-      updateMapping(name, { templateNameError, mgError });
+      updateMapping(name, { templateNameError: tnError, mgError });
     }
   }
 
@@ -496,8 +507,8 @@ export default function ImportReviewView() {
                       <input
                         type="text"
                         value={m.templateName}
-                        onChange={e => updateMapping(name, { templateName: e.target.value, templateNameError: '' })}
-                        onBlur={() => { if (!m.templateName.trim()) updateMapping(name, { templateNameError: 'Required' }); }}
+                        onChange={e => updateMapping(name, { templateName: e.target.value, templateNameError: templateNameError(name, e.target.value) })}
+                        onBlur={() => updateMapping(name, { templateNameError: templateNameError(name, m.templateName) })}
                         placeholder="Template name"
                         className={`w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${m.templateNameError ? 'border-red-400' : 'border-gray-300 dark:border-gray-600'}`}
                       />

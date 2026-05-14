@@ -248,7 +248,7 @@ def import_entries(
                     DrinkTemplate.name == effective_name,
                 ).first()
                 if existing:
-                    template_id = existing.id
+                    raise HTTPException(status_code=409, detail=f"Template '{effective_name}' already exists")
                 else:
                     t = DrinkTemplate(
                         id=str(uuid.uuid4()),
@@ -269,7 +269,7 @@ def import_entries(
                     CaffeineTemplate.name == effective_name,
                 ).first()
                 if existing:
-                    template_id = existing.id
+                    raise HTTPException(status_code=409, detail=f"Template '{effective_name}' already exists")
                 else:
                     t = CaffeineTemplate(
                         id=str(uuid.uuid4()),
