@@ -172,7 +172,7 @@ export default function UsersView() {
       rawEntries: entries,
     };
     localStorage.setItem(IMPORT_SESSION_KEY, JSON.stringify(session));
-    window.open('/import-review', '_blank');
+    window.location.href = '/import-review';
     closeModal();
   }
 
