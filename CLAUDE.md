@@ -206,11 +206,14 @@ The admin uses a **single master password** pattern, not per-user credentials. T
 
 ### Frontend
 
-`admin/frontend/` is a standalone Vite + React + TS + Tailwind project with no TanStack Query, no dark mode, and no PWA/service worker.
+`admin/frontend/` is a standalone Vite + React + TS + Tailwind project with no TanStack Query, no PWA/service worker. It has dark mode (`darkMode: 'class'`) managed by `ThemeContext` (`src/contexts/ThemeContext.tsx`), persisted to `localStorage` under key `drinklog-admin-settings` (separate from the main app's `drinklog-settings`).
 
 - `src/api/client.ts` — plain `fetch` wrapper; no `apiFetch` retry logic (no refresh token to retry with).
-- `src/App.tsx` — checks `sessionStorage` for a token on mount; renders `LoginView` or `UsersView` accordingly.
+- `src/App.tsx` — checks `sessionStorage` for a token on mount; renders `LoginView`, `UsersView`, or `ImportReviewView` based on auth state and `window.location.pathname`. Every render path must be wrapped in `ThemeProvider`.
+- `src/components/AdminHeader.tsx` — shared header used by all admin pages; renders the title and a gear icon that opens `SettingsDialog` (appearance + logout). Add new admin pages by rendering `<AdminHeader onLogout={...} />` — do not write inline headers.
 - `src/views/UsersView.tsx` — inline modal components (`ModalOverlay`, `LabeledInput`, `ModalActions`) rather than a shared Modal component.
+
+**CSP hash for inline dark-mode script** — `admin/nginx.conf` uses `script-src 'self' 'sha256-...'` to allow the inline theme-init script in `admin/frontend/index.html` without `unsafe-inline`. **If the inline script is ever changed, the SHA-256 hash in `admin/nginx.conf` must be recomputed**, or browsers will silently block it (no console error in strict CSP mode, just a flash-of-light-mode). Recompute with: `python3 -c "import hashlib,base64,re; s=open('admin/frontend/index.html').read(); m=re.search(r'<script>(.*?)</script>',s,re.DOTALL); print('sha256-'+base64.b64encode(hashlib.sha256(m.group(1).encode()).digest()).decode())"`
 
 **Viewport:** `index.html` uses `maximum-scale=1, viewport-fit=cover` in the viewport meta tag. `viewport-fit=cover` is required here (unlike the main app, which intentionally omits it) because the admin runs in the browser, not as a standalone PWA — without it `env(safe-area-inset-bottom)` always returns 0 and the footer overlaps the iPhone home indicator. The main app's "do not re-add viewport-fit=cover" note applies only to the main app's `frontend/index.html`.
 
