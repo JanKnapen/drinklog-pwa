@@ -6,7 +6,10 @@
 set -euo pipefail
 
 # ── Configuration — edit and re-run to change ──────────────────
-BACKUP_DIR="/home/user/backups/drinklog"
+# Default backup dir is the home of the user who invoked sudo (not /root)
+_INVOKING_USER="${SUDO_USER:-$USER}"
+_INVOKING_HOME=$(getent passwd "$_INVOKING_USER" | cut -d: -f6)
+BACKUP_DIR="$_INVOKING_HOME/backups/drinklog"
 DOCKER_VOLUME="drinklog-pwa_db_data"
 CRON_FILE="/etc/cron.d/drinklog-backup"
 KEEP_DAILY=5
@@ -112,4 +115,7 @@ printf "  %-16s %s\n" "Weekly backups:" "$WEEKLY_DIR  (keep $KEEP_WEEKLY)"
 printf "  %-16s %s\n" "Log file:"       "/var/log/drinklog-backup.log"
 echo ""
 read -rp "Run a test backup now? [y/N] " ans || true
-[[ "${ans:-}" =~ ^[Yy]$ ]] && "$BACKUP_SCRIPT" && echo "Test backup succeeded."
+if [[ "${ans:-}" =~ ^[Yy]$ ]]; then
+  "$BACKUP_SCRIPT" 2>&1 | tee -a /var/log/drinklog-backup.log
+  echo "Test backup succeeded. Log: /var/log/drinklog-backup.log"
+fi
