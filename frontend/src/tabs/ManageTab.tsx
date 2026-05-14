@@ -167,7 +167,10 @@ function EditAlcoholTemplate({ open, templateId, onClose }: {
   function handleDisconnectBarcode() {
     updateTemplate.mutate(
       { id: template!.id, barcode: null },
-      { onSuccess: () => { reset(); onClose() } },
+      {
+        onSuccess: () => { reset(); onClose() },
+        onError: (err) => setError(err instanceof ApiError ? err.detail : 'Something went wrong, please try again'),
+      },
     )
   }
 
@@ -263,7 +266,10 @@ export function EditCaffeineTemplate({ open, templateId, onClose }: {
   function handleDisconnectBarcode() {
     updateTemplate.mutate(
       { id: template!.id, barcode: null },
-      { onSuccess: () => { reset(); onClose() } },
+      {
+        onSuccess: () => { reset(); onClose() },
+        onError: (err) => setError(err instanceof ApiError ? err.detail : 'Something went wrong, please try again'),
+      },
     )
   }
 

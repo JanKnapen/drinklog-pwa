@@ -635,8 +635,8 @@ function NewScanModal({
   }
 
   async function handleSubmit() {
-    if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
     const timestamp = ts.toISOString()
+    if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
     try {
       if (selectedModule === 'alcohol') {
         const t = await createAlcoholTemplate.mutateAsync({
