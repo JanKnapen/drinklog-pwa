@@ -15,10 +15,10 @@ import type { TrackerTemplate, TrackerEntry } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
 import { useModuleAdapter } from '../hooks/useModuleAdapter'
 import { useCreateEntry } from '../api/entries'
-import { useCreateTemplate, useTemplates } from '../api/templates'
+import { useCreateTemplate, useUpdateTemplate, useTemplates } from '../api/templates'
 import { useCreateCaffeineEntry } from '../api/caffeine-entries'
 import { AuthError } from '../api/client'
-import { useCreateCaffeineTemplate, useCaffeineTemplates } from '../api/caffeine-templates'
+import { useCreateCaffeineTemplate, useUpdateCaffeineTemplate, useCaffeineTemplates } from '../api/caffeine-templates'
 import { lookupBarcode, type BarcodeResult } from '../api/barcode'
 
 interface QuickLogSnapshot {
@@ -546,8 +546,10 @@ function NewScanModal({
   // All mutation hooks called unconditionally (React rules)
   const createAlcoholEntry = useCreateEntry()
   const createAlcoholTemplate = useCreateTemplate()
+  const updateAlcoholTemplate = useUpdateTemplate()
   const createCaffeineEntry = useCreateCaffeineEntry()
   const createCaffeineTemplate = useCreateCaffeineTemplate()
+  const updateCaffeineTemplate = useUpdateCaffeineTemplate()
 
   const [selectedModule, setSelectedModule] = useState<'alcohol' | 'caffeine'>(settings.activeModule)
   const [isSwitching, setIsSwitching] = useState(false)
