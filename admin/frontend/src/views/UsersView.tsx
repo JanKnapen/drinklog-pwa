@@ -1,12 +1,49 @@
-import { useState, useEffect, useCallback } from 'react';
-import { fetchUsers, createUser, changePassword, deleteUser, ApiError } from '../api/client';
-import type { AdminUser } from '../types';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { fetchUsers, createUser, changePassword, deleteUser, getToken, ApiError } from '../api/client';
+import type { AdminUser, Module, RawImportEntry, ImportSession } from '../types';
 
 type Modal =
   | { kind: 'create' }
   | { kind: 'password'; user: AdminUser }
   | { kind: 'delete'; user: AdminUser }
+  | { kind: 'upload'; user: AdminUser }
   | null;
+
+const IMPORT_SESSION_KEY = 'drinklog-import-session';
+
+const FORMAT_EXAMPLE = `[
+  { "name": "Heineken", "date": "2024-01-15" },
+  { "name": "Heineken", "timestamp": "2024-01-15T20:30:00" },
+  { "name": "Espresso", "date": "2024-01-16", "count": 2 }
+]
+
+Fields:
+  name      — drink name (required)
+  date      — YYYY-MM-DD, sets time to 00:00 (required if no timestamp)
+  timestamp — ISO datetime string (optional, takes precedence over date)
+  count     — number of entries to create (optional, default 1)`;
+
+function validateImportJson(raw: unknown): RawImportEntry[] {
+  if (!Array.isArray(raw)) throw new Error('File must contain a JSON array.');
+  if (raw.length > 10_000) throw new Error(`Too many entries (${raw.length}). Maximum is 10,000.`);
+  return raw.map((item: unknown, i: number) => {
+    if (typeof item !== 'object' || item === null) throw new Error(`Item ${i + 1} is not an object.`);
+    const obj = item as Record<string, unknown>;
+    if (typeof obj.name !== 'string' || !obj.name.trim()) throw new Error(`Item ${i + 1} is missing a valid "name".`);
+    if (!obj.date && !obj.timestamp) throw new Error(`Item ${i + 1} must have "date" or "timestamp".`);
+    if (obj.date && typeof obj.date !== 'string') throw new Error(`Item ${i + 1}: "date" must be a string.`);
+    if (obj.timestamp && typeof obj.timestamp !== 'string') throw new Error(`Item ${i + 1}: "timestamp" must be a string.`);
+    if (obj.count !== undefined && (typeof obj.count !== 'number' || obj.count < 1 || !Number.isInteger(obj.count))) {
+      throw new Error(`Item ${i + 1}: "count" must be a positive integer.`);
+    }
+    return {
+      name: (obj.name as string).trim(),
+      date: obj.date as string | undefined,
+      timestamp: obj.timestamp as string | undefined,
+      count: obj.count as number | undefined,
+    };
+  });
+}
 
 export default function UsersView() {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -17,6 +54,14 @@ export default function UsersView() {
   const [submitting, setSubmitting] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
+
+  // Upload dialog state
+  const [uploadModule, setUploadModule] = useState<Module>('alcohol');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadFileName, setUploadFileName] = useState('');
+  const [uploadError, setUploadError] = useState('');
+  const [showFormatInfo, setShowFormatInfo] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -42,6 +87,14 @@ export default function UsersView() {
   function openDelete(user: AdminUser) {
     setFormError('');
     setModal({ kind: 'delete', user });
+  }
+  function openUpload(user: AdminUser) {
+    setUploadModule('alcohol');
+    setUploadFile(null);
+    setUploadFileName('');
+    setUploadError('');
+    setShowFormatInfo(false);
+    setModal({ kind: 'upload', user });
   }
   function closeModal() { setModal(null); setFormError(''); }
 
@@ -87,6 +140,43 @@ export default function UsersView() {
     }
   }
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    setUploadFile(file);
+    setUploadFileName(file?.name ?? '');
+    setUploadError('');
+  }
+
+  async function handleOpenReview() {
+    if (modal?.kind !== 'upload' || !uploadFile) return;
+    setUploadError('');
+    let entries: RawImportEntry[];
+    try {
+      const text = await uploadFile.text();
+      const parsed = JSON.parse(text);
+      entries = validateImportJson(parsed);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Invalid JSON file.');
+      return;
+    }
+    if (entries.length === 0) {
+      setUploadError('File contains no entries.');
+      return;
+    }
+    const token = getToken();
+    if (!token) return;
+    const session: ImportSession = {
+      token,
+      userId: modal.user.id,
+      username: modal.user.username,
+      module: uploadModule,
+      rawEntries: entries,
+    };
+    localStorage.setItem(IMPORT_SESSION_KEY, JSON.stringify(session));
+    window.location.href = '/import-review';
+    closeModal();
+  }
+
   if (loading) return <p className="text-gray-500 dark:text-gray-400">Loading…</p>;
   if (error) return <p className="text-red-600 dark:text-red-400">{error}</p>;
 
@@ -117,6 +207,7 @@ export default function UsersView() {
                 <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">{user.alcohol_entries}</td>
                 <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">{user.caffeine_entries}</td>
                 <td className="px-4 py-3 text-right space-x-3">
+                  <button onClick={() => openUpload(user)} className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300">Upload</button>
                   <button onClick={() => openPassword(user)} className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">Change password</button>
                   <button onClick={() => openDelete(user)} className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300">Delete</button>
                 </td>
@@ -136,6 +227,7 @@ export default function UsersView() {
             <p className="font-medium text-gray-900 dark:text-gray-100 mb-1">{user.username}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{user.alcohol_entries} alcohol · {user.caffeine_entries} caffeine</p>
             <div className="flex gap-3">
+              <button onClick={() => openUpload(user)} className="text-sm text-green-600 dark:text-green-400">Upload</button>
               <button onClick={() => openPassword(user)} className="text-sm text-blue-600 dark:text-blue-400">Change password</button>
               <button onClick={() => openDelete(user)} className="text-sm text-red-600 dark:text-red-400">Delete</button>
             </div>
@@ -186,6 +278,91 @@ export default function UsersView() {
               className="text-sm bg-red-600 text-white rounded-md px-4 py-2 hover:bg-red-700 disabled:opacity-50"
             >
               {submitting ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* Upload / Import Modal */}
+      {modal?.kind === 'upload' && (
+        <ModalOverlay onClose={closeModal}>
+          <h3 className="text-lg font-semibold mb-1 text-gray-900 dark:text-gray-100">Import data</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{modal.user.username}</p>
+
+          {/* Module toggle */}
+          <div className="mb-4">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Data type</p>
+            <div className="inline-flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setUploadModule('alcohol')}
+                className={`px-4 py-2 text-sm ${uploadModule === 'alcohol' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+              >
+                Alcohol
+              </button>
+              <button
+                type="button"
+                onClick={() => setUploadModule('caffeine')}
+                className={`px-4 py-2 text-sm border-l border-gray-300 dark:border-gray-600 ${uploadModule === 'caffeine' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+              >
+                Caffeine
+              </button>
+            </div>
+          </div>
+
+          {/* File picker */}
+          <div className="mb-4">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">JSON file</p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-sm border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600"
+              >
+                Choose file
+              </button>
+              <span className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-[180px]">
+                {uploadFileName || 'No file chosen'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowFormatInfo(v => !v)}
+                title="Show expected file format"
+                className="ml-auto text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
+          </div>
+
+          {/* Format info panel */}
+          {showFormatInfo && (
+            <div className="mb-4 rounded-md bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 p-3">
+              <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Expected file format</p>
+              <pre className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap font-mono">{FORMAT_EXAMPLE}</pre>
+            </div>
+          )}
+
+          {uploadError && <p className="text-sm text-red-600 dark:text-red-400 mb-3">{uploadError}</p>}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={closeModal} className="text-sm text-gray-600 dark:text-gray-400 px-4 py-2">Cancel</button>
+            <button
+              type="button"
+              onClick={handleOpenReview}
+              disabled={!uploadFile}
+              className="text-sm bg-blue-600 text-white rounded-md px-4 py-2 hover:bg-blue-700 disabled:opacity-50"
+            >
+              Open review
             </button>
           </div>
         </ModalOverlay>

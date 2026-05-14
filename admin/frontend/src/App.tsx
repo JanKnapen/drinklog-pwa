@@ -4,6 +4,9 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import AdminHeader from './components/AdminHeader';
 import LoginView from './views/LoginView';
 import UsersView from './views/UsersView';
+import ImportReviewView from './views/ImportReviewView';
+
+const isReviewTab = window.location.pathname === '/import-review';
 
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -21,6 +24,8 @@ export default function App() {
       </ThemeProvider>
     );
   }
+
+  if (isReviewTab) return <ThemeProvider><ImportReviewView /></ThemeProvider>;
 
   return (
     <ThemeProvider>
