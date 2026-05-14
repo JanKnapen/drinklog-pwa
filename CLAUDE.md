@@ -273,6 +273,10 @@ The response includes dev-testing telemetry fields (`latency_ms`, `strategy_used
 
 **The `Ⓑ` suffix** on prefilled names in `NewScanModal` is intentional — it identifies barcode-originated templates to the user. Users can edit the name before submitting.
 
+**Connect mode in `NewScanModal`:** The modal has a New/Connect toggle. Connect mode lets the user attach the scanned barcode to an existing barcode-free template instead of creating a new one. `useUpdateTemplate` and `useUpdateCaffeineTemplate` are called unconditionally in `NewScanModal` for this — they look unused in `handleSubmit` (which no longer has duplicate-reuse logic), but `handleConnect` still needs them. **Do not remove these hooks when merging changes from main** — this already caused a silent breakage once.
+
+**`handleConnect` operation order** — barcode update fires first, entries second. This is intentional: the update is idempotent (barcode already set = no-op), so if entry logging fails partway through, the user can retry `handleConnect` and get the entries without re-attaching the barcode. Reversing the order (entries first) would create duplicate entries on retry.
+
 **Cross-module local match:** When a scan returns `source: "local"` with `module !== activeModule`, `handleScan` calls `updateSettings({ activeModule })` and stores the template ID in `pendingScanTemplateId` state rather than opening `ScanMatchModal` immediately. A `useEffect` watching `[templates, pendingScanTemplateId]` opens the modal once the module adapter's `templates` array has updated on the next render. This deferred pattern is necessary because the module switch is reflected in the adapter synchronously on the next render cycle, not immediately.
 
 ## iOS Safari Scroll/Touch Quirks
