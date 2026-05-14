@@ -77,6 +77,7 @@ export default function ImportReviewView() {
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [mappings, setMappings] = useState<Record<string, MappingState>>({});
+  const [activeTab, setActiveTab] = useState<'named' | 'anonymous'>('named');
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<'cancel' | 'import' | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -306,10 +307,36 @@ export default function ImportReviewView() {
         </p>
       </div>
 
-      {/* Scrollable cards */}
+      {/* Tabs — only shown when both kinds of entries are present */}
+      {anonEntries.length > 0 && uniqueNames.length > 0 && (
+        <div className="shrink-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6">
+          <div className="max-w-2xl mx-auto flex gap-0">
+            <button
+              type="button"
+              onClick={() => setActiveTab('named')}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === 'named' ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+            >
+              Named
+              <span className="ml-1.5 text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded-full">{uniqueNames.length}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('anonymous')}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${activeTab === 'anonymous' ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+            >
+              Anonymous
+              <span className="ml-1.5 text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded-full">{anonEntries.length}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Scrollable content */}
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-4">
-          {anonEntries.length > 0 && (
+
+          {/* Anonymous panel */}
+          {(anonEntries.length > 0 && uniqueNames.length === 0) || activeTab === 'anonymous' ? (
             <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
@@ -356,8 +383,10 @@ export default function ImportReviewView() {
                 )}
               </div>
             </div>
-          )}
-          {uniqueNames.map(name => {
+          ) : null}
+
+          {/* Named panel */}
+          {(activeTab === 'named' || uniqueNames.length === 0 || anonEntries.length === 0) && uniqueNames.map(name => {
             const m = mappings[name];
             if (!m) return null;
             const isOpen = openDropdown === name;
