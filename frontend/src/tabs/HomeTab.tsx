@@ -656,9 +656,11 @@ function NewScanModal({
   async function handleConnect(templateId: string, templateName: string, ml: null, abv: null, mg: number): Promise<void>
   async function handleConnect(templateId: string, templateName: string, ml: number | null, abv: number | null, mg?: number): Promise<void> {
     const timestamp = ts.toISOString()
+    let barcodeAttached = false
     try {
       if (selectedModule === 'alcohol' && ml != null && abv != null) {
         await updateAlcoholTemplate.mutateAsync({ id: templateId, barcode })
+        barcodeAttached = true
         for (let i = 0; i < count; i++) {
           await createAlcoholEntry.mutateAsync({ template_id: templateId, ml, abv, timestamp })
         }
@@ -667,6 +669,7 @@ function NewScanModal({
         }
       } else if (selectedModule === 'caffeine' && mg != null) {
         await updateCaffeineTemplate.mutateAsync({ id: templateId, barcode })
+        barcodeAttached = true
         for (let i = 0; i < count; i++) {
           await createCaffeineEntry.mutateAsync({ template_id: templateId, mg, timestamp })
         }
@@ -675,7 +678,9 @@ function NewScanModal({
         }
       }
     } catch {
-      setError('Something went wrong, please try again')
+      setError(barcodeAttached
+        ? 'Barcode connected, but logging failed — tap "Connect & Log" to retry'
+        : 'Something went wrong, please try again')
       return
     }
     reset()
@@ -838,7 +843,7 @@ function NewScanModal({
                     if (alcoholT) handleConnect(alcoholT.id, alcoholT.name, alcoholT.default_ml, alcoholT.default_abv)
                     else if (caffeineT) handleConnect(caffeineT.id, caffeineT.name, null, null, caffeineT.default_mg)
                   }}
-                  disabled={isPending}
+                  disabled={isPending || (count === 0 && !half)}
                   className={primaryBtn}
                 >
                   Connect &amp; Log "{(alcoholT ?? caffeineT)!.name}"
