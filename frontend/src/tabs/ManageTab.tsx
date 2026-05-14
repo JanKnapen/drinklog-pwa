@@ -191,23 +191,20 @@ function EditAlcoholTemplate({ open, templateId, onClose }: {
         {mlAbvLocked && <p className="text-xs text-neutral-400">ml and ABV are locked because this template has confirmed entries.</p>}
         {isEdit && template.barcode && (
           confirmDisconnect ? (
-            <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5 flex flex-col gap-2">
-              <p className="text-sm text-amber-800 dark:text-amber-200">Remove barcode <span className="font-mono">{template.barcode}</span> from this template?</p>
-              <div className="flex gap-2">
-                <button onClick={() => setConfirmDisconnect(false)}
-                  className="flex-1 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                  Cancel
-                </button>
-                <button onClick={handleDisconnectBarcode}
-                  className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-sm font-semibold">
-                  Disconnect
-                </button>
-              </div>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmDisconnect(false)}
+                className="flex-1 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                Cancel
+              </button>
+              <button onClick={handleDisconnectBarcode}
+                className="flex-1 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold">
+                Disconnect barcode
+              </button>
             </div>
           ) : (
             <button onClick={() => setConfirmDisconnect(true)}
-              className="text-sm text-amber-600 dark:text-amber-400 underline text-left">
-              Disconnect barcode ({template.barcode})
+              className="py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm font-medium text-neutral-700 dark:text-neutral-300 active:scale-95 transition-transform">
+              Disconnect barcode
             </button>
           )
         )}
@@ -286,23 +283,20 @@ export function EditCaffeineTemplate({ open, templateId, onClose }: {
         {mgLocked && <p className="text-xs text-neutral-400">Caffeine amount is locked because this template has confirmed entries.</p>}
         {isEdit && template.barcode && (
           confirmDisconnect ? (
-            <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5 flex flex-col gap-2">
-              <p className="text-sm text-amber-800 dark:text-amber-200">Remove barcode <span className="font-mono">{template.barcode}</span> from this template?</p>
-              <div className="flex gap-2">
-                <button onClick={() => setConfirmDisconnect(false)}
-                  className="flex-1 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                  Cancel
-                </button>
-                <button onClick={handleDisconnectBarcode}
-                  className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-sm font-semibold">
-                  Disconnect
-                </button>
-              </div>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmDisconnect(false)}
+                className="flex-1 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                Cancel
+              </button>
+              <button onClick={handleDisconnectBarcode}
+                className="flex-1 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold">
+                Disconnect barcode
+              </button>
             </div>
           ) : (
             <button onClick={() => setConfirmDisconnect(true)}
-              className="text-sm text-amber-600 dark:text-amber-400 underline text-left">
-              Disconnect barcode ({template.barcode})
+              className="py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm font-medium text-neutral-700 dark:text-neutral-300 active:scale-95 transition-transform">
+              Disconnect barcode
             </button>
           )
         )}
