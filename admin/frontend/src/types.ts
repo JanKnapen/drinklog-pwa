@@ -38,6 +38,7 @@ export interface DrinkMapping {
   drink_name: string;
   mode: 'existing' | 'new';
   template_id?: string;
+  template_name?: string;
   ml?: number;
   abv?: number;
   mg?: number;

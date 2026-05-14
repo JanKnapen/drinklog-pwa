@@ -19,6 +19,8 @@ const IMPORT_SESSION_KEY = 'drinklog-import-session';
 interface MappingState {
   mode: 'existing' | 'new';
   templateId: string;
+  templateName: string;
+  templateNameError: string;
   search: string;
   ml: string;
   abv: string;
@@ -33,6 +35,8 @@ function initMapping(name: string, templates: TemplateOption[]): MappingState {
   return {
     mode: match ? 'existing' : 'new',
     templateId: match?.id ?? '',
+    templateName: name,
+    templateNameError: '',
     search: '',
     ml: '',
     abv: '',
@@ -54,6 +58,7 @@ function validateMappings(
     if (m.mode === 'existing') {
       if (!m.templateId) return false;
     } else {
+      if (!m.templateName.trim()) return false;
       if (module === 'alcohol') {
         if (!m.ml || parseFloat(m.ml) <= 0) return false;
         if (m.abv === '' || parseFloat(m.abv) < 0 || parseFloat(m.abv) > 100) return false;
@@ -164,13 +169,14 @@ export default function ImportReviewView() {
   function runValidation(name: string) {
     const m = mappings[name];
     if (!m || m.mode !== 'new' || !session) return;
+    const templateNameError = !m.templateName.trim() ? 'Required' : '';
     if (session.module === 'alcohol') {
       const mlError = !m.ml || parseFloat(m.ml) <= 0 ? 'Must be greater than 0' : '';
       const abvError = m.abv === '' || parseFloat(m.abv) < 0 || parseFloat(m.abv) > 100 ? 'Must be 0–100' : '';
-      updateMapping(name, { mlError, abvError });
+      updateMapping(name, { templateNameError, mlError, abvError });
     } else {
       const mgError = !m.mg || parseFloat(m.mg) <= 0 ? 'Must be greater than 0' : '';
-      updateMapping(name, { mgError });
+      updateMapping(name, { templateNameError, mgError });
     }
   }
 
@@ -190,9 +196,9 @@ export default function ImportReviewView() {
         return { drink_name: name, mode: 'existing', template_id: m.templateId };
       }
       if (session.module === 'alcohol') {
-        return { drink_name: name, mode: 'new', ml: parseFloat(m.ml), abv: parseFloat(m.abv) };
+        return { drink_name: name, mode: 'new', template_name: m.templateName.trim(), ml: parseFloat(m.ml), abv: parseFloat(m.abv) };
       }
-      return { drink_name: name, mode: 'new', mg: parseFloat(m.mg) };
+      return { drink_name: name, mode: 'new', template_name: m.templateName.trim(), mg: parseFloat(m.mg) };
     });
 
     setConfirmation(null);
@@ -485,6 +491,18 @@ export default function ImportReviewView() {
                   </div>
                 ) : (
                   <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Template name</label>
+                      <input
+                        type="text"
+                        value={m.templateName}
+                        onChange={e => updateMapping(name, { templateName: e.target.value, templateNameError: '' })}
+                        onBlur={() => { if (!m.templateName.trim()) updateMapping(name, { templateNameError: 'Required' }); }}
+                        placeholder="Template name"
+                        className={`w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${m.templateNameError ? 'border-red-400' : 'border-gray-300 dark:border-gray-600'}`}
+                      />
+                      {m.templateNameError && <p className="text-xs text-red-500 mt-1">{m.templateNameError}</p>}
+                    </div>
                     {session.module === 'alcohol' ? (
                       <div className="flex gap-3">
                         <div className="flex-1">

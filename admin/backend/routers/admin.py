@@ -206,6 +206,7 @@ class DrinkMapping(BaseModel):
     drink_name: str = Field(max_length=200)
     mode: Literal["existing", "new"]
     template_id: str | None = None
+    template_name: str | None = Field(default=None, max_length=200)
     ml: float | None = None
     abv: float | None = None
     mg: float | None = None
@@ -236,19 +237,22 @@ def import_entries(
                 raise HTTPException(status_code=422, detail=f"Missing template_id for '{mapping.drink_name}'")
             name_to_template_id[mapping.drink_name] = mapping.template_id
         else:
+            effective_name = (mapping.template_name or mapping.drink_name).strip()
+            if not effective_name:
+                raise HTTPException(status_code=422, detail=f"Missing template name for '{mapping.drink_name}'")
             if body.module == "alcohol":
                 if mapping.ml is None or mapping.abv is None:
                     raise HTTPException(status_code=422, detail=f"Missing ml/abv for '{mapping.drink_name}'")
                 existing = db.query(DrinkTemplate).filter(
                     DrinkTemplate.user_id == user_id,
-                    DrinkTemplate.name == mapping.drink_name,
+                    DrinkTemplate.name == effective_name,
                 ).first()
                 if existing:
                     template_id = existing.id
                 else:
                     t = DrinkTemplate(
                         id=str(uuid.uuid4()),
-                        name=mapping.drink_name,
+                        name=effective_name,
                         default_ml=mapping.ml,
                         default_abv=mapping.abv,
                         usage_count=0,
@@ -262,14 +266,14 @@ def import_entries(
                     raise HTTPException(status_code=422, detail=f"Missing mg for '{mapping.drink_name}'")
                 existing = db.query(CaffeineTemplate).filter(
                     CaffeineTemplate.user_id == user_id,
-                    CaffeineTemplate.name == mapping.drink_name,
+                    CaffeineTemplate.name == effective_name,
                 ).first()
                 if existing:
                     template_id = existing.id
                 else:
                     t = CaffeineTemplate(
                         id=str(uuid.uuid4()),
-                        name=mapping.drink_name,
+                        name=effective_name,
                         default_mg=mapping.mg,
                         usage_count=0,
                         user_id=user_id,
