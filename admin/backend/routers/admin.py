@@ -178,10 +178,10 @@ def get_user_templates(
         raise HTTPException(status_code=404, detail="User not found")
     if module == "alcohol":
         templates = db.query(DrinkTemplate).filter(DrinkTemplate.user_id == user_id).all()
-        return [{"id": t.id, "name": t.name} for t in templates]
+        return [{"id": t.id, "name": t.name, "default_ml": t.default_ml, "default_abv": t.default_abv} for t in templates]
     else:
         templates = db.query(CaffeineTemplate).filter(CaffeineTemplate.user_id == user_id).all()
-        return [{"id": t.id, "name": t.name} for t in templates]
+        return [{"id": t.id, "name": t.name, "default_mg": t.default_mg} for t in templates]
 
 
 class ImportEntry(BaseModel):

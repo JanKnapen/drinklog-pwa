@@ -10,6 +10,9 @@ export type Module = 'alcohol' | 'caffeine';
 export interface TemplateOption {
   id: string;
   name: string;
+  default_ml?: number;
+  default_abv?: number;
+  default_mg?: number;
 }
 
 export interface RawImportEntry {

@@ -3,6 +3,16 @@ import { setToken, clearToken } from '../api/client';
 import { fetchUserTemplates, postImport } from '../api/client';
 import type { ImportSession, TemplateOption, DrinkMapping, Module } from '../types';
 
+function fmtNum(n: number | undefined): string {
+  if (n === undefined) return '?';
+  return n % 1 === 0 ? String(n) : parseFloat(n.toFixed(2)).toString();
+}
+
+function templateInfo(t: TemplateOption, module: Module): string {
+  if (module === 'alcohol') return `${fmtNum(t.default_ml)}ml · ${fmtNum(t.default_abv)}%`;
+  return `${fmtNum(t.default_mg)}mg`;
+}
+
 const IMPORT_SESSION_KEY = 'drinklog-import-session';
 
 interface MappingState {
@@ -238,7 +248,7 @@ export default function ImportReviewView() {
       </header>
 
       {/* Info strip — stays visible while scrolling */}
-      <div className="bg-white border-b border-gray-100 px-4 sm:px-6 py-2 shrink-0">
+      <div className="bg-gray-50 border-b border-gray-200 px-4 sm:px-6 py-2 shrink-0">
         <p className="text-sm text-gray-500">
           Importing for <strong className="text-gray-700">{session.username}</strong>
           {' · '}{session.module}
@@ -284,52 +294,70 @@ export default function ImportReviewView() {
                 </div>
 
                 {m.mode === 'existing' ? (
-                  <div>
+                  <div className="relative">
+                    {/* Backdrop — click outside closes dropdown, keeps selection */}
+                    {m.dropdownOpen && (
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => updateMapping(name, { dropdownOpen: false, search: '' })}
+                      />
+                    )}
                     {templates.length === 0 ? (
                       <p className="text-sm text-gray-400 italic">No existing templates — switch to "New".</p>
-                    ) : m.dropdownOpen ? (
-                      <div>
-                        <input
-                          type="text"
-                          placeholder="Search templates…"
-                          value={m.search}
-                          onChange={e => updateMapping(name, { search: e.target.value })}
-                          autoFocus
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                        <div className="max-h-40 overflow-y-auto rounded border border-gray-200 divide-y divide-gray-100">
-                          {filtered.length === 0 ? (
-                            <p className="text-sm text-gray-400 px-3 py-2">No matches</p>
-                          ) : filtered.map(t => (
-                            <button
-                              key={t.id}
-                              type="button"
-                              onClick={() => updateMapping(name, { templateId: t.id, dropdownOpen: false, search: '' })}
-                              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${m.templateId === t.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}
-                            >
-                              {t.name}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
                     ) : (
-                      <div>
+                      <div className="relative z-20">
+                        {/* Collapsed trigger */}
                         <button
                           type="button"
-                          onClick={() => updateMapping(name, { dropdownOpen: true })}
+                          onClick={() => updateMapping(name, { dropdownOpen: !m.dropdownOpen })}
                           className="w-full text-left border border-gray-300 rounded-md px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50"
                         >
-                          <span className={selectedTemplate ? 'text-gray-900' : 'text-gray-400'}>
-                            {selectedTemplate ? selectedTemplate.name : 'None selected'}
-                          </span>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                          {selectedTemplate ? (
+                            <span className="flex items-baseline gap-2 min-w-0">
+                              <span className="text-gray-900 truncate">{selectedTemplate.name}</span>
+                              <span className="text-xs text-gray-400 shrink-0">{templateInfo(selectedTemplate, session.module)}</span>
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">None selected</span>
+                          )}
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400 shrink-0 ml-2" viewBox="0 0 20 20" fill="currentColor">
                             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                           </svg>
                         </button>
-                        {!m.templateId && (
-                          <p className="text-xs text-red-500 mt-1">Select a template.</p>
+                        {/* Overlay dropdown */}
+                        {m.dropdownOpen && (
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg">
+                            <div className="p-2 border-b border-gray-100">
+                              <input
+                                type="text"
+                                placeholder="Search templates…"
+                                value={m.search}
+                                onChange={e => updateMapping(name, { search: e.target.value })}
+                                autoFocus
+                                className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                            <div className="max-h-48 overflow-y-auto divide-y divide-gray-100">
+                              {filtered.length === 0 ? (
+                                <p className="text-sm text-gray-400 px-3 py-2">No matches</p>
+                              ) : filtered.map(t => (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => updateMapping(name, { templateId: t.id, dropdownOpen: false, search: '' })}
+                                  className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50 ${m.templateId === t.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}
+                                >
+                                  <span className="truncate">{t.name}</span>
+                                  <span className="text-xs text-gray-400 shrink-0 ml-3">{templateInfo(t, session.module)}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </div>
+                    )}
+                    {!m.templateId && !m.dropdownOpen && (
+                      <p className="text-xs text-red-500 mt-1">Select a template.</p>
                     )}
                   </div>
                 ) : (
