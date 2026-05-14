@@ -19,7 +19,6 @@ interface MappingState {
   mode: 'existing' | 'new';
   templateId: string;
   search: string;
-  dropdownOpen: boolean;
   ml: string;
   abv: string;
   mg: string;
@@ -34,7 +33,6 @@ function initMapping(name: string, templates: TemplateOption[]): MappingState {
     mode: match ? 'existing' : 'new',
     templateId: match?.id ?? '',
     search: '',
-    dropdownOpen: false,
     ml: '',
     abv: '',
     mg: '',
@@ -78,6 +76,7 @@ export default function ImportReviewView() {
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [mappings, setMappings] = useState<Record<string, MappingState>>({});
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [inserted, setInserted] = useState<number | null>(null);
@@ -241,13 +240,21 @@ export default function ImportReviewView() {
 
   return (
     <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
-      {/* Header — same as main admin */}
+      {/* Single backdrop — closes whichever dropdown is open */}
+      {openDropdown !== null && (
+        <div
+          className="fixed inset-0 z-10"
+          onClick={() => setOpenDropdown(null)}
+        />
+      )}
+
+      {/* Header */}
       <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between shrink-0">
         <h1 className="text-xl font-semibold text-gray-900">DrinkLog Admin</h1>
         <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-gray-700">Log out</button>
       </header>
 
-      {/* Info strip — stays visible while scrolling */}
+      {/* Info strip */}
       <div className="bg-gray-50 border-b border-gray-200 px-4 sm:px-6 py-2 shrink-0">
         <p className="text-sm text-gray-500">
           Importing for <strong className="text-gray-700">{session.username}</strong>
@@ -263,13 +270,15 @@ export default function ImportReviewView() {
           {uniqueNames.map(name => {
             const m = mappings[name];
             if (!m) return null;
+            const isOpen = openDropdown === name;
             const count = entryCountForName(name, session.rawEntries);
             const selectedTemplate = templates.find(t => t.id === m.templateId);
             const filtered = templates.filter(t =>
               m.search === '' || t.name.toLowerCase().includes(m.search.toLowerCase()),
             );
             return (
-              <div key={name} className="bg-white rounded-lg border border-gray-200 p-4">
+              // Card gets z-20 when its dropdown is open so it stacks above sibling cards
+              <div key={name} className={`bg-white rounded-lg border border-gray-200 p-4 ${isOpen ? 'relative z-20' : ''}`}>
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <p className="font-medium text-gray-900">{name}</p>
@@ -278,14 +287,14 @@ export default function ImportReviewView() {
                   <div className="inline-flex rounded border border-gray-300 overflow-hidden text-xs ml-4 shrink-0">
                     <button
                       type="button"
-                      onClick={() => updateMapping(name, { mode: 'existing', dropdownOpen: false })}
+                      onClick={() => { updateMapping(name, { mode: 'existing' }); setOpenDropdown(null); }}
                       className={`px-3 py-1.5 ${m.mode === 'existing' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
                     >
                       Existing
                     </button>
                     <button
                       type="button"
-                      onClick={() => updateMapping(name, { mode: 'new', dropdownOpen: false })}
+                      onClick={() => { updateMapping(name, { mode: 'new' }); setOpenDropdown(null); }}
                       className={`px-3 py-1.5 border-l border-gray-300 ${m.mode === 'new' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
                     >
                       New
@@ -295,21 +304,14 @@ export default function ImportReviewView() {
 
                 {m.mode === 'existing' ? (
                   <div className="relative">
-                    {/* Backdrop — click outside closes dropdown, keeps selection */}
-                    {m.dropdownOpen && (
-                      <div
-                        className="fixed inset-0 z-10"
-                        onClick={() => updateMapping(name, { dropdownOpen: false, search: '' })}
-                      />
-                    )}
                     {templates.length === 0 ? (
                       <p className="text-sm text-gray-400 italic">No existing templates — switch to "New".</p>
                     ) : (
-                      <div className="relative z-20">
+                      <>
                         {/* Collapsed trigger */}
                         <button
                           type="button"
-                          onClick={() => updateMapping(name, { dropdownOpen: !m.dropdownOpen })}
+                          onClick={() => setOpenDropdown(isOpen ? null : name)}
                           className="w-full text-left border border-gray-300 rounded-md px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50"
                         >
                           {selectedTemplate ? (
@@ -325,8 +327,8 @@ export default function ImportReviewView() {
                           </svg>
                         </button>
                         {/* Overlay dropdown */}
-                        {m.dropdownOpen && (
-                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg">
+                        {isOpen && (
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10">
                             <div className="p-2 border-b border-gray-100">
                               <input
                                 type="text"
@@ -344,7 +346,7 @@ export default function ImportReviewView() {
                                 <button
                                   key={t.id}
                                   type="button"
-                                  onClick={() => updateMapping(name, { templateId: t.id, dropdownOpen: false, search: '' })}
+                                  onClick={() => { updateMapping(name, { templateId: t.id, search: '' }); setOpenDropdown(null); }}
                                   className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50 ${m.templateId === t.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}
                                 >
                                   <span className="truncate">{t.name}</span>
@@ -354,10 +356,10 @@ export default function ImportReviewView() {
                             </div>
                           </div>
                         )}
-                      </div>
-                    )}
-                    {!m.templateId && !m.dropdownOpen && (
-                      <p className="text-xs text-red-500 mt-1">Select a template.</p>
+                        {!m.templateId && !isOpen && (
+                          <p className="text-xs text-red-500 mt-1">Select a template.</p>
+                        )}
+                      </>
                     )}
                   </div>
                 ) : (
