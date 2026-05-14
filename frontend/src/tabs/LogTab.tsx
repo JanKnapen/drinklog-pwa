@@ -157,14 +157,22 @@ export default function LogTab() {
           <EmptyState message={filter === 'confirmed' ? 'No confirmed entries' : 'No unconfirmed entries'} />
         ) : (
           <div className="px-4 flex flex-col gap-2 pt-2 pb-4">
-            {groups.map(({ date, entries: dayEntries }) => {
+            {groups.map(({ date, entries: dayEntries }, idx) => {
               const isExpanded = expandedDates.has(date)
               const totalValue = dayEntries.reduce((s, e) => s + e.value, 0)
+              const year = date.slice(0, 4)
+              const prevYear = idx > 0 ? groups[idx - 1].date.slice(0, 4) : null
+              const showYearHeader = year !== prevYear
               const label = new Date(date + 'T12:00:00').toLocaleDateString(undefined, {
                 weekday: 'long', day: 'numeric', month: 'short',
               })
               return (
                 <div key={date}>
+                  {showYearHeader && (
+                    <div className="py-1 mt-1 mb-0.5">
+                      <span className="text-xs font-bold uppercase tracking-widest text-neutral-400 dark:text-neutral-500">{year}</span>
+                    </div>
+                  )}
                   <button onClick={() => toggleDate(date)} className="w-full flex justify-between items-center py-2">
                     <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{label}</span>
                     <div className="flex items-center gap-2">
