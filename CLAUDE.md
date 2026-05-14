@@ -189,6 +189,7 @@ The admin uses a **single master password** pattern, not per-user credentials. T
 - **Login:** `POST /api/admin/login` with `{ password }`. Validated against `ADMIN_MASTER_PASSWORD` env var (plain string comparison — no hashing needed because this is a server secret, not a user password). Returns a short-lived JWT.
 - **Admin token** — 60-minute lifetime (default). Signed with `ADMIN_JWT_SECRET`. Payload carries `{ type: "admin" }` — `get_admin_user` dependency in `routers/deps.py` validates this claim.
 - **Token storage** — stored in `sessionStorage` (survives page refresh, cleared on tab close). Unlike the main app, there is no `httpOnly` cookie or refresh mechanism. Logging out clears `sessionStorage`.
+- **Import session handoff** — when navigating to `/import-review`, an `ImportSession` object (including the JWT) is written to `localStorage` under key `drinklog-import-session` so the review page can read it after the same-tab navigation. The review page reads and immediately removes it on mount. This is an intentional trade-off: the token briefly lives in `localStorage` (which persists across sessions) instead of `sessionStorage`. Acceptable given the Tailscale-only network boundary; the 60-minute token lifetime limits exposure if the tab crashes before the remove runs.
 - **Rate limiting** — login is rate-limited to 5 requests/minute per IP via `slowapi` (same library as the main backend).
 - **`ADMIN_MASTER_PASSWORD` is required at startup** — `main.py` raises `RuntimeError` and refuses to start if the env var is unset or empty.
 - **`ADMIN_JWT_SECRET`** — if unset, a random secret is generated per process restart (same pattern as main app JWT secrets). Always set this in production or the admin will require re-login after every restart.
@@ -205,15 +206,22 @@ The admin uses a **single master password** pattern, not per-user credentials. T
 
 ### Frontend
 
-`admin/frontend/` is a standalone Vite + React + TS + Tailwind project with no TanStack Query, no dark mode, and no PWA/service worker.
+`admin/frontend/` is a standalone Vite + React + TS + Tailwind project with no TanStack Query, no PWA/service worker. It has dark mode (`darkMode: 'class'`) managed by `ThemeContext` (`src/contexts/ThemeContext.tsx`), persisted to `localStorage` under key `drinklog-admin-settings` (separate from the main app's `drinklog-settings`).
 
 - `src/api/client.ts` — plain `fetch` wrapper; no `apiFetch` retry logic (no refresh token to retry with).
-- `src/App.tsx` — checks `sessionStorage` for a token on mount; renders `LoginView` or `UsersView` accordingly.
+- `src/App.tsx` — checks `sessionStorage` for a token on mount; renders `LoginView`, `UsersView`, or `ImportReviewView` based on auth state and `window.location.pathname`. Every render path must be wrapped in `ThemeProvider`.
+- `src/components/AdminHeader.tsx` — shared header used by all admin pages; renders the title and a gear icon that opens `SettingsDialog` (appearance + logout). Add new admin pages by rendering `<AdminHeader onLogout={...} />` — do not write inline headers.
 - `src/views/UsersView.tsx` — inline modal components (`ModalOverlay`, `LabeledInput`, `ModalActions`) rather than a shared Modal component.
 
-**Viewport:** `index.html` uses `maximum-scale=1` in the viewport meta tag (same as the main app) to prevent Chrome on iOS from rendering the page zoomed in. Modern iOS ignores `maximum-scale=1` when focusing an input, so input auto-zoom still works.
+**CSP hash for inline dark-mode script** — `admin/nginx.conf` uses `script-src 'self' 'sha256-...'` to allow the inline theme-init script in `admin/frontend/index.html` without `unsafe-inline`. **If the inline script is ever changed, the SHA-256 hash in `admin/nginx.conf` must be recomputed**, or browsers will silently block it (no console error in strict CSP mode, just a flash-of-light-mode). Recompute with: `python3 -c "import hashlib,base64,re; s=open('admin/frontend/index.html').read(); m=re.search(r'<script>(.*?)</script>',s,re.DOTALL); print('sha256-'+base64.b64encode(hashlib.sha256(m.group(1).encode()).digest()).decode())"`
+
+**Viewport:** `index.html` uses `maximum-scale=1, viewport-fit=cover` in the viewport meta tag. `viewport-fit=cover` is required here (unlike the main app, which intentionally omits it) because the admin runs in the browser, not as a standalone PWA — without it `env(safe-area-inset-bottom)` always returns 0 and the footer overlaps the iPhone home indicator. The main app's "do not re-add viewport-fit=cover" note applies only to the main app's `frontend/index.html`.
+
+**`pb-safe` utility** — defined in `admin/frontend/src/index.css` as `max(1rem, env(safe-area-inset-bottom, 0px))` inside `@layer utilities`. The `@layer utilities` wrapper is required; a plain CSS class outside a Tailwind layer is overridden by Tailwind's generated utilities at build time. Apply `pb-safe` to any fixed footer that would otherwise overlap the iPhone home indicator.
 
 **`html, body, #root { height: 100%; overflow: hidden }`** in `index.css` — same pattern as the main app, required so the admin fills the full viewport on mobile without document-level scroll.
+
+**SPA routing** — the admin uses no router library. Sub-pages are detected via `window.location.pathname` (e.g. `pathname === '/import-review'`). The auth check in `App.tsx` must always run before any pathname-based render branch — rendering a sub-page before `authed` is resolved would bypass the login gate.
 
 ## Barcode Scanner
 
@@ -237,6 +245,8 @@ Application-level uniqueness checks (the `if db.query(...).filter(...user_id...)
 
 **Cross-table barcode:** `_check_barcode_cross_module()` helper in both `routers/templates.py` and `routers/caffeine_templates.py` queries the opposite module's table filtered by `user_id` and raises HTTP 409 before any write.
 
+**Nullifying optional fields in PATCH/PUT** — Use `'field_name' in data.model_fields_set` (not `data.field is not None`) to detect whether a Pydantic field was explicitly sent in the payload. `Optional[str] = None` makes both "absent" and "explicit null" produce `data.field == None`; `model_fields_set` distinguishes them. Required for any endpoint that supports clearing a nullable field (e.g. `{"barcode": null}` → set DB column to NULL; omit `barcode` entirely → leave DB column untouched). Skip uniqueness/cross-module checks when the incoming value is null.
+
 ### Barcode lookup endpoint
 
 `GET /api/barcode/{code}?module=alcohol|caffeine&strategy=1|2|3` searches **both** local DB tables first (barcodes are unique per user per module, so a match can only exist in one table for the requesting user). On a miss it calls an external API determined by `strategy`. The `module` param controls which nutrient fields to extract from external APIs. The response includes a `module` field (`"alcohol"` | `"caffeine"` | `null`) for local matches; `null` for external and not-found results.
@@ -257,11 +267,15 @@ The response includes dev-testing telemetry fields (`latency_ms`, `strategy_used
 
 ### Scan flow invariants
 
-**New scan (OFF result):** `NewAlcohol/CaffeineModal` receives a `barcode` prop. When `handleSubmit` runs, it always creates a **template** (never a `custom_name` entry) and stores the barcode on it. This ensures the next scan of the same product returns `source: "local"` and goes straight to `ScanMatchModal`. If this path used `custom_name` entries instead, barcodes would never be persisted and every scan would hit OFF.
+**`NewScanModal` handles all scan flows** — `HomeTab` renders `NewScanModal` (defined inline in `HomeTab.tsx`) whenever `scanCode` is set, regardless of module. `NewAlcohol/CaffeineModal` receive `barcode={scanCode}` where `scanCode` is always `null` when those components are rendered — their barcode-related code is effectively unreachable. Do not add scan-flow logic to `NewAlcohol/CaffeineModal`; put it in `NewScanModal`. `NewScanModal` supports a module toggle (re-queries the barcode for the other module on switch) and caches per-module results in a `useRef` map.
 
-**Not-found scan:** When the lookup returns `source: "not_found"`, `handleScan` opens `NewAlcohol/CaffeineModal` with `prefill=null` and `barcode` set (instead of toasting "Product not found"). The modal shows a prompt asking the user to fill in the details manually. On submit the same template-creation path runs, so the barcode is persisted for future scans.
+**New scan (external result) and not-found scan:** `handleSubmit` in `NewScanModal` always creates a **template** (never a `custom_name` entry) so the barcode is persisted for future scans. If the name duplicates an existing template, the submit is blocked with an error — it does **not** silently attach the barcode to the existing template. If `source: "not_found"`, the modal shows a prompt asking the user to fill in the details manually; on submit the same template-creation path runs.
 
-**The `Ⓑ` suffix** on prefilled names in `NewAlcohol/CaffeineModal` is intentional — it identifies barcode-originated templates to the user. Users can edit the name before submitting.
+**The `Ⓑ` suffix** on prefilled names in `NewScanModal` is intentional — it identifies barcode-originated templates to the user. Users can edit the name before submitting.
+
+**Connect mode in `NewScanModal`:** The modal has a New/Connect toggle. Connect mode lets the user attach the scanned barcode to an existing barcode-free template instead of creating a new one. `useUpdateTemplate` and `useUpdateCaffeineTemplate` are called unconditionally in `NewScanModal` for this — they look unused in `handleSubmit` (which no longer has duplicate-reuse logic), but `handleConnect` still needs them. **Do not remove these hooks when merging changes from main** — this already caused a silent breakage once.
+
+**`handleConnect` operation order** — barcode update fires first, entries second. This is intentional: the update is idempotent (barcode already set = no-op), so if entry logging fails partway through, the user can retry `handleConnect` and get the entries without re-attaching the barcode. Reversing the order (entries first) would create duplicate entries on retry.
 
 **Cross-module local match:** When a scan returns `source: "local"` with `module !== activeModule`, `handleScan` calls `updateSettings({ activeModule })` and stores the template ID in `pendingScanTemplateId` state rather than opening `ScanMatchModal` immediately. A `useEffect` watching `[templates, pendingScanTemplateId]` opens the modal once the module adapter's `templates` array has updated on the next render. This deferred pattern is necessary because the module switch is reflected in the adapter synchronously on the next render cycle, not immediately.
 

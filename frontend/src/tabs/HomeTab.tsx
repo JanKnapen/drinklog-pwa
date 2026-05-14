@@ -325,7 +325,6 @@ function NewAlcoholModal({ open, onClose, templates, pendingDrinks, prefill, bar
 }) {
   const createEntry = useCreateEntry()
   const createTemplate = useCreateTemplate()
-  const updateTemplate = useUpdateTemplate()
   const [name, setName] = useState('')
   const [ml, setMl] = useState('')
   const [abv, setAbv] = useState('')
@@ -360,34 +359,25 @@ function NewAlcoholModal({ open, onClose, templates, pendingDrinks, prefill, bar
 
   async function handleSubmit() {
     const timestamp = ts.toISOString()
+    if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
+    if (!barcode && duplicatePending) { setError(`"${name.trim()}" is already pending — confirm it first`); return }
     if (barcode) {
-      // Scan flow: create/reuse a template so the barcode is persisted for future lookups
+      // Scan flow: always create a new template so the barcode is persisted for future lookups
       try {
-        let templateId: string
-        if (isDuplicate && duplicateTemplate) {
-          templateId = duplicateTemplate.id
-        } else {
-          const t = await createTemplate.mutateAsync({
-            name: name.trim(), default_ml: parseFloat(ml), default_abv: parseFloat(abv), barcode,
-          })
-          templateId = t.id
-        }
+        const t = await createTemplate.mutateAsync({
+          name: name.trim(), default_ml: parseFloat(ml), default_abv: parseFloat(abv), barcode,
+        })
         for (let i = 0; i < count; i++) {
-          await createEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
+          await createEntry.mutateAsync({ template_id: t.id, ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
         }
         if (fraction != null) {
-          await createEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp, fraction })
-        }
-        if (isDuplicate && duplicateTemplate) {
-          await updateTemplate.mutateAsync({ id: templateId, barcode })
+          await createEntry.mutateAsync({ template_id: t.id, ml: parseFloat(ml), abv: parseFloat(abv), timestamp, fraction })
         }
       } catch {
         setError('Something went wrong, please try again')
         return
       }
     } else {
-      if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
-      if (duplicatePending) { setError(`"${name.trim()}" is already pending — confirm it first`); return }
       for (let i = 0; i < count; i++) {
         await createEntry.mutateAsync({ custom_name: name.trim(), ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
       }
@@ -442,7 +432,6 @@ export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, pref
 }) {
   const createEntry = useCreateCaffeineEntry()
   const createTemplate = useCreateCaffeineTemplate()
-  const updateTemplate = useUpdateCaffeineTemplate()
   const [name, setName] = useState('')
   const [mg, setMg] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -474,33 +463,25 @@ export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, pref
 
   async function handleSubmit() {
     const timestamp = ts.toISOString()
+    if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
+    if (!barcode && duplicatePending) { setError(`"${name.trim()}" is already pending — confirm it first`); return }
     if (barcode) {
+      // Scan flow: always create a new template so the barcode is persisted for future lookups
       try {
-        let templateId: string
-        if (isDuplicate && duplicateTemplate) {
-          templateId = duplicateTemplate.id
-        } else {
-          const t = await createTemplate.mutateAsync({
-            name: name.trim(), default_mg: parseFloat(mg), barcode,
-          })
-          templateId = t.id
-        }
+        const t = await createTemplate.mutateAsync({
+          name: name.trim(), default_mg: parseFloat(mg), barcode,
+        })
         for (let i = 0; i < count; i++) {
-          await createEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp })
+          await createEntry.mutateAsync({ template_id: t.id, mg: parseFloat(mg), timestamp })
         }
         if (fraction != null) {
-          await createEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp, fraction })
-        }
-        if (isDuplicate && duplicateTemplate) {
-          await updateTemplate.mutateAsync({ id: templateId, barcode })
+          await createEntry.mutateAsync({ template_id: t.id, mg: parseFloat(mg), timestamp, fraction })
         }
       } catch {
         setError('Something went wrong, please try again')
         return
       }
     } else {
-      if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
-      if (duplicatePending) { setError(`"${name.trim()}" is already pending — confirm it first`); return }
       for (let i = 0; i < count; i++) {
         await createEntry.mutateAsync({ custom_name: name.trim(), mg: parseFloat(mg), timestamp })
       }
@@ -575,6 +556,10 @@ function NewScanModal({
   const [currentPrefill, setCurrentPrefill] = useState<BarcodeResult | null>(initialResult)
   const resultCache = useRef<Map<'alcohol' | 'caffeine', BarcodeResult | null>>(new Map())
 
+  const [mode, setMode] = useState<'new' | 'connect'>('new')
+  const [connectSearch, setConnectSearch] = useState('')
+  const [pendingConnectId, setPendingConnectId] = useState<string | null>(null)
+
   const [name, setName] = useState('')
   const [ml, setMl] = useState('')
   const [abv, setAbv] = useState('')
@@ -607,6 +592,7 @@ function NewScanModal({
     resultCache.current.set(initModule, initialResult)
     applyResult(initialResult, initModule)
     setTs(new Date()); setError(null); setCount(1); setHalf(false)
+    setMode('new'); setConnectSearch(''); setPendingConnectId(null)
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps -- intentional: only reset on open/close, not on every settings change
 
   async function handleModuleSwitch(newModule: 'alcohol' | 'caffeine') {
@@ -614,6 +600,7 @@ function NewScanModal({
     updateSettings({ activeModule: newModule })
     setSelectedModule(newModule)
     setError(null)
+    setPendingConnectId(null)
 
     if (resultCache.current.has(newModule)) {
       applyResult(resultCache.current.get(newModule) ?? null, newModule)
@@ -648,53 +635,81 @@ function NewScanModal({
   const dashedCls = ' border-dashed border-2 border-neutral-400 dark:border-neutral-500'
   const fraction = half ? 0.5 : undefined
   const isPending = createAlcoholTemplate.isPending || createAlcoholEntry.isPending ||
-    createCaffeineTemplate.isPending || createCaffeineEntry.isPending
+    createCaffeineTemplate.isPending || createCaffeineEntry.isPending ||
+    updateAlcoholTemplate.isPending || updateCaffeineTemplate.isPending
+
+  const connectableAlcohol = alcoholTemplatesRaw
+    .filter((t) => !t.barcode)
+    .filter((t) => t.name.toLowerCase().includes(connectSearch.toLowerCase()))
+
+  const connectableCaffeine = caffeineTemplatesRaw
+    .filter((t) => !t.barcode)
+    .filter((t) => t.name.toLowerCase().includes(connectSearch.toLowerCase()))
 
   function reset() {
     setName(''); setMl(''); setAbv(''); setMg('')
     setError(null); setTs(new Date()); setCount(1); setHalf(false)
+    setConnectSearch(''); setPendingConnectId(null)
+  }
+
+  async function handleConnect(templateId: string, templateName: string, ml: number, abv: number): Promise<void>
+  async function handleConnect(templateId: string, templateName: string, ml: null, abv: null, mg: number): Promise<void>
+  async function handleConnect(templateId: string, templateName: string, ml: number | null, abv: number | null, mg?: number): Promise<void> {
+    const timestamp = ts.toISOString()
+    let barcodeAttached = false
+    try {
+      if (selectedModule === 'alcohol' && ml != null && abv != null) {
+        await updateAlcoholTemplate.mutateAsync({ id: templateId, barcode })
+        barcodeAttached = true
+        for (let i = 0; i < count; i++) {
+          await createAlcoholEntry.mutateAsync({ template_id: templateId, ml, abv, timestamp })
+        }
+        if (half) {
+          await createAlcoholEntry.mutateAsync({ template_id: templateId, ml, abv, timestamp, fraction: 0.5 })
+        }
+      } else if (selectedModule === 'caffeine' && mg != null) {
+        await updateCaffeineTemplate.mutateAsync({ id: templateId, barcode })
+        barcodeAttached = true
+        for (let i = 0; i < count; i++) {
+          await createCaffeineEntry.mutateAsync({ template_id: templateId, mg, timestamp })
+        }
+        if (half) {
+          await createCaffeineEntry.mutateAsync({ template_id: templateId, mg, timestamp, fraction: 0.5 })
+        }
+      }
+    } catch {
+      setError(barcodeAttached
+        ? 'Barcode connected, but logging failed — tap "Connect & Log" to retry'
+        : 'Something went wrong, please try again')
+      return
+    }
+    reset()
+    onLogged(templateName)
   }
 
   async function handleSubmit() {
     const timestamp = ts.toISOString()
+    if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
     try {
       if (selectedModule === 'alcohol') {
-        let templateId: string
-        if (isDuplicate && duplicateAlcohol) {
-          templateId = duplicateAlcohol.id
-        } else {
-          const t = await createAlcoholTemplate.mutateAsync({
-            name: name.trim(), default_ml: parseFloat(ml), default_abv: parseFloat(abv), barcode,
-          })
-          templateId = t.id
-        }
+        const t = await createAlcoholTemplate.mutateAsync({
+          name: name.trim(), default_ml: parseFloat(ml), default_abv: parseFloat(abv), barcode,
+        })
         for (let i = 0; i < count; i++) {
-          await createAlcoholEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
+          await createAlcoholEntry.mutateAsync({ template_id: t.id, ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
         }
         if (fraction != null) {
-          await createAlcoholEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp, fraction })
-        }
-        if (isDuplicate && duplicateAlcohol) {
-          await updateAlcoholTemplate.mutateAsync({ id: templateId, barcode })
+          await createAlcoholEntry.mutateAsync({ template_id: t.id, ml: parseFloat(ml), abv: parseFloat(abv), timestamp, fraction })
         }
       } else {
-        let templateId: string
-        if (isDuplicate && duplicateCaffeine) {
-          templateId = duplicateCaffeine.id
-        } else {
-          const t = await createCaffeineTemplate.mutateAsync({
-            name: name.trim(), default_mg: parseFloat(mg), barcode,
-          })
-          templateId = t.id
-        }
+        const t = await createCaffeineTemplate.mutateAsync({
+          name: name.trim(), default_mg: parseFloat(mg), barcode,
+        })
         for (let i = 0; i < count; i++) {
-          await createCaffeineEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp })
+          await createCaffeineEntry.mutateAsync({ template_id: t.id, mg: parseFloat(mg), timestamp })
         }
         if (fraction != null) {
-          await createCaffeineEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp, fraction })
-        }
-        if (isDuplicate && duplicateCaffeine) {
-          await updateCaffeineTemplate.mutateAsync({ id: templateId, barcode })
+          await createCaffeineEntry.mutateAsync({ template_id: t.id, mg: parseFloat(mg), timestamp, fraction })
         }
       }
     } catch {
@@ -706,67 +721,197 @@ function NewScanModal({
     onLogged(logged)
   }
 
+  const connectableTemplates = selectedModule === 'alcohol' ? connectableAlcohol : connectableCaffeine
+  const hasNoBarcodelessTemplates = selectedModule === 'alcohol'
+    ? alcoholTemplatesRaw.filter((t) => !t.barcode).length === 0
+    : caffeineTemplatesRaw.filter((t) => !t.barcode).length === 0
+
   return (
     <Modal open={open} onClose={() => { reset(); onClose() }} title="New Drink">
       <div className="flex flex-col gap-3">
-        <Field label="When (month · day · hour)">
-          <TimestampPicker value={ts} onChange={setTs} />
-        </Field>
+        <div className="flex rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-700">
+          {(['new', 'connect'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => { setMode(m); setError(null); setPendingConnectId(null) }}
+              className={`flex-1 py-2 text-sm font-medium transition-colors touch-manipulation ${
+                mode === m
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300'
+              }`}
+            >
+              {m === 'new' ? 'New' : 'Connect'}
+            </button>
+          ))}
+        </div>
         {error && <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">{error}</p>}
-        {!currentPrefill && !isSwitching ? (
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2">
-            Not found in any source — fill in the details to save this barcode for future scans.
-          </p>
-        ) : null}
-        <div className="flex flex-col gap-3">
-          <Field label="Drink name">
+        {mode === 'connect' ? (
+          <>
+            <Field label="When (month · day · hour)">
+              <TimestampPicker value={ts} onChange={setTs} />
+            </Field>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-neutral-500 dark:text-neutral-400">Quantity</span>
+              <Stepper value={count} onChange={setCount} half={half} onHalfChange={setHalf} />
+            </div>
+            <div className="flex rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-700">
+              {(['alcohol', 'caffeine'] as const).map((mod) => (
+                <button
+                  key={mod}
+                  onClick={() => handleModuleSwitch(mod)}
+                  disabled={isSwitching}
+                  className={`flex-1 py-2 text-sm font-medium transition-colors touch-manipulation ${
+                    selectedModule === mod
+                      ? `bg-blue-500 text-white${isSwitching ? ' animate-pulse' : ''}`
+                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300'
+                  }`}
+                >
+                  {mod === 'alcohol' ? 'Alcohol' : 'Caffeine'}
+                </button>
+              ))}
+            </div>
             <input
               className={inputCls}
-              placeholder={selectedModule === 'caffeine' ? 'e.g. Coffee, Energy Drink…' : 'e.g. Lager, House Wine…'}
-              value={name}
-              onChange={(e) => { setName(e.target.value); setError(null) }}
+              placeholder="Search drinks…"
+              value={connectSearch}
+              onChange={(e) => setConnectSearch(e.target.value)}
             />
-          </Field>
-          <div className="flex rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-700">
-            {(['alcohol', 'caffeine'] as const).map((mod) => (
-              <button
-                key={mod}
-                onClick={() => handleModuleSwitch(mod)}
-                disabled={isSwitching}
-                className={`flex-1 py-2 text-sm font-medium transition-colors touch-manipulation ${
-                  selectedModule === mod
-                    ? `bg-blue-500 text-white${isSwitching ? ' animate-pulse' : ''}`
-                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300'
-                }`}
-              >
-                {mod === 'alcohol' ? 'Alcohol' : 'Caffeine'}
-              </button>
-            ))}
-          </div>
-          {selectedModule === 'alcohol' ? (
-            <>
-              <Field label="Amount (ml)">
-                <input className={inputCls + (mlMissing ? dashedCls : '')} inputMode="decimal" placeholder="330" value={ml} onChange={(e) => setMl(e.target.value)} />
-              </Field>
-              <Field label="ABV (%)">
-                <input className={inputCls + (abvMissing ? dashedCls : '')} inputMode="decimal" placeholder="5.0" value={abv} onChange={(e) => setAbv(e.target.value)} />
-              </Field>
-              <UnitPreview ml={ml} abv={abv} />
-            </>
-          ) : (
-            <Field label="Caffeine (mg)">
-              <input className={inputCls + (mgMissing ? dashedCls : '')} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
+            {hasNoBarcodelessTemplates ? (
+              <p className="text-sm text-neutral-400 py-4 text-center">All drinks already have a barcode</p>
+            ) : connectableTemplates.length === 0 ? (
+              <p className="text-sm text-neutral-400 py-4 text-center">No drinks found</p>
+            ) : null}
+            <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+              {selectedModule === 'alcohol'
+                ? connectableAlcohol.map((t) => {
+                    const selected = pendingConnectId === t.id
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => setPendingConnectId(selected ? null : t.id)}
+                        disabled={isPending}
+                        className={`flex justify-between items-center px-3 py-2.5 rounded-xl active:scale-[0.98] transition-transform text-left ${
+                          selected
+                            ? 'bg-blue-50 dark:bg-blue-900/30 ring-2 ring-blue-500'
+                            : 'bg-neutral-50 dark:bg-neutral-800'
+                        }`}
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{t.name}</p>
+                          <p className="text-xs text-neutral-500 tabular-nums">{t.default_ml}ml · {t.default_abv}% ABV</p>
+                        </div>
+                        {selected
+                          ? <span className="text-blue-500 text-lg">✓</span>
+                          : <span className="text-blue-500 text-lg">+</span>
+                        }
+                      </button>
+                    )
+                  })
+                : connectableCaffeine.map((t) => {
+                    const selected = pendingConnectId === t.id
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => setPendingConnectId(selected ? null : t.id)}
+                        disabled={isPending}
+                        className={`flex justify-between items-center px-3 py-2.5 rounded-xl active:scale-[0.98] transition-transform text-left ${
+                          selected
+                            ? 'bg-blue-50 dark:bg-blue-900/30 ring-2 ring-blue-500'
+                            : 'bg-neutral-50 dark:bg-neutral-800'
+                        }`}
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{t.name}</p>
+                          <p className="text-xs text-neutral-500 tabular-nums">{t.default_mg}mg caffeine</p>
+                        </div>
+                        {selected
+                          ? <span className="text-blue-500 text-lg">✓</span>
+                          : <span className="text-blue-500 text-lg">+</span>
+                        }
+                      </button>
+                    )
+                  })
+              }
+            </div>
+            {(() => {
+              const alcoholT = connectableAlcohol.find((t) => t.id === pendingConnectId)
+              const caffeineT = connectableCaffeine.find((t) => t.id === pendingConnectId)
+              if (!alcoholT && !caffeineT) return null
+              return (
+                <button
+                  onClick={() => {
+                    if (alcoholT) handleConnect(alcoholT.id, alcoholT.name, alcoholT.default_ml, alcoholT.default_abv)
+                    else if (caffeineT) handleConnect(caffeineT.id, caffeineT.name, null, null, caffeineT.default_mg)
+                  }}
+                  disabled={isPending || (count === 0 && !half)}
+                  className={primaryBtn}
+                >
+                  Connect &amp; Log "{(alcoholT ?? caffeineT)!.name}"
+                </button>
+              )
+            })()}
+          </>
+        ) : (
+          <>
+            <Field label="When (month · day · hour)">
+              <TimestampPicker value={ts} onChange={setTs} />
             </Field>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <Stepper value={count} onChange={setCount} half={half} onHalfChange={setHalf} />
-          <button
-            onClick={handleSubmit}
-            disabled={!isValid || (count === 0 && !half) || isPending || isSwitching}
-            className={primaryBtn + ' flex-1'}
-          >Log</button>
-        </div>
+            {!currentPrefill && !isSwitching ? (
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-800 rounded-lg px-3 py-2">
+                Not found in any source — fill in the details to save this barcode for future scans.
+              </p>
+            ) : null}
+            <div className="flex flex-col gap-3">
+              <Field label="Drink name">
+                <input
+                  className={inputCls}
+                  placeholder={selectedModule === 'caffeine' ? 'e.g. Coffee, Energy Drink…' : 'e.g. Lager, House Wine…'}
+                  value={name}
+                  onChange={(e) => { setName(e.target.value); setError(null) }}
+                />
+              </Field>
+              <div className="flex rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-700">
+                {(['alcohol', 'caffeine'] as const).map((mod) => (
+                  <button
+                    key={mod}
+                    onClick={() => handleModuleSwitch(mod)}
+                    disabled={isSwitching}
+                    className={`flex-1 py-2 text-sm font-medium transition-colors touch-manipulation ${
+                      selectedModule === mod
+                        ? `bg-blue-500 text-white${isSwitching ? ' animate-pulse' : ''}`
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300'
+                    }`}
+                  >
+                    {mod === 'alcohol' ? 'Alcohol' : 'Caffeine'}
+                  </button>
+                ))}
+              </div>
+              {selectedModule === 'alcohol' ? (
+                <>
+                  <Field label="Amount (ml)">
+                    <input className={inputCls + (mlMissing ? dashedCls : '')} inputMode="decimal" placeholder="330" value={ml} onChange={(e) => setMl(e.target.value)} />
+                  </Field>
+                  <Field label="ABV (%)">
+                    <input className={inputCls + (abvMissing ? dashedCls : '')} inputMode="decimal" placeholder="5.0" value={abv} onChange={(e) => setAbv(e.target.value)} />
+                  </Field>
+                  <UnitPreview ml={ml} abv={abv} />
+                </>
+              ) : (
+                <Field label="Caffeine (mg)">
+                  <input className={inputCls + (mgMissing ? dashedCls : '')} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
+                </Field>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Stepper value={count} onChange={setCount} half={half} onHalfChange={setHalf} />
+              <button
+                onClick={handleSubmit}
+                disabled={!isValid || (count === 0 && !half) || isPending || isSwitching}
+                className={primaryBtn + ' flex-1'}
+              >Log</button>
+            </div>
+          </>
+        )}
       </div>
     </Modal>
   )

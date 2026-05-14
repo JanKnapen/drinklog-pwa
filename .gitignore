@@ -23,6 +23,7 @@ admin/frontend/dist/
 
 # Worktrees
 .worktrees/
+.claude/
 
 # Generated planning docs
 docs/superpowers/
