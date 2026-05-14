@@ -188,7 +188,14 @@ class ImportEntry(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     date: str | None = Field(default=None, max_length=50)
     timestamp: str | None = Field(default=None, max_length=50)
-    count: int = Field(default=1, ge=1, le=1000)
+    count: float = Field(default=1.0, gt=0, le=1000)
+
+    @field_validator("count")
+    @classmethod
+    def count_half_steps_only(cls, v: float) -> float:
+        if abs(round(v * 2) - v * 2) > 1e-9 or round(v * 2) < 1:
+            raise ValueError("count must be a positive whole number or x.5 (e.g. 1, 1.5, 2)")
+        return v
     # Anonymous entry fields (used when name is absent)
     ml: float | None = Field(default=None, gt=0, le=5000)
     abv: float | None = Field(default=None, ge=0, le=100)
@@ -308,6 +315,10 @@ def import_entries(
         else:
             raise HTTPException(status_code=422, detail="Each entry must have 'date' or 'timestamp'")
 
+        full = int(entry.count)
+        has_half = round(entry.count * 2) % 2 == 1  # True when count has a .5 part
+        fractions: list[float | None] = [None] * full + ([0.5] if has_half else [])
+
         if entry.name:
             # Named entry — resolve via mapping
             template_id = name_to_template_id.get(entry.name)
@@ -315,9 +326,9 @@ def import_entries(
                 raise HTTPException(status_code=422, detail=f"No mapping for drink name '{entry.name}'")
 
             mapping = name_to_mapping[entry.name]
-            usage_increments[template_id] = usage_increments.get(template_id, 0) + entry.count
+            usage_increments[template_id] = usage_increments.get(template_id, 0) + len(fractions)
 
-            for _ in range(entry.count):
+            for fraction in fractions:
                 if body.module == "alcohol":
                     ml = mapping.ml if mapping.mode == "new" else None
                     abv = mapping.abv if mapping.mode == "new" else None
@@ -328,6 +339,7 @@ def import_entries(
                         template_id=template_id,
                         ml=ml,
                         abv=abv,
+                        fraction=fraction,
                         timestamp=ts,
                         is_marked=True,
                         imported=True,
@@ -341,6 +353,7 @@ def import_entries(
                         id=str(uuid.uuid4()),
                         template_id=template_id,
                         mg=mg,
+                        fraction=fraction,
                         timestamp=ts,
                         is_marked=True,
                         imported=True,
@@ -353,13 +366,14 @@ def import_entries(
             if body.module == "alcohol":
                 if entry.ml is None or entry.abv is None:
                     raise HTTPException(status_code=422, detail="Anonymous alcohol entry requires 'ml' and 'abv'")
-                for _ in range(entry.count):
+                for fraction in fractions:
                     e = DrinkEntry(
                         id=str(uuid.uuid4()),
                         template_id=None,
                         custom_name=None,
                         ml=entry.ml,
                         abv=entry.abv,
+                        fraction=fraction,
                         timestamp=ts,
                         is_marked=True,
                         imported=True,
@@ -370,12 +384,13 @@ def import_entries(
             else:
                 if entry.mg is None:
                     raise HTTPException(status_code=422, detail="Anonymous caffeine entry requires 'mg'")
-                for _ in range(entry.count):
+                for fraction in fractions:
                     e = CaffeineEntry(
                         id=str(uuid.uuid4()),
                         template_id=None,
                         custom_name=None,
                         mg=entry.mg,
+                        fraction=fraction,
                         timestamp=ts,
                         is_marked=True,
                         imported=True,

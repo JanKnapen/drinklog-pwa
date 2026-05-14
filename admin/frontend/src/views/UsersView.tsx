@@ -32,7 +32,7 @@ Fields:
   abv       — alcohol % (anonymous, 0–100)
   date      — YYYY-MM-DD, sets time to 00:00
   timestamp — ISO datetime (takes precedence over date)
-  count     — entries to create (named only, default 1)`;
+  count     — entries to create (named only, default 1, halves allowed e.g. 1.5)`;
   } else {
     return `Named entries (linked to a template):
 [
@@ -51,7 +51,7 @@ Fields:
   mg        — caffeine in mg (anonymous, > 0)
   date      — YYYY-MM-DD, sets time to 00:00
   timestamp — ISO datetime (takes precedence over date)
-  count     — entries to create (named only, default 1)`;
+  count     — entries to create (named only, default 1, halves allowed e.g. 1.5)`;
   }
 }
 
@@ -66,8 +66,14 @@ function validateImportJson(raw: unknown, module: Module): RawImportEntry[] {
     if (obj.date && typeof obj.date !== 'string') throw new Error(`Item ${i + 1}: "date" must be a string.`);
     if (obj.timestamp && typeof obj.timestamp !== 'string') throw new Error(`Item ${i + 1}: "timestamp" must be a string.`);
     if (hasName) {
-      if (obj.count !== undefined && (typeof obj.count !== 'number' || obj.count < 1 || !Number.isInteger(obj.count))) {
-        throw new Error(`Item ${i + 1}: "count" must be a positive integer.`);
+      if (obj.count !== undefined) {
+        if (typeof obj.count !== 'number' || obj.count < 0.5) {
+          throw new Error(`Item ${i + 1}: "count" must be a positive number (e.g. 1, 1.5, 2).`);
+        }
+        const doubled = obj.count * 2;
+        if (Math.abs(doubled - Math.round(doubled)) > 1e-9) {
+          throw new Error(`Item ${i + 1}: "count" must be a whole number or x.5 (e.g. 1, 1.5, 2, 2.5).`);
+        }
       }
       return {
         name: (obj.name as string).trim(),
