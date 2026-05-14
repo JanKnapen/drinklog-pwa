@@ -245,6 +245,8 @@ Application-level uniqueness checks (the `if db.query(...).filter(...user_id...)
 
 **Cross-table barcode:** `_check_barcode_cross_module()` helper in both `routers/templates.py` and `routers/caffeine_templates.py` queries the opposite module's table filtered by `user_id` and raises HTTP 409 before any write.
 
+**Nullifying optional fields in PATCH/PUT** — Use `'field_name' in data.model_fields_set` (not `data.field is not None`) to detect whether a Pydantic field was explicitly sent in the payload. `Optional[str] = None` makes both "absent" and "explicit null" produce `data.field == None`; `model_fields_set` distinguishes them. Required for any endpoint that supports clearing a nullable field (e.g. `{"barcode": null}` → set DB column to NULL; omit `barcode` entirely → leave DB column untouched). Skip uniqueness/cross-module checks when the incoming value is null.
+
 ### Barcode lookup endpoint
 
 `GET /api/barcode/{code}?module=alcohol|caffeine&strategy=1|2|3` searches **both** local DB tables first (barcodes are unique per user per module, so a match can only exist in one table for the requesting user). On a miss it calls an external API determined by `strategy`. The `module` param controls which nutrient fields to extract from external APIs. The response includes a `module` field (`"alcohol"` | `"caffeine"` | `null`) for local matches; `null` for external and not-found results.
@@ -265,11 +267,11 @@ The response includes dev-testing telemetry fields (`latency_ms`, `strategy_used
 
 ### Scan flow invariants
 
-**New scan (OFF result):** `NewAlcohol/CaffeineModal` receives a `barcode` prop. When `handleSubmit` runs, it always creates a **template** (never a `custom_name` entry) and stores the barcode on it. This ensures the next scan of the same product returns `source: "local"` and goes straight to `ScanMatchModal`. If this path used `custom_name` entries instead, barcodes would never be persisted and every scan would hit OFF.
+**`NewScanModal` handles all scan flows** — `HomeTab` renders `NewScanModal` (defined inline in `HomeTab.tsx`) whenever `scanCode` is set, regardless of module. `NewAlcohol/CaffeineModal` receive `barcode={scanCode}` where `scanCode` is always `null` when those components are rendered — their barcode-related code is effectively unreachable. Do not add scan-flow logic to `NewAlcohol/CaffeineModal`; put it in `NewScanModal`. `NewScanModal` supports a module toggle (re-queries the barcode for the other module on switch) and caches per-module results in a `useRef` map.
 
-**Not-found scan:** When the lookup returns `source: "not_found"`, `handleScan` opens `NewAlcohol/CaffeineModal` with `prefill=null` and `barcode` set (instead of toasting "Product not found"). The modal shows a prompt asking the user to fill in the details manually. On submit the same template-creation path runs, so the barcode is persisted for future scans.
+**New scan (external result) and not-found scan:** `handleSubmit` in `NewScanModal` always creates a **template** (never a `custom_name` entry) so the barcode is persisted for future scans. If the name duplicates an existing template, the submit is blocked with an error — it does **not** silently attach the barcode to the existing template. If `source: "not_found"`, the modal shows a prompt asking the user to fill in the details manually; on submit the same template-creation path runs.
 
-**The `Ⓑ` suffix** on prefilled names in `NewAlcohol/CaffeineModal` is intentional — it identifies barcode-originated templates to the user. Users can edit the name before submitting.
+**The `Ⓑ` suffix** on prefilled names in `NewScanModal` is intentional — it identifies barcode-originated templates to the user. Users can edit the name before submitting.
 
 **Cross-module local match:** When a scan returns `source: "local"` with `module !== activeModule`, `handleScan` calls `updateSettings({ activeModule })` and stores the template ID in `pendingScanTemplateId` state rather than opening `ScanMatchModal` immediately. A `useEffect` watching `[templates, pendingScanTemplateId]` opens the modal once the module adapter's `templates` array has updated on the next render. This deferred pattern is necessary because the module switch is reflected in the adapter synchronously on the next render cycle, not immediately.
 

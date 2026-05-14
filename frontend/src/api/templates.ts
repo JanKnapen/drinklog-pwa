@@ -34,7 +34,7 @@ export function useUpdateTemplate() {
       name?: string
       default_ml?: number
       default_abv?: number
-      barcode?: string
+      barcode?: string | null
     }) =>
       apiFetch<DrinkTemplate>(`/api/alcohol-templates/${id}`, {
         method: 'PUT',
