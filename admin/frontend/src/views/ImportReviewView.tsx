@@ -77,6 +77,7 @@ export default function ImportReviewView() {
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [mappings, setMappings] = useState<Record<string, MappingState>>({});
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<'cancel' | 'import' | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [inserted, setInserted] = useState<number | null>(null);
@@ -110,6 +111,14 @@ export default function ImportReviewView() {
       .catch(() => {})
       .finally(() => setLoadingTemplates(false));
   }, [session]);
+
+  // Close open dropdown when clicking outside — no backdrop div needed
+  useEffect(() => {
+    if (openDropdown === null) return;
+    function handleOutsideClick() { setOpenDropdown(null); }
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, [openDropdown]);
 
   const uniqueNames = useMemo(
     () => (session ? [...new Set(session.rawEntries.map(e => e.name))] : []),
@@ -153,7 +162,7 @@ export default function ImportReviewView() {
     [loadingTemplates, session, uniqueNames, mappings],
   );
 
-  async function handleConfirm() {
+  async function doImport() {
     if (!session) return;
     for (const name of uniqueNames) runValidation(name);
     if (!validateMappings(uniqueNames, mappings, session.module)) return;
@@ -169,6 +178,7 @@ export default function ImportReviewView() {
       return { drink_name: name, mode: 'new', mg: parseFloat(m.mg) };
     });
 
+    setConfirmation(null);
     setSubmitting(true);
     setSubmitError('');
     try {
@@ -240,12 +250,36 @@ export default function ImportReviewView() {
 
   return (
     <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
-      {/* Single backdrop — closes whichever dropdown is open */}
-      {openDropdown !== null && (
-        <div
-          className="fixed inset-0 z-10"
-          onClick={() => setOpenDropdown(null)}
-        />
+      {/* Confirmation modals */}
+      {confirmation === 'cancel' && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-semibold mb-2">Cancel import?</h3>
+            <p className="text-sm text-gray-600 mb-4">All mappings will be lost.</p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setConfirmation(null)} className="text-sm text-gray-600 px-4 py-2">Keep editing</button>
+              <button onClick={() => window.location.href = '/'} className="text-sm bg-red-600 text-white rounded-md px-4 py-2 hover:bg-red-700">
+                Cancel import
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {confirmation === 'import' && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-semibold mb-2">Confirm import?</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              This will add <strong>{totalEntries}</strong> {totalEntries === 1 ? 'entry' : 'entries'} for <strong>{session.username}</strong>.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setConfirmation(null)} className="text-sm text-gray-600 px-4 py-2">Back</button>
+              <button onClick={doImport} className="text-sm bg-blue-600 text-white rounded-md px-4 py-2 hover:bg-blue-700">
+                Import
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Header */}
@@ -277,7 +311,6 @@ export default function ImportReviewView() {
               m.search === '' || t.name.toLowerCase().includes(m.search.toLowerCase()),
             );
             return (
-              // Card gets z-20 when its dropdown is open so it stacks above sibling cards
               <div key={name} className={`bg-white rounded-lg border border-gray-200 p-4 ${isOpen ? 'relative z-20' : ''}`}>
                 <div className="flex items-start justify-between mb-3">
                   <div>
@@ -308,10 +341,10 @@ export default function ImportReviewView() {
                       <p className="text-sm text-gray-400 italic">No existing templates — switch to "New".</p>
                     ) : (
                       <>
-                        {/* Collapsed trigger */}
+                        {/* Trigger — stopPropagation so the document listener doesn't immediately close it */}
                         <button
                           type="button"
-                          onClick={() => setOpenDropdown(isOpen ? null : name)}
+                          onClick={e => { e.stopPropagation(); setOpenDropdown(isOpen ? null : name); }}
                           className="w-full text-left border border-gray-300 rounded-md px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50"
                         >
                           {selectedTemplate ? (
@@ -326,9 +359,12 @@ export default function ImportReviewView() {
                             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                           </svg>
                         </button>
-                        {/* Overlay dropdown */}
+                        {/* Overlay dropdown — stopPropagation so clicks inside don't close it */}
                         {isOpen && (
-                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                          <div
+                            className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10"
+                            onClick={e => e.stopPropagation()}
+                          >
                             <div className="p-2 border-b border-gray-100">
                               <input
                                 type="text"
@@ -433,14 +469,14 @@ export default function ImportReviewView() {
           <div className="flex gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => window.location.href = '/'}
+              onClick={() => setConfirmation('cancel')}
               className="text-sm text-gray-600 border border-gray-300 rounded-md px-4 py-2 hover:bg-gray-50"
             >
               Cancel
             </button>
             <button
               type="button"
-              onClick={handleConfirm}
+              onClick={() => setConfirmation('import')}
               disabled={!canConfirm || submitting}
               className="text-sm bg-blue-600 text-white rounded-md px-6 py-2 hover:bg-blue-700 disabled:opacity-50"
             >
