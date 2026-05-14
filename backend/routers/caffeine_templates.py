@@ -86,14 +86,15 @@ def update_caffeine_template(
             raise HTTPException(status_code=409, detail="An unconfirmed entry with this name exists — confirm it first")
         template.name = data.name
 
-    if data.barcode is not None:
-        if db.query(CaffeineTemplate).filter(
-            CaffeineTemplate.user_id == current_user.id,
-            CaffeineTemplate.barcode == data.barcode,
-            CaffeineTemplate.id != template_id,
-        ).first():
-            raise HTTPException(status_code=409, detail="A template with this barcode already exists")
-        _check_barcode_cross_module(data.barcode, current_user.id, db)
+    if 'barcode' in data.model_fields_set:
+        if data.barcode is not None:
+            if db.query(CaffeineTemplate).filter(
+                CaffeineTemplate.user_id == current_user.id,
+                CaffeineTemplate.barcode == data.barcode,
+                CaffeineTemplate.id != template_id,
+            ).first():
+                raise HTTPException(status_code=409, detail="A template with this barcode already exists")
+            _check_barcode_cross_module(data.barcode, current_user.id, db)
         template.barcode = data.barcode
 
     has_confirmed = any(e.is_marked for e in template.entries)
