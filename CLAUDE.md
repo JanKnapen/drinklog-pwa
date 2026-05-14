@@ -203,6 +203,14 @@ The admin uses a **single master password** pattern, not per-user credentials. T
 - `POST /api/admin/users` — creates a user (409 if username exists); passwords are hashed with `bcrypt`
 - `PATCH /api/admin/users/{id}/password` — replaces password hash
 - `DELETE /api/admin/users/{id}` — **explicitly** deletes all child rows (DrinkEntry, CaffeineEntry, DrinkTemplate, CaffeineTemplate) before deleting the user. There is no DB-level cascade; the explicit delete loop is intentional.
+- `GET /api/admin/users/{id}/templates?module=alcohol|caffeine` — returns the user's templates for the import mapping UI.
+- `POST /api/admin/users/{id}/import` — bulk import. Accepts named entries (linked to a template via mappings) and anonymous entries (no template, no name). Cap: 50,000 total DB rows per request.
+
+**Import entry types** — the import endpoint accepts two kinds of entries in the same payload. *Named* entries carry a `name` field and are matched to a `DrinkMapping` (existing template or new template). *Anonymous* entries carry only `ml`+`abv` or `mg` and are inserted directly with `template_id=None, custom_name=None` — this is the one place in the codebase where an entry intentionally has both fields null. They appear in the main app log with no name but with correct values.
+
+**`drink_name` vs `template_name` in `DrinkMapping`** — `drink_name` is the immutable key used to match raw entries to their mapping (stays equal to the original name from the file). `template_name` is the user-editable name used when finding or creating the template. They can differ if the admin renames the drink during review. Never swap them: using `template_name` as the lookup key would break entry matching.
+
+**Template ownership in import** — every template DB query in the import endpoint must include `user_id == user_id` in the filter, including the pre-fetch query and the `usage_count` batch-update. Omitting `user_id` allows a crafted `template_id` to reference another user's template, corrupting that template's `usage_count` and producing entries that join to an invisible template.
 
 `ALLOWED_ORIGINS` env var (comma-separated) controls CORS. Defaults to `http://localhost,http://localhost:5174`.
 
