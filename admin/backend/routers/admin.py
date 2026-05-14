@@ -8,7 +8,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter
 
 logger = logging.getLogger("uvicorn.error")
@@ -185,14 +185,14 @@ def get_user_templates(
 
 
 class ImportEntry(BaseModel):
-    name: str
-    date: str | None = None
-    timestamp: str | None = None
-    count: int = 1
+    name: str = Field(max_length=200)
+    date: str | None = Field(default=None, max_length=50)
+    timestamp: str | None = Field(default=None, max_length=50)
+    count: int = Field(default=1, ge=1, le=1000)
 
 
 class DrinkMapping(BaseModel):
-    drink_name: str
+    drink_name: str = Field(max_length=200)
     mode: Literal["existing", "new"]
     template_id: str | None = None
     ml: float | None = None
@@ -202,8 +202,8 @@ class DrinkMapping(BaseModel):
 
 class ImportRequest(BaseModel):
     module: Literal["alcohol", "caffeine"]
-    mappings: list[DrinkMapping]
-    entries: list[ImportEntry]
+    mappings: list[DrinkMapping] = Field(max_length=500)
+    entries: list[ImportEntry] = Field(max_length=10_000)
 
 
 @router.post("/admin/users/{user_id}/import")
@@ -268,6 +268,24 @@ def import_entries(
                     template_id = t.id
             name_to_template_id[mapping.drink_name] = template_id
 
+    # Pre-build lookup dicts to avoid O(N²) scans inside the entry loop
+    name_to_mapping: dict[str, DrinkMapping] = {m.drink_name: m for m in body.mappings}
+
+    # Pre-fetch templates for "existing" mappings so the inner loop makes no DB calls
+    template_id_to_defaults: dict[str, tuple] = {}
+    existing_template_ids = {
+        tid for m in body.mappings
+        if m.mode == "existing"
+        for tid in [name_to_template_id.get(m.drink_name)]
+        if tid
+    }
+    if body.module == "alcohol":
+        for t in db.query(DrinkTemplate).filter(DrinkTemplate.id.in_(existing_template_ids)).all():
+            template_id_to_defaults[t.id] = (t.default_ml, t.default_abv)
+    else:
+        for t in db.query(CaffeineTemplate).filter(CaffeineTemplate.id.in_(existing_template_ids)).all():
+            template_id_to_defaults[t.id] = (t.default_mg,)
+
     # Track usage_count increments per template
     usage_increments: dict[str, int] = {}
 
@@ -290,18 +308,15 @@ def import_entries(
         if not template_id:
             raise HTTPException(status_code=422, detail=f"No mapping for drink name '{entry.name}'")
 
-        count = max(1, entry.count)
-        usage_increments[template_id] = usage_increments.get(template_id, 0) + count
+        mapping = name_to_mapping[entry.name]
+        usage_increments[template_id] = usage_increments.get(template_id, 0) + entry.count
 
-        for _ in range(count):
+        for _ in range(entry.count):
             if body.module == "alcohol":
-                mapping = next(m for m in body.mappings if m.drink_name == entry.name)
                 ml = mapping.ml if mapping.mode == "new" else None
                 abv = mapping.abv if mapping.mode == "new" else None
                 if ml is None or abv is None:
-                    tmpl = db.query(DrinkTemplate).filter(DrinkTemplate.id == template_id).first()
-                    ml = tmpl.default_ml
-                    abv = tmpl.default_abv
+                    ml, abv = template_id_to_defaults[template_id]
                 e = DrinkEntry(
                     id=str(uuid.uuid4()),
                     template_id=template_id,
@@ -313,11 +328,9 @@ def import_entries(
                     user_id=user_id,
                 )
             else:
-                mapping = next(m for m in body.mappings if m.drink_name == entry.name)
                 mg = mapping.mg if mapping.mode == "new" else None
                 if mg is None:
-                    tmpl = db.query(CaffeineTemplate).filter(CaffeineTemplate.id == template_id).first()
-                    mg = tmpl.default_mg
+                    (mg,) = template_id_to_defaults[template_id]
                 e = CaffeineEntry(
                     id=str(uuid.uuid4()),
                     template_id=template_id,

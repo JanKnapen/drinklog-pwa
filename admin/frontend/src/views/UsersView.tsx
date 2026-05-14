@@ -25,6 +25,7 @@ Fields:
 
 function validateImportJson(raw: unknown): RawImportEntry[] {
   if (!Array.isArray(raw)) throw new Error('File must contain a JSON array.');
+  if (raw.length > 10_000) throw new Error(`Too many entries (${raw.length}). Maximum is 10,000.`);
   return raw.map((item: unknown, i: number) => {
     if (typeof item !== 'object' || item === null) throw new Error(`Item ${i + 1} is not an object.`);
     const obj = item as Record<string, unknown>;

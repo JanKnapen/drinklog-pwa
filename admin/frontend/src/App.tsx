@@ -10,16 +10,16 @@ export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (!isReviewTab) setAuthed(!!getToken());
+    setAuthed(!!getToken());
   }, []);
-
-  if (isReviewTab) return <ImportReviewView />;
 
   if (authed === null) return null;
 
   if (!authed) {
     return <LoginView onLogin={() => setAuthed(true)} />;
   }
+
+  if (isReviewTab) return <ImportReviewView />;
 
   return (
     <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
