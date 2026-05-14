@@ -457,7 +457,7 @@ export default function ImportReviewView() {
       </main>
 
       {/* Footer */}
-      <div className="shrink-0 bg-white border-t border-gray-200 px-4 sm:px-6 py-4">
+      <div className="shrink-0 bg-white border-t border-gray-200 px-4 sm:px-6 pt-4 pb-safe">
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
           {submitError ? (
             <p className="text-sm text-red-600 flex-1">{submitError}</p>
