@@ -15,10 +15,10 @@ import type { TrackerTemplate, TrackerEntry } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
 import { useModuleAdapter } from '../hooks/useModuleAdapter'
 import { useCreateEntry } from '../api/entries'
-import { useCreateTemplate, useUpdateTemplate, useTemplates } from '../api/templates'
+import { useCreateTemplate, useTemplates } from '../api/templates'
 import { useCreateCaffeineEntry } from '../api/caffeine-entries'
 import { AuthError } from '../api/client'
-import { useCreateCaffeineTemplate, useUpdateCaffeineTemplate, useCaffeineTemplates } from '../api/caffeine-templates'
+import { useCreateCaffeineTemplate, useCaffeineTemplates } from '../api/caffeine-templates'
 import { lookupBarcode, type BarcodeResult } from '../api/barcode'
 
 interface QuickLogSnapshot {
@@ -546,10 +546,8 @@ function NewScanModal({
   // All mutation hooks called unconditionally (React rules)
   const createAlcoholEntry = useCreateEntry()
   const createAlcoholTemplate = useCreateTemplate()
-  const updateAlcoholTemplate = useUpdateTemplate()
   const createCaffeineEntry = useCreateCaffeineEntry()
   const createCaffeineTemplate = useCreateCaffeineTemplate()
-  const updateCaffeineTemplate = useUpdateCaffeineTemplate()
 
   const [selectedModule, setSelectedModule] = useState<'alcohol' | 'caffeine'>(settings.activeModule)
   const [isSwitching, setIsSwitching] = useState(false)
@@ -637,45 +635,28 @@ function NewScanModal({
   }
 
   async function handleSubmit() {
+    if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
     const timestamp = ts.toISOString()
     try {
       if (selectedModule === 'alcohol') {
-        let templateId: string
-        if (isDuplicate && duplicateAlcohol) {
-          templateId = duplicateAlcohol.id
-        } else {
-          const t = await createAlcoholTemplate.mutateAsync({
-            name: name.trim(), default_ml: parseFloat(ml), default_abv: parseFloat(abv), barcode,
-          })
-          templateId = t.id
-        }
+        const t = await createAlcoholTemplate.mutateAsync({
+          name: name.trim(), default_ml: parseFloat(ml), default_abv: parseFloat(abv), barcode,
+        })
         for (let i = 0; i < count; i++) {
-          await createAlcoholEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
+          await createAlcoholEntry.mutateAsync({ template_id: t.id, ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
         }
         if (fraction != null) {
-          await createAlcoholEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp, fraction })
-        }
-        if (isDuplicate && duplicateAlcohol) {
-          await updateAlcoholTemplate.mutateAsync({ id: templateId, barcode })
+          await createAlcoholEntry.mutateAsync({ template_id: t.id, ml: parseFloat(ml), abv: parseFloat(abv), timestamp, fraction })
         }
       } else {
-        let templateId: string
-        if (isDuplicate && duplicateCaffeine) {
-          templateId = duplicateCaffeine.id
-        } else {
-          const t = await createCaffeineTemplate.mutateAsync({
-            name: name.trim(), default_mg: parseFloat(mg), barcode,
-          })
-          templateId = t.id
-        }
+        const t = await createCaffeineTemplate.mutateAsync({
+          name: name.trim(), default_mg: parseFloat(mg), barcode,
+        })
         for (let i = 0; i < count; i++) {
-          await createCaffeineEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp })
+          await createCaffeineEntry.mutateAsync({ template_id: t.id, mg: parseFloat(mg), timestamp })
         }
         if (fraction != null) {
-          await createCaffeineEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp, fraction })
-        }
-        if (isDuplicate && duplicateCaffeine) {
-          await updateCaffeineTemplate.mutateAsync({ id: templateId, barcode })
+          await createCaffeineEntry.mutateAsync({ template_id: t.id, mg: parseFloat(mg), timestamp, fraction })
         }
       }
     } catch {
