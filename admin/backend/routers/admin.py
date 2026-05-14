@@ -205,11 +205,11 @@ class ImportEntry(BaseModel):
 class DrinkMapping(BaseModel):
     drink_name: str = Field(max_length=200)
     mode: Literal["existing", "new"]
-    template_id: str | None = None
+    template_id: str | None = Field(default=None, max_length=36)  # UUID length
     template_name: str | None = Field(default=None, max_length=200)
-    ml: float | None = None
-    abv: float | None = None
-    mg: float | None = None
+    ml: float | None = Field(default=None, gt=0, le=5000)
+    abv: float | None = Field(default=None, ge=0, le=100)
+    mg: float | None = Field(default=None, gt=0, le=2000)
 
 
 class ImportRequest(BaseModel):
@@ -286,7 +286,8 @@ def import_entries(
     # Pre-build lookup dicts to avoid O(N²) scans inside the entry loop
     name_to_mapping: dict[str, DrinkMapping] = {m.drink_name: m for m in body.mappings}
 
-    # Pre-fetch templates for "existing" mappings so the inner loop makes no DB calls
+    # Pre-fetch templates for "existing" mappings so the inner loop makes no DB calls.
+    # Filter by user_id to prevent cross-user template references (H1).
     template_id_to_defaults: dict[str, tuple] = {}
     existing_template_ids = {
         tid for m in body.mappings
@@ -295,11 +296,32 @@ def import_entries(
         if tid
     }
     if body.module == "alcohol":
-        for t in db.query(DrinkTemplate).filter(DrinkTemplate.id.in_(existing_template_ids)).all():
+        for t in db.query(DrinkTemplate).filter(
+            DrinkTemplate.id.in_(existing_template_ids),
+            DrinkTemplate.user_id == user_id,
+        ).all():
             template_id_to_defaults[t.id] = (t.default_ml, t.default_abv)
     else:
-        for t in db.query(CaffeineTemplate).filter(CaffeineTemplate.id.in_(existing_template_ids)).all():
+        for t in db.query(CaffeineTemplate).filter(
+            CaffeineTemplate.id.in_(existing_template_ids),
+            CaffeineTemplate.user_id == user_id,
+        ).all():
             template_id_to_defaults[t.id] = (t.default_mg,)
+
+    # Reject any "existing" template_id that wasn't found for this user (H1).
+    for m in body.mappings:
+        if m.mode == "existing":
+            tid = name_to_template_id.get(m.drink_name)
+            if tid and tid not in template_id_to_defaults:
+                raise HTTPException(status_code=404, detail=f"Template not found for '{m.drink_name}'")
+
+    # Guard against very large imports: cap total DB rows before writing (M4).
+    total_rows = sum(
+        int(e.count) + (1 if round(e.count * 2) % 2 == 1 else 0)
+        for e in body.entries
+    )
+    if total_rows > 50_000:
+        raise HTTPException(status_code=422, detail=f"Import would create {total_rows} rows; maximum is 50,000")
 
     # Track usage_count increments per template
     usage_increments: dict[str, int] = {}
@@ -403,12 +425,18 @@ def import_entries(
                     db.add(e)
                     inserted += 1
 
-    # Batch-update usage_count
+    # Batch-update usage_count — filter by user_id to prevent cross-user writes (H1).
     for template_id, increment in usage_increments.items():
         if body.module == "alcohol":
-            t = db.query(DrinkTemplate).filter(DrinkTemplate.id == template_id).first()
+            t = db.query(DrinkTemplate).filter(
+                DrinkTemplate.id == template_id,
+                DrinkTemplate.user_id == user_id,
+            ).first()
         else:
-            t = db.query(CaffeineTemplate).filter(CaffeineTemplate.id == template_id).first()
+            t = db.query(CaffeineTemplate).filter(
+                CaffeineTemplate.id == template_id,
+                CaffeineTemplate.user_id == user_id,
+            ).first()
         if t:
             t.usage_count = (t.usage_count or 0) + increment
 
