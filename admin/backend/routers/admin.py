@@ -1,11 +1,14 @@
 import logging
 import time
+import uuid
 from collections import defaultdict
+from datetime import datetime
 from threading import Lock
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter
 
 logger = logging.getLogger("uvicorn.error")
@@ -161,3 +164,194 @@ def delete_user(
     db.commit()
     logger.warning("admin: deleted user id=%d username=%s", user.id, user.username)
     return {"message": "deleted"}
+
+
+@router.get("/admin/users/{user_id}/templates")
+def get_user_templates(
+    user_id: int,
+    module: Literal["alcohol", "caffeine"] = "alcohol",
+    db: Session = Depends(get_db),
+    _: None = Depends(get_admin_user),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if module == "alcohol":
+        templates = db.query(DrinkTemplate).filter(DrinkTemplate.user_id == user_id).all()
+        return [{"id": t.id, "name": t.name, "default_ml": t.default_ml, "default_abv": t.default_abv} for t in templates]
+    else:
+        templates = db.query(CaffeineTemplate).filter(CaffeineTemplate.user_id == user_id).all()
+        return [{"id": t.id, "name": t.name, "default_mg": t.default_mg} for t in templates]
+
+
+class ImportEntry(BaseModel):
+    name: str = Field(max_length=200)
+    date: str | None = Field(default=None, max_length=50)
+    timestamp: str | None = Field(default=None, max_length=50)
+    count: int = Field(default=1, ge=1, le=1000)
+
+
+class DrinkMapping(BaseModel):
+    drink_name: str = Field(max_length=200)
+    mode: Literal["existing", "new"]
+    template_id: str | None = None
+    ml: float | None = None
+    abv: float | None = None
+    mg: float | None = None
+
+
+class ImportRequest(BaseModel):
+    module: Literal["alcohol", "caffeine"]
+    mappings: list[DrinkMapping] = Field(max_length=500)
+    entries: list[ImportEntry] = Field(max_length=10_000)
+
+
+@router.post("/admin/users/{user_id}/import")
+def import_entries(
+    user_id: int,
+    body: ImportRequest,
+    db: Session = Depends(get_db),
+    _: None = Depends(get_admin_user),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Build name → resolved template_id map, creating new templates as needed
+    name_to_template_id: dict[str, str] = {}
+    for mapping in body.mappings:
+        if mapping.mode == "existing":
+            if not mapping.template_id:
+                raise HTTPException(status_code=422, detail=f"Missing template_id for '{mapping.drink_name}'")
+            name_to_template_id[mapping.drink_name] = mapping.template_id
+        else:
+            if body.module == "alcohol":
+                if mapping.ml is None or mapping.abv is None:
+                    raise HTTPException(status_code=422, detail=f"Missing ml/abv for '{mapping.drink_name}'")
+                existing = db.query(DrinkTemplate).filter(
+                    DrinkTemplate.user_id == user_id,
+                    DrinkTemplate.name == mapping.drink_name,
+                ).first()
+                if existing:
+                    template_id = existing.id
+                else:
+                    t = DrinkTemplate(
+                        id=str(uuid.uuid4()),
+                        name=mapping.drink_name,
+                        default_ml=mapping.ml,
+                        default_abv=mapping.abv,
+                        usage_count=0,
+                        user_id=user_id,
+                    )
+                    db.add(t)
+                    db.flush()
+                    template_id = t.id
+            else:
+                if mapping.mg is None:
+                    raise HTTPException(status_code=422, detail=f"Missing mg for '{mapping.drink_name}'")
+                existing = db.query(CaffeineTemplate).filter(
+                    CaffeineTemplate.user_id == user_id,
+                    CaffeineTemplate.name == mapping.drink_name,
+                ).first()
+                if existing:
+                    template_id = existing.id
+                else:
+                    t = CaffeineTemplate(
+                        id=str(uuid.uuid4()),
+                        name=mapping.drink_name,
+                        default_mg=mapping.mg,
+                        usage_count=0,
+                        user_id=user_id,
+                    )
+                    db.add(t)
+                    db.flush()
+                    template_id = t.id
+            name_to_template_id[mapping.drink_name] = template_id
+
+    # Pre-build lookup dicts to avoid O(N²) scans inside the entry loop
+    name_to_mapping: dict[str, DrinkMapping] = {m.drink_name: m for m in body.mappings}
+
+    # Pre-fetch templates for "existing" mappings so the inner loop makes no DB calls
+    template_id_to_defaults: dict[str, tuple] = {}
+    existing_template_ids = {
+        tid for m in body.mappings
+        if m.mode == "existing"
+        for tid in [name_to_template_id.get(m.drink_name)]
+        if tid
+    }
+    if body.module == "alcohol":
+        for t in db.query(DrinkTemplate).filter(DrinkTemplate.id.in_(existing_template_ids)).all():
+            template_id_to_defaults[t.id] = (t.default_ml, t.default_abv)
+    else:
+        for t in db.query(CaffeineTemplate).filter(CaffeineTemplate.id.in_(existing_template_ids)).all():
+            template_id_to_defaults[t.id] = (t.default_mg,)
+
+    # Track usage_count increments per template
+    usage_increments: dict[str, int] = {}
+
+    inserted = 0
+    for entry in body.entries:
+        if entry.timestamp:
+            try:
+                ts = datetime.fromisoformat(entry.timestamp)
+            except ValueError:
+                raise HTTPException(status_code=422, detail=f"Invalid timestamp: {entry.timestamp}")
+        elif entry.date:
+            try:
+                ts = datetime.strptime(entry.date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=422, detail=f"Invalid date: {entry.date}")
+        else:
+            raise HTTPException(status_code=422, detail="Each entry must have 'date' or 'timestamp'")
+
+        template_id = name_to_template_id.get(entry.name)
+        if not template_id:
+            raise HTTPException(status_code=422, detail=f"No mapping for drink name '{entry.name}'")
+
+        mapping = name_to_mapping[entry.name]
+        usage_increments[template_id] = usage_increments.get(template_id, 0) + entry.count
+
+        for _ in range(entry.count):
+            if body.module == "alcohol":
+                ml = mapping.ml if mapping.mode == "new" else None
+                abv = mapping.abv if mapping.mode == "new" else None
+                if ml is None or abv is None:
+                    ml, abv = template_id_to_defaults[template_id]
+                e = DrinkEntry(
+                    id=str(uuid.uuid4()),
+                    template_id=template_id,
+                    ml=ml,
+                    abv=abv,
+                    timestamp=ts,
+                    is_marked=True,
+                    imported=True,
+                    user_id=user_id,
+                )
+            else:
+                mg = mapping.mg if mapping.mode == "new" else None
+                if mg is None:
+                    (mg,) = template_id_to_defaults[template_id]
+                e = CaffeineEntry(
+                    id=str(uuid.uuid4()),
+                    template_id=template_id,
+                    mg=mg,
+                    timestamp=ts,
+                    is_marked=True,
+                    imported=True,
+                    user_id=user_id,
+                )
+            db.add(e)
+            inserted += 1
+
+    # Batch-update usage_count
+    for template_id, increment in usage_increments.items():
+        if body.module == "alcohol":
+            t = db.query(DrinkTemplate).filter(DrinkTemplate.id == template_id).first()
+        else:
+            t = db.query(CaffeineTemplate).filter(CaffeineTemplate.id == template_id).first()
+        if t:
+            t.usage_count = (t.usage_count or 0) + increment
+
+    db.commit()
+    logger.warning("admin: imported %d entries for user id=%d username=%s", inserted, user.id, user.username)
+    return {"inserted": inserted}
