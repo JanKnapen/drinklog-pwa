@@ -325,7 +325,6 @@ function NewAlcoholModal({ open, onClose, templates, pendingDrinks, prefill, bar
 }) {
   const createEntry = useCreateEntry()
   const createTemplate = useCreateTemplate()
-  const updateTemplate = useUpdateTemplate()
   const [name, setName] = useState('')
   const [ml, setMl] = useState('')
   const [abv, setAbv] = useState('')
@@ -360,34 +359,25 @@ function NewAlcoholModal({ open, onClose, templates, pendingDrinks, prefill, bar
 
   async function handleSubmit() {
     const timestamp = ts.toISOString()
+    if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
+    if (!barcode && duplicatePending) { setError(`"${name.trim()}" is already pending — confirm it first`); return }
     if (barcode) {
-      // Scan flow: create/reuse a template so the barcode is persisted for future lookups
+      // Scan flow: always create a new template so the barcode is persisted for future lookups
       try {
-        let templateId: string
-        if (isDuplicate && duplicateTemplate) {
-          templateId = duplicateTemplate.id
-        } else {
-          const t = await createTemplate.mutateAsync({
-            name: name.trim(), default_ml: parseFloat(ml), default_abv: parseFloat(abv), barcode,
-          })
-          templateId = t.id
-        }
+        const t = await createTemplate.mutateAsync({
+          name: name.trim(), default_ml: parseFloat(ml), default_abv: parseFloat(abv), barcode,
+        })
         for (let i = 0; i < count; i++) {
-          await createEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
+          await createEntry.mutateAsync({ template_id: t.id, ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
         }
         if (fraction != null) {
-          await createEntry.mutateAsync({ template_id: templateId, ml: parseFloat(ml), abv: parseFloat(abv), timestamp, fraction })
-        }
-        if (isDuplicate && duplicateTemplate) {
-          await updateTemplate.mutateAsync({ id: templateId, barcode })
+          await createEntry.mutateAsync({ template_id: t.id, ml: parseFloat(ml), abv: parseFloat(abv), timestamp, fraction })
         }
       } catch {
         setError('Something went wrong, please try again')
         return
       }
     } else {
-      if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
-      if (duplicatePending) { setError(`"${name.trim()}" is already pending — confirm it first`); return }
       for (let i = 0; i < count; i++) {
         await createEntry.mutateAsync({ custom_name: name.trim(), ml: parseFloat(ml), abv: parseFloat(abv), timestamp })
       }
@@ -442,7 +432,6 @@ export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, pref
 }) {
   const createEntry = useCreateCaffeineEntry()
   const createTemplate = useCreateCaffeineTemplate()
-  const updateTemplate = useUpdateCaffeineTemplate()
   const [name, setName] = useState('')
   const [mg, setMg] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -474,33 +463,25 @@ export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, pref
 
   async function handleSubmit() {
     const timestamp = ts.toISOString()
+    if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
+    if (!barcode && duplicatePending) { setError(`"${name.trim()}" is already pending — confirm it first`); return }
     if (barcode) {
+      // Scan flow: always create a new template so the barcode is persisted for future lookups
       try {
-        let templateId: string
-        if (isDuplicate && duplicateTemplate) {
-          templateId = duplicateTemplate.id
-        } else {
-          const t = await createTemplate.mutateAsync({
-            name: name.trim(), default_mg: parseFloat(mg), barcode,
-          })
-          templateId = t.id
-        }
+        const t = await createTemplate.mutateAsync({
+          name: name.trim(), default_mg: parseFloat(mg), barcode,
+        })
         for (let i = 0; i < count; i++) {
-          await createEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp })
+          await createEntry.mutateAsync({ template_id: t.id, mg: parseFloat(mg), timestamp })
         }
         if (fraction != null) {
-          await createEntry.mutateAsync({ template_id: templateId, mg: parseFloat(mg), timestamp, fraction })
-        }
-        if (isDuplicate && duplicateTemplate) {
-          await updateTemplate.mutateAsync({ id: templateId, barcode })
+          await createEntry.mutateAsync({ template_id: t.id, mg: parseFloat(mg), timestamp, fraction })
         }
       } catch {
         setError('Something went wrong, please try again')
         return
       }
     } else {
-      if (isDuplicate) { setError(`"${name.trim()}" already exists — use Other to log it`); return }
-      if (duplicatePending) { setError(`"${name.trim()}" is already pending — confirm it first`); return }
       for (let i = 0; i < count; i++) {
         await createEntry.mutateAsync({ custom_name: name.trim(), mg: parseFloat(mg), timestamp })
       }
