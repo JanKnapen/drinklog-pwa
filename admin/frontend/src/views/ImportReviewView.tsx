@@ -90,9 +90,9 @@ export default function ImportReviewView() {
   const [inserted, setInserted] = useState<number | null>(null);
 
   useEffect(() => {
-    const raw = localStorage.getItem(IMPORT_SESSION_KEY);
+    const raw = sessionStorage.getItem(IMPORT_SESSION_KEY);
     if (!raw) { setNoSession(true); return; }
-    localStorage.removeItem(IMPORT_SESSION_KEY);
+    sessionStorage.removeItem(IMPORT_SESSION_KEY);
     try {
       const parsed: ImportSession = JSON.parse(raw);
       setToken(parsed.token);

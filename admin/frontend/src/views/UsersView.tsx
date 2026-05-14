@@ -230,7 +230,7 @@ export default function UsersView() {
       module: uploadModule,
       rawEntries: entries,
     };
-    localStorage.setItem(IMPORT_SESSION_KEY, JSON.stringify(session));
+    sessionStorage.setItem(IMPORT_SESSION_KEY, JSON.stringify(session));
     window.location.href = '/import-review';
     closeModal();
   }
