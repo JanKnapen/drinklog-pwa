@@ -135,6 +135,7 @@ function EditAlcoholTemplate({ open, templateId, onClose }: {
   const [ml, setMl] = useState(template ? String(template.default_ml) : '')
   const [abv, setAbv] = useState(template ? String(template.default_abv) : '')
   const [error, setError] = useState<string | null>(null)
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
 
   const isEdit = !!template
   const mlAbvLocked = isEdit && template.confirmed_entry_count > 0
@@ -162,7 +163,18 @@ function EditAlcoholTemplate({ open, templateId, onClose }: {
       )
     }
   }
-  function reset() { setName(''); setMl(''); setAbv(''); setError(null) }
+
+  function handleDisconnectBarcode() {
+    updateTemplate.mutate(
+      { id: template!.id, barcode: null },
+      {
+        onSuccess: () => { reset(); onClose() },
+        onError: (err) => setError(err instanceof ApiError ? err.detail : 'Something went wrong, please try again'),
+      },
+    )
+  }
+
+  function reset() { setName(''); setMl(''); setAbv(''); setError(null); setConfirmDisconnect(false) }
 
   return (
     <Modal open={open} onClose={() => { reset(); onClose() }} title={isEdit ? 'Edit Template' : 'New Template'}>
@@ -180,6 +192,25 @@ function EditAlcoholTemplate({ open, templateId, onClose }: {
             inputMode="decimal" value={abv} onChange={(e) => setAbv(e.target.value)} disabled={mlAbvLocked} />
         </Field>
         {mlAbvLocked && <p className="text-xs text-neutral-400">ml and ABV are locked because this template has confirmed entries.</p>}
+        {isEdit && template.barcode && (
+          confirmDisconnect ? (
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmDisconnect(false)}
+                className="flex-1 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                Cancel
+              </button>
+              <button onClick={handleDisconnectBarcode}
+                className="flex-1 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold">
+                Disconnect barcode
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmDisconnect(true)}
+              className="py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm font-medium text-neutral-700 dark:text-neutral-300 active:scale-95 transition-transform">
+              Disconnect barcode
+            </button>
+          )
+        )}
         <button onClick={handleSave} disabled={!isValid} className={primaryBtn}>Save</button>
       </div>
     </Modal>
@@ -204,6 +235,7 @@ export function EditCaffeineTemplate({ open, templateId, onClose }: {
   const [name, setName] = useState(template?.name ?? '')
   const [mg, setMg] = useState(template ? String(template.default_mg) : '')
   const [error, setError] = useState<string | null>(null)
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
 
   const isEdit = !!template
   const mgLocked = isEdit && template.confirmed_entry_count > 0
@@ -230,7 +262,18 @@ export function EditCaffeineTemplate({ open, templateId, onClose }: {
       )
     }
   }
-  function reset() { setName(''); setMg(''); setError(null) }
+
+  function handleDisconnectBarcode() {
+    updateTemplate.mutate(
+      { id: template!.id, barcode: null },
+      {
+        onSuccess: () => { reset(); onClose() },
+        onError: (err) => setError(err instanceof ApiError ? err.detail : 'Something went wrong, please try again'),
+      },
+    )
+  }
+
+  function reset() { setName(''); setMg(''); setError(null); setConfirmDisconnect(false) }
 
   return (
     <Modal open={open} onClose={() => { reset(); onClose() }} title={isEdit ? 'Edit Template' : 'New Template'}>
@@ -244,6 +287,25 @@ export function EditCaffeineTemplate({ open, templateId, onClose }: {
             inputMode="decimal" value={mg} onChange={(e) => setMg(e.target.value)} disabled={mgLocked} />
         </Field>
         {mgLocked && <p className="text-xs text-neutral-400">Caffeine amount is locked because this template has confirmed entries.</p>}
+        {isEdit && template.barcode && (
+          confirmDisconnect ? (
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmDisconnect(false)}
+                className="flex-1 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                Cancel
+              </button>
+              <button onClick={handleDisconnectBarcode}
+                className="flex-1 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold">
+                Disconnect barcode
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmDisconnect(true)}
+              className="py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-sm font-medium text-neutral-700 dark:text-neutral-300 active:scale-95 transition-transform">
+              Disconnect barcode
+            </button>
+          )
+        )}
         <button onClick={handleSave} disabled={!isValid} className={primaryBtn}>Save</button>
       </div>
     </Modal>

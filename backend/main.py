@@ -177,6 +177,14 @@ def _migrate():
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN fraction FLOAT"))
                 conn.commit()
 
+    # Add imported column to entry tables if missing
+    for table in ("drink_entries", "caffeine_entries"):
+        existing_cols = {c["name"] for c in inspector.get_columns(table)}
+        if "imported" not in existing_cols:
+            with engine.connect() as conn:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN imported BOOLEAN"))
+                conn.commit()
+
     # Create indexes on entry tables for pagination, filtering, and joins
     for table, columns in [
         ("drink_entries", ["timestamp", "is_marked", "template_id"]),
