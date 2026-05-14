@@ -11,37 +11,89 @@ type Modal =
 
 const IMPORT_SESSION_KEY = 'drinklog-import-session';
 
-const FORMAT_EXAMPLE = `[
+function getFormatExample(module: Module): string {
+  if (module === 'alcohol') {
+    return `Named entries (linked to a template):
+[
   { "name": "Heineken", "date": "2024-01-15" },
   { "name": "Heineken", "timestamp": "2024-01-15T20:30:00" },
-  { "name": "Espresso", "date": "2024-01-16", "count": 2 }
+  { "name": "Heineken", "date": "2024-01-16", "count": 2 }
+]
+
+Anonymous entries (no template):
+[
+  { "ml": 330, "abv": 5.0, "date": "2024-01-15" },
+  { "ml": 500, "abv": 8.5, "timestamp": "2024-01-16T20:30:00" }
 ]
 
 Fields:
-  name      — drink name (required)
-  date      — YYYY-MM-DD, sets time to 00:00 (required if no timestamp)
-  timestamp — ISO datetime string (optional, takes precedence over date)
-  count     — number of entries to create (optional, default 1)`;
+  name      — drink name (named entries)
+  ml        — volume in ml (anonymous, > 0)
+  abv       — alcohol % (anonymous, 0–100)
+  date      — YYYY-MM-DD, sets time to 00:00
+  timestamp — ISO datetime (takes precedence over date)
+  count     — entries to create (named only, default 1)`;
+  } else {
+    return `Named entries (linked to a template):
+[
+  { "name": "Espresso", "date": "2024-01-15" },
+  { "name": "Espresso", "date": "2024-01-16", "count": 2 }
+]
 
-function validateImportJson(raw: unknown): RawImportEntry[] {
+Anonymous entries (no template):
+[
+  { "mg": 80, "date": "2024-01-15" },
+  { "mg": 150, "timestamp": "2024-01-16T08:30:00" }
+]
+
+Fields:
+  name      — drink name (named entries)
+  mg        — caffeine in mg (anonymous, > 0)
+  date      — YYYY-MM-DD, sets time to 00:00
+  timestamp — ISO datetime (takes precedence over date)
+  count     — entries to create (named only, default 1)`;
+  }
+}
+
+function validateImportJson(raw: unknown, module: Module): RawImportEntry[] {
   if (!Array.isArray(raw)) throw new Error('File must contain a JSON array.');
   if (raw.length > 10_000) throw new Error(`Too many entries (${raw.length}). Maximum is 10,000.`);
   return raw.map((item: unknown, i: number) => {
     if (typeof item !== 'object' || item === null) throw new Error(`Item ${i + 1} is not an object.`);
     const obj = item as Record<string, unknown>;
-    if (typeof obj.name !== 'string' || !obj.name.trim()) throw new Error(`Item ${i + 1} is missing a valid "name".`);
+    const hasName = typeof obj.name === 'string' && !!(obj.name as string).trim();
     if (!obj.date && !obj.timestamp) throw new Error(`Item ${i + 1} must have "date" or "timestamp".`);
     if (obj.date && typeof obj.date !== 'string') throw new Error(`Item ${i + 1}: "date" must be a string.`);
     if (obj.timestamp && typeof obj.timestamp !== 'string') throw new Error(`Item ${i + 1}: "timestamp" must be a string.`);
-    if (obj.count !== undefined && (typeof obj.count !== 'number' || obj.count < 1 || !Number.isInteger(obj.count))) {
-      throw new Error(`Item ${i + 1}: "count" must be a positive integer.`);
+    if (hasName) {
+      if (obj.count !== undefined && (typeof obj.count !== 'number' || obj.count < 1 || !Number.isInteger(obj.count))) {
+        throw new Error(`Item ${i + 1}: "count" must be a positive integer.`);
+      }
+      return {
+        name: (obj.name as string).trim(),
+        date: obj.date as string | undefined,
+        timestamp: obj.timestamp as string | undefined,
+        count: obj.count as number | undefined,
+      };
+    } else {
+      if (module === 'alcohol') {
+        if (typeof obj.ml !== 'number' || obj.ml <= 0) throw new Error(`Item ${i + 1}: anonymous alcohol entry requires "ml" (positive number).`);
+        if (typeof obj.abv !== 'number' || obj.abv < 0 || obj.abv > 100) throw new Error(`Item ${i + 1}: anonymous alcohol entry requires "abv" (0–100).`);
+        return {
+          date: obj.date as string | undefined,
+          timestamp: obj.timestamp as string | undefined,
+          ml: obj.ml as number,
+          abv: obj.abv as number,
+        };
+      } else {
+        if (typeof obj.mg !== 'number' || obj.mg <= 0) throw new Error(`Item ${i + 1}: anonymous caffeine entry requires "mg" (positive number).`);
+        return {
+          date: obj.date as string | undefined,
+          timestamp: obj.timestamp as string | undefined,
+          mg: obj.mg as number,
+        };
+      }
     }
-    return {
-      name: (obj.name as string).trim(),
-      date: obj.date as string | undefined,
-      timestamp: obj.timestamp as string | undefined,
-      count: obj.count as number | undefined,
-    };
   });
 }
 
@@ -154,7 +206,7 @@ export default function UsersView() {
     try {
       const text = await uploadFile.text();
       const parsed = JSON.parse(text);
-      entries = validateImportJson(parsed);
+      entries = validateImportJson(parsed, uploadModule);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Invalid JSON file.');
       return;
@@ -348,7 +400,7 @@ export default function UsersView() {
           {showFormatInfo && (
             <div className="mb-4 rounded-md bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 p-3">
               <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Expected file format</p>
-              <pre className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap font-mono">{FORMAT_EXAMPLE}</pre>
+              <pre className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap font-mono">{getFormatExample(uploadModule)}</pre>
             </div>
           )}
 

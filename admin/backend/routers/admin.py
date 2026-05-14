@@ -185,10 +185,14 @@ def get_user_templates(
 
 
 class ImportEntry(BaseModel):
-    name: str = Field(max_length=200)
+    name: str | None = Field(default=None, max_length=200)
     date: str | None = Field(default=None, max_length=50)
     timestamp: str | None = Field(default=None, max_length=50)
     count: int = Field(default=1, ge=1, le=1000)
+    # Anonymous entry fields (used when name is absent)
+    ml: float | None = Field(default=None, gt=0, le=5000)
+    abv: float | None = Field(default=None, ge=0, le=100)
+    mg: float | None = Field(default=None, gt=0, le=2000)
 
 
 class DrinkMapping(BaseModel):
@@ -304,44 +308,81 @@ def import_entries(
         else:
             raise HTTPException(status_code=422, detail="Each entry must have 'date' or 'timestamp'")
 
-        template_id = name_to_template_id.get(entry.name)
-        if not template_id:
-            raise HTTPException(status_code=422, detail=f"No mapping for drink name '{entry.name}'")
+        if entry.name:
+            # Named entry — resolve via mapping
+            template_id = name_to_template_id.get(entry.name)
+            if not template_id:
+                raise HTTPException(status_code=422, detail=f"No mapping for drink name '{entry.name}'")
 
-        mapping = name_to_mapping[entry.name]
-        usage_increments[template_id] = usage_increments.get(template_id, 0) + entry.count
+            mapping = name_to_mapping[entry.name]
+            usage_increments[template_id] = usage_increments.get(template_id, 0) + entry.count
 
-        for _ in range(entry.count):
+            for _ in range(entry.count):
+                if body.module == "alcohol":
+                    ml = mapping.ml if mapping.mode == "new" else None
+                    abv = mapping.abv if mapping.mode == "new" else None
+                    if ml is None or abv is None:
+                        ml, abv = template_id_to_defaults[template_id]
+                    e = DrinkEntry(
+                        id=str(uuid.uuid4()),
+                        template_id=template_id,
+                        ml=ml,
+                        abv=abv,
+                        timestamp=ts,
+                        is_marked=True,
+                        imported=True,
+                        user_id=user_id,
+                    )
+                else:
+                    mg = mapping.mg if mapping.mode == "new" else None
+                    if mg is None:
+                        (mg,) = template_id_to_defaults[template_id]
+                    e = CaffeineEntry(
+                        id=str(uuid.uuid4()),
+                        template_id=template_id,
+                        mg=mg,
+                        timestamp=ts,
+                        is_marked=True,
+                        imported=True,
+                        user_id=user_id,
+                    )
+                db.add(e)
+                inserted += 1
+        else:
+            # Anonymous entry — no template, values carried inline
             if body.module == "alcohol":
-                ml = mapping.ml if mapping.mode == "new" else None
-                abv = mapping.abv if mapping.mode == "new" else None
-                if ml is None or abv is None:
-                    ml, abv = template_id_to_defaults[template_id]
-                e = DrinkEntry(
-                    id=str(uuid.uuid4()),
-                    template_id=template_id,
-                    ml=ml,
-                    abv=abv,
-                    timestamp=ts,
-                    is_marked=True,
-                    imported=True,
-                    user_id=user_id,
-                )
+                if entry.ml is None or entry.abv is None:
+                    raise HTTPException(status_code=422, detail="Anonymous alcohol entry requires 'ml' and 'abv'")
+                for _ in range(entry.count):
+                    e = DrinkEntry(
+                        id=str(uuid.uuid4()),
+                        template_id=None,
+                        custom_name=None,
+                        ml=entry.ml,
+                        abv=entry.abv,
+                        timestamp=ts,
+                        is_marked=True,
+                        imported=True,
+                        user_id=user_id,
+                    )
+                    db.add(e)
+                    inserted += 1
             else:
-                mg = mapping.mg if mapping.mode == "new" else None
-                if mg is None:
-                    (mg,) = template_id_to_defaults[template_id]
-                e = CaffeineEntry(
-                    id=str(uuid.uuid4()),
-                    template_id=template_id,
-                    mg=mg,
-                    timestamp=ts,
-                    is_marked=True,
-                    imported=True,
-                    user_id=user_id,
-                )
-            db.add(e)
-            inserted += 1
+                if entry.mg is None:
+                    raise HTTPException(status_code=422, detail="Anonymous caffeine entry requires 'mg'")
+                for _ in range(entry.count):
+                    e = CaffeineEntry(
+                        id=str(uuid.uuid4()),
+                        template_id=None,
+                        custom_name=None,
+                        mg=entry.mg,
+                        timestamp=ts,
+                        is_marked=True,
+                        imported=True,
+                        user_id=user_id,
+                    )
+                    db.add(e)
+                    inserted += 1
 
     # Batch-update usage_count
     for template_id, increment in usage_increments.items():

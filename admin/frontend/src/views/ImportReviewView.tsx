@@ -65,7 +65,7 @@ function validateMappings(
   return true;
 }
 
-function entryCountForName(name: string, rawEntries: { name: string; count?: number }[]): number {
+function entryCountForName(name: string, rawEntries: { name?: string; count?: number }[]): number {
   return rawEntries
     .filter(e => e.name === name)
     .reduce((sum, e) => sum + (e.count ?? 1), 0);
@@ -102,7 +102,7 @@ export default function ImportReviewView() {
     fetchUserTemplates(session.userId, session.module)
       .then(t => {
         setTemplates(t);
-        const uniqueNames = [...new Set(session.rawEntries.map(e => e.name))];
+        const uniqueNames = [...new Set(session.rawEntries.filter(e => e.name).map(e => e.name as string))];
         const initial: Record<string, MappingState> = {};
         for (const name of uniqueNames) {
           initial[name] = initMapping(name, t);
@@ -121,14 +121,29 @@ export default function ImportReviewView() {
     return () => document.removeEventListener('click', handleOutsideClick);
   }, [openDropdown]);
 
-  const uniqueNames = useMemo(
-    () => (session ? [...new Set(session.rawEntries.map(e => e.name))] : []),
+  const namedEntries = useMemo(
+    () => (session ? session.rawEntries.filter(e => e.name) : []),
     [session],
+  );
+
+  const anonEntries = useMemo(
+    () => (session ? session.rawEntries.filter(e => !e.name) : []),
+    [session],
+  );
+
+  const uniqueNames = useMemo(
+    () => [...new Set(namedEntries.map(e => e.name as string))],
+    [namedEntries],
   );
 
   const totalEntries = useMemo(
     () => (session ? session.rawEntries.reduce((s, e) => s + (e.count ?? 1), 0) : 0),
     [session],
+  );
+
+  const anonCount = useMemo(
+    () => anonEntries.reduce((s, e) => s + (e.count ?? 1), 0),
+    [anonEntries],
   );
 
   function updateMapping(name: string, patch: Partial<MappingState>) {
@@ -286,13 +301,62 @@ export default function ImportReviewView() {
           Importing for <strong className="text-gray-700 dark:text-gray-300">{session.username}</strong>
           {' · '}{session.module}
           {' · '}{totalEntries} {totalEntries === 1 ? 'entry' : 'entries'}
-          {' · '}{uniqueNames.length} unique {uniqueNames.length === 1 ? 'drink' : 'drinks'}
+          {uniqueNames.length > 0 && <>{' · '}{uniqueNames.length} unique {uniqueNames.length === 1 ? 'drink' : 'drinks'}</>}
+          {anonCount > 0 && <>{' · '}{anonCount} anonymous</>}
         </p>
       </div>
 
       {/* Scrollable cards */}
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-4">
+          {anonEntries.length > 0 && (
+            <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-gray-100">Anonymous entries</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {anonCount} {anonCount === 1 ? 'entry' : 'entries'} · imported directly, no template
+                  </p>
+                </div>
+                <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-2 py-1 rounded">Auto</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-800">
+                      <th className="text-left font-medium pb-1.5">Date / Time</th>
+                      {session.module === 'alcohol' ? (
+                        <>
+                          <th className="text-right font-medium pb-1.5">ml</th>
+                          <th className="text-right font-medium pb-1.5">ABV %</th>
+                        </>
+                      ) : (
+                        <th className="text-right font-medium pb-1.5">mg</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
+                    {anonEntries.slice(0, 100).map((e, i) => (
+                      <tr key={i} className="text-gray-600 dark:text-gray-400">
+                        <td className="py-1">{e.timestamp ?? e.date}</td>
+                        {session.module === 'alcohol' ? (
+                          <>
+                            <td className="text-right py-1">{e.ml}</td>
+                            <td className="text-right py-1">{e.abv}</td>
+                          </>
+                        ) : (
+                          <td className="text-right py-1">{e.mg}</td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {anonEntries.length > 100 && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">…and {anonEntries.length - 100} more</p>
+                )}
+              </div>
+            </div>
+          )}
           {uniqueNames.map(name => {
             const m = mappings[name];
             if (!m) return null;
