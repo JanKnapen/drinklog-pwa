@@ -100,10 +100,12 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
   }, [activeModule, refreshSnapshot])
 
   // Refresh once entries have definitively loaded — catches the case where templates
-  // arrive from cache before entries, leaving today/pending absent from the snapshot
+  // arrive from cache before entries, leaving today/pending absent from the snapshot.
+  // Also re-fires when templates change after entries are already fetched (e.g. navigating
+  // from LogTab which doesn't fetch templates, so templates arrive later than entries).
   useEffect(() => {
     if (isEntriesFetched) refreshSnapshot()
-  }, [isEntriesFetched, refreshSnapshot])
+  }, [isEntriesFetched, templates, refreshSnapshot])
 
   async function handleScan(code: string) {
     setModal(null)
