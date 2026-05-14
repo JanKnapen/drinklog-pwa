@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { setToken, clearToken } from '../api/client';
 import { fetchUserTemplates, postImport } from '../api/client';
 import type { ImportSession, TemplateOption, DrinkMapping, Module } from '../types';
+import AdminHeader from '../components/AdminHeader';
 
 function fmtNum(n: number | undefined): string {
   if (n === undefined) return '?';
@@ -202,15 +203,12 @@ export default function ImportReviewView() {
 
   if (noSession) {
     return (
-      <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
-        <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between shrink-0">
-          <h1 className="text-xl font-semibold text-gray-900">DrinkLog Admin</h1>
-          <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-gray-700">Log out</button>
-        </header>
+      <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-950 overflow-hidden">
+        <AdminHeader onLogout={handleLogout} />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center p-8">
-            <p className="text-gray-600 mb-4">No import session found. Please start the import from the admin page.</p>
-            <button onClick={() => window.location.href = '/'} className="text-sm text-blue-600 hover:text-blue-800">Go to admin</button>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">No import session found. Please start the import from the admin page.</p>
+            <button onClick={() => window.location.href = '/'} className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">Go to admin</button>
           </div>
         </div>
       </div>
@@ -219,24 +217,21 @@ export default function ImportReviewView() {
 
   if (!session || loadingTemplates) {
     return (
-      <div className="h-full flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">Loading…</p>
+      <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+        <p className="text-gray-500 dark:text-gray-400">Loading…</p>
       </div>
     );
   }
 
   if (inserted !== null) {
     return (
-      <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
-        <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between shrink-0">
-          <h1 className="text-xl font-semibold text-gray-900">DrinkLog Admin</h1>
-          <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-gray-700">Log out</button>
-        </header>
+      <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-950 overflow-hidden">
+        <AdminHeader onLogout={handleLogout} />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center p-8">
-            <div className="text-green-600 text-4xl mb-4">✓</div>
-            <p className="text-lg font-semibold text-gray-900 mb-2">{inserted} entries imported</p>
-            <p className="text-sm text-gray-500 mb-6">
+            <div className="text-green-600 dark:text-green-400 text-4xl mb-4">✓</div>
+            <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">{inserted} entries imported</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
               Successfully imported for <strong>{session.username}</strong> ({session.module}).
             </p>
             <button onClick={() => window.location.href = '/'} className="text-sm bg-blue-600 text-white rounded-md px-4 py-2 hover:bg-blue-700">
@@ -249,15 +244,15 @@ export default function ImportReviewView() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
+    <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-950 overflow-hidden">
       {/* Confirmation modals */}
       {confirmation === 'cancel' && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
-            <h3 className="text-lg font-semibold mb-2">Cancel import?</h3>
-            <p className="text-sm text-gray-600 mb-4">All mappings will be lost.</p>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-gray-100">Cancel import?</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">All mappings will be lost.</p>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setConfirmation(null)} className="text-sm text-gray-600 px-4 py-2">Keep editing</button>
+              <button onClick={() => setConfirmation(null)} className="text-sm text-gray-600 dark:text-gray-400 px-4 py-2">Keep editing</button>
               <button onClick={() => window.location.href = '/'} className="text-sm bg-red-600 text-white rounded-md px-4 py-2 hover:bg-red-700">
                 Cancel import
               </button>
@@ -267,13 +262,13 @@ export default function ImportReviewView() {
       )}
       {confirmation === 'import' && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
-            <h3 className="text-lg font-semibold mb-2">Confirm import?</h3>
-            <p className="text-sm text-gray-600 mb-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-gray-100">Confirm import?</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
               This will add <strong>{totalEntries}</strong> {totalEntries === 1 ? 'entry' : 'entries'} for <strong>{session.username}</strong>.
             </p>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setConfirmation(null)} className="text-sm text-gray-600 px-4 py-2">Back</button>
+              <button onClick={() => setConfirmation(null)} className="text-sm text-gray-600 dark:text-gray-400 px-4 py-2">Back</button>
               <button onClick={doImport} className="text-sm bg-blue-600 text-white rounded-md px-4 py-2 hover:bg-blue-700">
                 Import
               </button>
@@ -283,15 +278,12 @@ export default function ImportReviewView() {
       )}
 
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between shrink-0">
-        <h1 className="text-xl font-semibold text-gray-900">DrinkLog Admin</h1>
-        <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-gray-700">Log out</button>
-      </header>
+      <AdminHeader onLogout={handleLogout} />
 
       {/* Info strip */}
-      <div className="bg-gray-50 border-b border-gray-200 px-4 sm:px-6 py-2 shrink-0">
-        <p className="text-sm text-gray-500">
-          Importing for <strong className="text-gray-700">{session.username}</strong>
+      <div className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-2 shrink-0">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Importing for <strong className="text-gray-700 dark:text-gray-300">{session.username}</strong>
           {' · '}{session.module}
           {' · '}{totalEntries} {totalEntries === 1 ? 'entry' : 'entries'}
           {' · '}{uniqueNames.length} unique {uniqueNames.length === 1 ? 'drink' : 'drinks'}
@@ -311,24 +303,24 @@ export default function ImportReviewView() {
               m.search === '' || t.name.toLowerCase().includes(m.search.toLowerCase()),
             );
             return (
-              <div key={name} className={`bg-white rounded-lg border border-gray-200 p-4 ${isOpen ? 'relative z-20' : ''}`}>
+              <div key={name} className={`bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4 ${isOpen ? 'relative z-20' : ''}`}>
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <p className="font-medium text-gray-900">{name}</p>
-                    <p className="text-xs text-gray-500">{count} {count === 1 ? 'entry' : 'entries'}</p>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{count} {count === 1 ? 'entry' : 'entries'}</p>
                   </div>
-                  <div className="inline-flex rounded border border-gray-300 overflow-hidden text-xs ml-4 shrink-0">
+                  <div className="inline-flex rounded border border-gray-300 dark:border-gray-600 overflow-hidden text-xs ml-4 shrink-0">
                     <button
                       type="button"
                       onClick={() => { updateMapping(name, { mode: 'existing' }); setOpenDropdown(null); }}
-                      className={`px-3 py-1.5 ${m.mode === 'existing' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                      className={`px-3 py-1.5 ${m.mode === 'existing' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
                     >
                       Existing
                     </button>
                     <button
                       type="button"
                       onClick={() => { updateMapping(name, { mode: 'new' }); setOpenDropdown(null); }}
-                      className={`px-3 py-1.5 border-l border-gray-300 ${m.mode === 'new' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                      className={`px-3 py-1.5 border-l border-gray-300 dark:border-gray-600 ${m.mode === 'new' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
                     >
                       New
                     </button>
@@ -338,22 +330,22 @@ export default function ImportReviewView() {
                 {m.mode === 'existing' ? (
                   <div className="relative">
                     {templates.length === 0 ? (
-                      <p className="text-sm text-gray-400 italic">No existing templates — switch to "New".</p>
+                      <p className="text-sm text-gray-400 dark:text-gray-500 italic">No existing templates — switch to "New".</p>
                     ) : (
                       <>
                         {/* Trigger — stopPropagation so the document listener doesn't immediately close it */}
                         <button
                           type="button"
                           onClick={e => { e.stopPropagation(); setOpenDropdown(isOpen ? null : name); }}
-                          className="w-full text-left border border-gray-300 rounded-md px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50"
+                          className="w-full text-left border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm flex items-center justify-between bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
                         >
                           {selectedTemplate ? (
                             <span className="flex items-baseline gap-2 min-w-0">
-                              <span className="text-gray-900 truncate">{selectedTemplate.name}</span>
-                              <span className="text-xs text-gray-400 shrink-0">{templateInfo(selectedTemplate, session.module)}</span>
+                              <span className="text-gray-900 dark:text-gray-100 truncate">{selectedTemplate.name}</span>
+                              <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">{templateInfo(selectedTemplate, session.module)}</span>
                             </span>
                           ) : (
-                            <span className="text-gray-400">None selected</span>
+                            <span className="text-gray-400 dark:text-gray-500">None selected</span>
                           )}
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400 shrink-0 ml-2" viewBox="0 0 20 20" fill="currentColor">
                             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -362,31 +354,31 @@ export default function ImportReviewView() {
                         {/* Overlay dropdown — stopPropagation so clicks inside don't close it */}
                         {isOpen && (
                           <div
-                            className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-10"
+                            className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-10"
                             onClick={e => e.stopPropagation()}
                           >
-                            <div className="p-2 border-b border-gray-100">
+                            <div className="p-2 border-b border-gray-100 dark:border-gray-700">
                               <input
                                 type="text"
                                 placeholder="Search templates…"
                                 value={m.search}
                                 onChange={e => updateMapping(name, { search: e.target.value })}
                                 autoFocus
-                                className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                               />
                             </div>
-                            <div className="max-h-48 overflow-y-auto divide-y divide-gray-100">
+                            <div className="max-h-48 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
                               {filtered.length === 0 ? (
-                                <p className="text-sm text-gray-400 px-3 py-2">No matches</p>
+                                <p className="text-sm text-gray-400 dark:text-gray-500 px-3 py-2">No matches</p>
                               ) : filtered.map(t => (
                                 <button
                                   key={t.id}
                                   type="button"
                                   onClick={() => { updateMapping(name, { templateId: t.id, search: '' }); setOpenDropdown(null); }}
-                                  className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50 ${m.templateId === t.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'}`}
+                                  className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700 ${m.templateId === t.id ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium' : 'text-gray-700 dark:text-gray-300'}`}
                                 >
                                   <span className="truncate">{t.name}</span>
-                                  <span className="text-xs text-gray-400 shrink-0 ml-3">{templateInfo(t, session.module)}</span>
+                                  <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 ml-3">{templateInfo(t, session.module)}</span>
                                 </button>
                               ))}
                             </div>
@@ -403,7 +395,7 @@ export default function ImportReviewView() {
                     {session.module === 'alcohol' ? (
                       <div className="flex gap-3">
                         <div className="flex-1">
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Volume (ml)</label>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Volume (ml)</label>
                           <input
                             type="number"
                             min="0"
@@ -412,12 +404,12 @@ export default function ImportReviewView() {
                             onChange={e => validateField(name, 'ml', e.target.value)}
                             onBlur={() => runValidation(name)}
                             placeholder="e.g. 330"
-                            className={`w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${m.mlError ? 'border-red-400' : 'border-gray-300'}`}
+                            className={`w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${m.mlError ? 'border-red-400' : 'border-gray-300 dark:border-gray-600'}`}
                           />
                           {m.mlError && <p className="text-xs text-red-500 mt-1">{m.mlError}</p>}
                         </div>
                         <div className="flex-1">
-                          <label className="block text-xs font-medium text-gray-600 mb-1">ABV (%)</label>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">ABV (%)</label>
                           <input
                             type="number"
                             min="0"
@@ -427,14 +419,14 @@ export default function ImportReviewView() {
                             onChange={e => validateField(name, 'abv', e.target.value)}
                             onBlur={() => runValidation(name)}
                             placeholder="e.g. 5"
-                            className={`w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${m.abvError ? 'border-red-400' : 'border-gray-300'}`}
+                            className={`w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${m.abvError ? 'border-red-400' : 'border-gray-300 dark:border-gray-600'}`}
                           />
                           {m.abvError && <p className="text-xs text-red-500 mt-1">{m.abvError}</p>}
                         </div>
                       </div>
                     ) : (
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Caffeine (mg)</label>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Caffeine (mg)</label>
                         <input
                           type="number"
                           min="0"
@@ -443,7 +435,7 @@ export default function ImportReviewView() {
                           onChange={e => validateField(name, 'mg', e.target.value)}
                           onBlur={() => runValidation(name)}
                           placeholder="e.g. 80"
-                          className={`w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${m.mgError ? 'border-red-400' : 'border-gray-300'}`}
+                          className={`w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${m.mgError ? 'border-red-400' : 'border-gray-300 dark:border-gray-600'}`}
                         />
                         {m.mgError && <p className="text-xs text-red-500 mt-1">{m.mgError}</p>}
                       </div>
@@ -457,12 +449,12 @@ export default function ImportReviewView() {
       </main>
 
       {/* Footer */}
-      <div className="shrink-0 bg-white border-t border-gray-200 px-4 sm:px-6 pt-4 pb-safe">
+      <div className="shrink-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-4 sm:px-6 pt-4 pb-safe">
         <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
           {submitError ? (
-            <p className="text-sm text-red-600 flex-1">{submitError}</p>
+            <p className="text-sm text-red-600 dark:text-red-400 flex-1">{submitError}</p>
           ) : (
-            <p className="text-sm text-gray-500 flex-1">
+            <p className="text-sm text-gray-500 dark:text-gray-400 flex-1">
               {totalEntries} {totalEntries === 1 ? 'entry' : 'entries'} ready to import
             </p>
           )}
@@ -470,7 +462,7 @@ export default function ImportReviewView() {
             <button
               type="button"
               onClick={() => setConfirmation('cancel')}
-              className="text-sm text-gray-600 border border-gray-300 rounded-md px-4 py-2 hover:bg-gray-50"
+              className="text-sm text-gray-600 dark:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-md px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               Cancel
             </button>
