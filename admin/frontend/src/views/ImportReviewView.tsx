@@ -49,16 +49,29 @@ function initMapping(name: string, templates: TemplateOption[]): MappingState {
   };
 }
 
+function isNewMappingComplete(m: MappingState, module: Module): boolean {
+  if (m.mode !== 'new') return false;
+  if (!m.templateName.trim() || m.templateNameError) return false;
+  if (module === 'alcohol') {
+    if (!m.ml || parseFloat(m.ml) <= 0 || m.mlError) return false;
+    if (m.abv === '' || parseFloat(m.abv) < 0 || parseFloat(m.abv) > 100 || m.abvError) return false;
+  } else {
+    if (!m.mg || parseFloat(m.mg) <= 0 || m.mgError) return false;
+  }
+  return true;
+}
+
 function findLinkTarget(
   forName: string,
   linkedTemplateName: string,
   mappings: Record<string, MappingState>,
+  module: Module,
 ): string | null {
   const target = linkedTemplateName.trim().toLowerCase();
   if (!target) return null;
   for (const [drinkName, m] of Object.entries(mappings)) {
     if (drinkName === forName) continue;
-    if (m.mode !== 'new') continue;
+    if (!isNewMappingComplete(m, module)) continue;
     if (m.templateName.trim().toLowerCase() === target) return drinkName;
   }
   return null;
@@ -75,7 +88,7 @@ function validateMappings(
     if (m.mode === 'existing') {
       if (!m.templateId) return false;
     } else if (m.mode === 'link') {
-      if (!findLinkTarget(name, m.linkedTemplateName, mappings)) return false;
+      if (!findLinkTarget(name, m.linkedTemplateName, mappings, module)) return false;
     } else {
       if (!m.templateName.trim() || m.templateNameError) return false;
       if (module === 'alcohol') {
@@ -226,7 +239,7 @@ export default function ImportReviewView() {
     for (const name of uniqueNames) {
       const m = mappings[name];
       if (m.mode !== 'link') continue;
-      const target = findLinkTarget(name, m.linkedTemplateName, mappings);
+      const target = findLinkTarget(name, m.linkedTemplateName, mappings, session.module);
       if (!target) return; // validation should have caught this
       linkTargets[name] = target;
     }
@@ -611,19 +624,19 @@ export default function ImportReviewView() {
 
                 {m.mode === 'link' && (() => {
                   const linkOptions = Object.entries(mappings)
-                    .filter(([n, mm]) => n !== name && mm.mode === 'new' && mm.templateName.trim() !== '' && !mm.templateNameError)
+                    .filter(([n, mm]) => n !== name && isNewMappingComplete(mm, session.module))
                     .map(([, mm]) => mm)
                     .filter((mm, i, arr) =>
                       arr.findIndex(x => x.templateName.trim().toLowerCase() === mm.templateName.trim().toLowerCase()) === i,
                     );
-                  const targetDrinkName = findLinkTarget(name, m.linkedTemplateName, mappings);
+                  const targetDrinkName = findLinkTarget(name, m.linkedTemplateName, mappings, session.module);
                   const target = targetDrinkName ? mappings[targetDrinkName] : null;
                   return (
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Link to new template</label>
                       {linkOptions.length === 0 ? (
                         <p className="text-sm text-gray-400 dark:text-gray-500 italic">
-                          No new templates available — create one in "New" mode first.
+                          No completed new templates yet — fill in a "New" mapping first.
                         </p>
                       ) : (
                         <>
