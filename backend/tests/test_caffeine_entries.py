@@ -137,11 +137,13 @@ def test_caffeine_summary_empty(client):
     assert r.json() == []
 
 
-def test_caffeine_summary_excludes_unconfirmed(client):
-    """Unconfirmed entries are not included in the summary."""
+def test_caffeine_summary_includes_unconfirmed(client):
+    """Unconfirmed entries are included in the summary (used to drive the Data tab chart)."""
     client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _now()})
     r = client.get("/api/caffeine-entries/summary")
-    assert r.json() == []
+    data = r.json()
+    assert len(data) == 1
+    assert abs(data[0]["total"] - 1.0) < 0.0001
 
 
 def test_caffeine_summary_daily_total_calculation(client):

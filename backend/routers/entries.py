@@ -135,7 +135,7 @@ def entries_summary(
                 * func.coalesce(DrinkEntry.fraction, 1.0)
             ).label("total"),
         )
-        .filter(DrinkEntry.user_id == current_user.id, DrinkEntry.is_marked == True)
+        .filter(DrinkEntry.user_id == current_user.id)
     )
     if period != "all":
         days = {"week": 7, "month": 30, "year": 365}[period]

@@ -134,7 +134,7 @@ def caffeine_entries_summary(
                 * func.coalesce(CaffeineEntry.fraction, 1.0)
             ).label("total"),
         )
-        .filter(CaffeineEntry.user_id == current_user.id, CaffeineEntry.is_marked == True)
+        .filter(CaffeineEntry.user_id == current_user.id)
     )
     if period != "all":
         days = {"week": 7, "month": 30, "year": 365}[period]

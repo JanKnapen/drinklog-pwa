@@ -46,15 +46,13 @@ export default function DataTab() {
         return toLocalDateKey(d.toISOString())
       })()
 
-  const yesterday = new Date()
-  yesterday.setDate(yesterday.getDate() - 1)
-  const yesterdayKey = toLocalDateKey(yesterday.toISOString())
+  const todayKey = toLocalDateKey(new Date().toISOString())
 
   const chartData = (() => {
-    if (!rangeStartKey || rangeStartKey > yesterdayKey) return []
+    if (!rangeStartKey || rangeStartKey > todayKey) return []
     const result: { date: string; units: number; label: string }[] = []
     const cur = new Date(rangeStartKey + 'T12:00:00')
-    const end = new Date(yesterdayKey + 'T12:00:00')
+    const end = new Date(todayKey + 'T12:00:00')
     while (cur <= end) {
       const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`
       result.push({
@@ -117,7 +115,7 @@ export default function DataTab() {
         )}
 
         <div className={`grid grid-cols-2 gap-3 ${summaryQuery.isFetching ? 'opacity-50 pointer-events-none' : ''}`}>
-          <SummaryCard title="Days Tracked" value={String(daysTracked)} />
+          <SummaryCard title="Days Logged" value={String(daysTracked)} />
           <SummaryCard title="Total Units" value={totalUnits.toFixed(1)} />
           <SummaryCard title="Avg / Day" value={avgPerDay.toFixed(1)} />
           <SummaryCard

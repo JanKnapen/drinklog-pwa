@@ -235,12 +235,15 @@ def test_summary_empty(client):
     assert r.json() == []
 
 
-def test_summary_excludes_unconfirmed(client):
-    """Unconfirmed entries are not included in the summary."""
+def test_summary_includes_unconfirmed(client):
+    """Unconfirmed entries are included in the summary (used to drive the Data tab chart)."""
     client.post("/api/alcohol-entries", json={"ml": 330, "abv": 5.0, "timestamp": _now()})
     r = client.get("/api/alcohol-entries/summary")
     assert r.status_code == 200
-    assert r.json() == []
+    data = r.json()
+    assert len(data) == 1
+    expected = 330 * 5.0 / 100 / 15
+    assert abs(data[0]["total"] - expected) < 0.0001
 
 
 def test_summary_daily_total_calculation(client):
