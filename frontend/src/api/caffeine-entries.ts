@@ -25,12 +25,23 @@ export function useCaffeineEntries(params?: { limit?: number; offset?: number; c
   })
 }
 
-export function useCaffeineSummary(period: 'week' | 'month' | 'year' | 'all') {
+export function useCaffeineSummary(params: { start: string; end: string } | null) {
   return useQuery({
-    queryKey: [...CAFFEINE_ENTRIES_SUMMARY_KEY, period] as const,
-    queryFn: () => apiFetch<EntrySummaryItem[]>(`/api/caffeine-entries/summary?period=${period}`),
-    staleTime: period === 'year' || period === 'all' ? Infinity : undefined,
+    queryKey: [...CAFFEINE_ENTRIES_SUMMARY_KEY, params?.start ?? null, params?.end ?? null] as const,
+    queryFn: () => apiFetch<EntrySummaryItem[]>(
+      `/api/caffeine-entries/summary?start=${params!.start}&end=${params!.end}`
+    ),
+    enabled: params !== null,
     placeholderData: keepPreviousData,
+  })
+}
+
+export function useCaffeineRange() {
+  return useQuery({
+    queryKey: [...CAFFEINE_ENTRIES_SUMMARY_KEY, 'range'] as const,
+    queryFn: () => apiFetch<{ first_date: string | null; last_date: string | null }>(
+      '/api/caffeine-entries/summary/range'
+    ),
   })
 }
 

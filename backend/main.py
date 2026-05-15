@@ -197,6 +197,12 @@ def _migrate():
                 with engine.connect() as conn:
                     conn.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table}({column})"))
                     conn.commit()
+        # Composite (user_id, timestamp) supports date-range summary queries efficiently
+        composite_name = f"ix_{table}_user_id_timestamp"
+        if composite_name not in existing_indexes:
+            with engine.connect() as conn:
+                conn.execute(text(f"CREATE INDEX IF NOT EXISTS {composite_name} ON {table}(user_id, timestamp)"))
+                conn.commit()
 
     # Auth migration
     _ensure_seed_user()  # must run before backfill

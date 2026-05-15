@@ -90,6 +90,11 @@ class EntrySummaryItem(BaseModel):
     total: float
 
 
+class SummaryRange(BaseModel):
+    first_date: str | None = None
+    last_date: str | None = None
+
+
 class ConfirmAllRequest(BaseModel):
     cutoff: datetime
 

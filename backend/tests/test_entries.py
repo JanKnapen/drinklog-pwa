@@ -235,12 +235,15 @@ def test_summary_empty(client):
     assert r.json() == []
 
 
-def test_summary_excludes_unconfirmed(client):
-    """Unconfirmed entries are not included in the summary."""
+def test_summary_includes_unconfirmed(client):
+    """Unconfirmed entries are included in the summary (used to drive the Data tab chart)."""
     client.post("/api/alcohol-entries", json={"ml": 330, "abv": 5.0, "timestamp": _now()})
     r = client.get("/api/alcohol-entries/summary")
     assert r.status_code == 200
-    assert r.json() == []
+    data = r.json()
+    assert len(data) == 1
+    expected = 330 * 5.0 / 100 / 15
+    assert abs(data[0]["total"] - expected) < 0.0001
 
 
 def test_summary_daily_total_calculation(client):
@@ -391,3 +394,42 @@ def test_fraction_zero_rejected(client):
 def test_custom_name_too_long_rejected(client):
     r = client.post("/api/alcohol-entries", json={"custom_name": "A" * 201, "ml": 330, "abv": 5.0, "timestamp": _now()})
     assert r.status_code == 422
+
+
+# --- Summary date-range tests ---
+
+def test_summary_start_end_filters_inclusive(client):
+    """start/end query params filter inclusively on local UTC date."""
+    client.post("/api/alcohol-entries", json={"ml": 330, "abv": 5.0, "timestamp": _ts(days_ago=10)})
+    client.post("/api/alcohol-entries", json={"ml": 330, "abv": 5.0, "timestamp": _ts(days_ago=5)})
+    client.post("/api/alcohol-entries", json={"ml": 330, "abv": 5.0, "timestamp": _ts(days_ago=1)})
+    _confirm_all(client)
+    today = datetime.now(timezone.utc).date()
+    start = (today - timedelta(days=7)).isoformat()
+    end = (today - timedelta(days=2)).isoformat()
+    data = client.get(f"/api/alcohol-entries/summary?start={start}&end={end}").json()
+    assert len(data) == 1  # only the 5-days-ago entry
+
+
+def test_summary_start_after_end_rejected(client):
+    r = client.get("/api/alcohol-entries/summary?start=2025-01-10&end=2025-01-01")
+    assert r.status_code == 400
+
+
+def test_summary_invalid_date_rejected(client):
+    r = client.get("/api/alcohol-entries/summary?start=not-a-date")
+    assert r.status_code == 400
+
+
+def test_summary_range_empty(client):
+    r = client.get("/api/alcohol-entries/summary/range")
+    assert r.status_code == 200
+    assert r.json() == {"first_date": None, "last_date": None}
+
+
+def test_summary_range_returns_min_max(client):
+    client.post("/api/alcohol-entries", json={"ml": 330, "abv": 5.0, "timestamp": _ts(days_ago=10)})
+    client.post("/api/alcohol-entries", json={"ml": 330, "abv": 5.0, "timestamp": _ts(days_ago=2)})
+    r = client.get("/api/alcohol-entries/summary/range").json()
+    assert r["first_date"] is not None and r["last_date"] is not None
+    assert r["first_date"] <= r["last_date"]
