@@ -17,7 +17,7 @@ function templateInfo(t: TemplateOption, module: Module): string {
 const IMPORT_SESSION_KEY = 'drinklog-import-session';
 
 interface MappingState {
-  mode: 'existing' | 'new';
+  mode: 'existing' | 'new' | 'link';
   templateId: string;
   templateName: string;
   templateNameError: string;
@@ -28,6 +28,7 @@ interface MappingState {
   mlError: string;
   abvError: string;
   mgError: string;
+  linkedTemplateName: string;
 }
 
 function initMapping(name: string, templates: TemplateOption[]): MappingState {
@@ -44,7 +45,36 @@ function initMapping(name: string, templates: TemplateOption[]): MappingState {
     mlError: '',
     abvError: '',
     mgError: '',
+    linkedTemplateName: '',
   };
+}
+
+function isNewMappingComplete(m: MappingState, module: Module): boolean {
+  if (m.mode !== 'new') return false;
+  if (!m.templateName.trim() || m.templateNameError) return false;
+  if (module === 'alcohol') {
+    if (!m.ml || parseFloat(m.ml) <= 0 || m.mlError) return false;
+    if (m.abv === '' || parseFloat(m.abv) < 0 || parseFloat(m.abv) > 100 || m.abvError) return false;
+  } else {
+    if (!m.mg || parseFloat(m.mg) <= 0 || m.mgError) return false;
+  }
+  return true;
+}
+
+function findLinkTarget(
+  forName: string,
+  linkedTemplateName: string,
+  mappings: Record<string, MappingState>,
+  module: Module,
+): string | null {
+  const target = linkedTemplateName.trim().toLowerCase();
+  if (!target) return null;
+  for (const [drinkName, m] of Object.entries(mappings)) {
+    if (drinkName === forName) continue;
+    if (!isNewMappingComplete(m, module)) continue;
+    if (m.templateName.trim().toLowerCase() === target) return drinkName;
+  }
+  return null;
 }
 
 function validateMappings(
@@ -57,6 +87,8 @@ function validateMappings(
     if (!m) return false;
     if (m.mode === 'existing') {
       if (!m.templateId) return false;
+    } else if (m.mode === 'link') {
+      if (!findLinkTarget(name, m.linkedTemplateName, mappings, module)) return false;
     } else {
       if (!m.templateName.trim() || m.templateNameError) return false;
       if (module === 'alcohol') {
@@ -201,16 +233,32 @@ export default function ImportReviewView() {
     for (const name of uniqueNames) runValidation(name);
     if (!validateMappings(uniqueNames, mappings, session.module)) return;
 
-    const builtMappings: DrinkMapping[] = uniqueNames.map(name => {
+    // Resolve link mappings to their target drink_name so we can rewrite entries
+    // and omit the link mapping itself (the backend only needs the target's mapping).
+    const linkTargets: Record<string, string> = {};
+    for (const name of uniqueNames) {
       const m = mappings[name];
+      if (m.mode !== 'link') continue;
+      const target = findLinkTarget(name, m.linkedTemplateName, mappings, session.module);
+      if (!target) return; // validation should have caught this
+      linkTargets[name] = target;
+    }
+
+    const builtMappings: DrinkMapping[] = uniqueNames.flatMap((name): DrinkMapping[] => {
+      const m = mappings[name];
+      if (m.mode === 'link') return [];
       if (m.mode === 'existing') {
-        return { drink_name: name, mode: 'existing', template_id: m.templateId };
+        return [{ drink_name: name, mode: 'existing', template_id: m.templateId }];
       }
       if (session.module === 'alcohol') {
-        return { drink_name: name, mode: 'new', template_name: m.templateName.trim(), ml: parseFloat(m.ml), abv: parseFloat(m.abv) };
+        return [{ drink_name: name, mode: 'new', template_name: m.templateName.trim(), ml: parseFloat(m.ml), abv: parseFloat(m.abv) }];
       }
-      return { drink_name: name, mode: 'new', template_name: m.templateName.trim(), mg: parseFloat(m.mg) };
+      return [{ drink_name: name, mode: 'new', template_name: m.templateName.trim(), mg: parseFloat(m.mg) }];
     });
+
+    const remappedEntries = session.rawEntries.map(e =>
+      e.name && linkTargets[e.name] ? { ...e, name: linkTargets[e.name] } : e,
+    );
 
     setConfirmation(null);
     setSubmitting(true);
@@ -219,7 +267,7 @@ export default function ImportReviewView() {
       const result = await postImport(session.userId, {
         module: session.module,
         mappings: builtMappings,
-        entries: session.rawEntries,
+        entries: remappedEntries,
       });
       setInserted(result.inserted);
     } catch (err) {
@@ -434,10 +482,17 @@ export default function ImportReviewView() {
                     >
                       New
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => { updateMapping(name, { mode: 'link' }); setOpenDropdown(null); }}
+                      className={`px-3 py-1.5 border-l border-gray-300 dark:border-gray-600 ${m.mode === 'link' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                    >
+                      Link
+                    </button>
                   </div>
                 </div>
 
-                {m.mode === 'existing' ? (
+                {m.mode === 'existing' && (
                   <div className="relative">
                     {templates.length === 0 ? (
                       <p className="text-sm text-gray-400 dark:text-gray-500 italic">No existing templates — switch to "New".</p>
@@ -500,7 +555,9 @@ export default function ImportReviewView() {
                       </>
                     )}
                   </div>
-                ) : (
+                )}
+
+                {m.mode === 'new' && (
                   <div className="space-y-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Template name</label>
@@ -564,6 +621,52 @@ export default function ImportReviewView() {
                     )}
                   </div>
                 )}
+
+                {m.mode === 'link' && (() => {
+                  const linkOptions = Object.entries(mappings)
+                    .filter(([n, mm]) => n !== name && isNewMappingComplete(mm, session.module))
+                    .map(([, mm]) => mm)
+                    .filter((mm, i, arr) =>
+                      arr.findIndex(x => x.templateName.trim().toLowerCase() === mm.templateName.trim().toLowerCase()) === i,
+                    );
+                  const targetDrinkName = findLinkTarget(name, m.linkedTemplateName, mappings, session.module);
+                  const target = targetDrinkName ? mappings[targetDrinkName] : null;
+                  return (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Link to new template</label>
+                      {linkOptions.length === 0 ? (
+                        <p className="text-sm text-gray-400 dark:text-gray-500 italic">
+                          No completed new templates yet — fill in a "New" mapping first.
+                        </p>
+                      ) : (
+                        <>
+                          <select
+                            value={m.linkedTemplateName}
+                            onChange={e => updateMapping(name, { linkedTemplateName: e.target.value })}
+                            className={`w-full border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 ${m.linkedTemplateName && !target ? 'border-red-400' : 'border-gray-300 dark:border-gray-600'}`}
+                          >
+                            <option value="">Select a template…</option>
+                            {linkOptions.map(opt => {
+                              const tn = opt.templateName.trim();
+                              const info = session.module === 'alcohol'
+                                ? `${opt.ml || '?'}ml · ${opt.abv || '?'}%`
+                                : `${opt.mg || '?'}mg`;
+                              return (
+                                <option key={tn} value={tn}>{tn} — {info}</option>
+                              );
+                            })}
+                          </select>
+                          {m.linkedTemplateName && !target && (
+                            <p className="text-xs text-red-500 mt-1">Selected template no longer exists. Pick another.</p>
+                          )}
+                          {!m.linkedTemplateName && (
+                            <p className="text-xs text-red-500 mt-1">Select a template to link to.</p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
