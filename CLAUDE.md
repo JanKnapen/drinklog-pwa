@@ -112,6 +112,18 @@ Query keys: `['entries']`, `['templates']`, `['caffeine-entries']`, `['caffeine-
 - Modals are rendered inside the tab component that owns them (not portaled), using `Modal` from `components/Modal.tsx`.
 - Toast notifications bubble up via `onToast` prop from `HomeTab` → `App` → `BottomNav` → `Toast`.
 
+### Data tab
+
+The `/summary` endpoints (`/api/alcohol-entries/summary`, `/api/caffeine-entries/summary`) accept either `start`+`end` (ISO `YYYY-MM-DD`, inclusive) or the legacy `period` shortcut. Explicit `start`/`end` win when both are supplied. Window length is silently clamped to 5 years (see `MAX_WINDOW_DAYS` in `backend/routers/summary_utils.py`). Summary includes both confirmed and unconfirmed entries — the previous `is_marked == True` filter was removed so the chart reflects everything the user has logged.
+
+`/summary/range` returns `{ first_date, last_date }` (both nullable when no data exists) — used by the frontend when period=All to bound the chart to the user's actual data span.
+
+**Trailing moving-average padding:** When the user selects a 7- or 14-day average, the DataTab fetches `(avgWindow - 1)` days *before* `windowStart` so the MA value at the leftmost visible day has a full lookback window. The padding days are computed into the MA series but sliced out before rendering. Stats cards always use raw daily totals over the visible window, not the smoothed series.
+
+**Window navigation:** `anchorEnd` (a local-time `Date`) is the right edge of the visible window. `period` defines width; `stepUnit` (`day`/`week`/`month`/`year`) defines shift size and is independent of period. Forward shifts clamp to today. Switching period resets `anchorEnd` to today. Navigation strip is hidden when period=All.
+
+Composite index `ix_{drink,caffeine}_entries_user_id_timestamp` is created by `_migrate()` to keep date-range queries efficient as data grows.
+
 ### Home tab quick-log button logic
 
 The quick-log section shows exactly 5 buttons total, filled in this order:

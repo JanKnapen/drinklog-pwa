@@ -266,3 +266,28 @@ def test_fraction_above_one_rejected(client):
 def test_custom_name_too_long_rejected(client):
     r = client.post("/api/caffeine-entries", json={"custom_name": "A" * 201, "mg": 80, "timestamp": _now()})
     assert r.status_code == 422
+
+
+def test_caffeine_summary_start_end_filters_inclusive(client):
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=10)})
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=5)})
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=1)})
+    _confirm_all(client)
+    today = datetime.now(timezone.utc).date()
+    start = (today - timedelta(days=7)).isoformat()
+    end = (today - timedelta(days=2)).isoformat()
+    data = client.get(f"/api/caffeine-entries/summary?start={start}&end={end}").json()
+    assert len(data) == 1
+
+
+def test_caffeine_summary_range_empty(client):
+    r = client.get("/api/caffeine-entries/summary/range")
+    assert r.json() == {"first_date": None, "last_date": None}
+
+
+def test_caffeine_summary_range_returns_min_max(client):
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=10)})
+    client.post("/api/caffeine-entries", json={"mg": 80, "timestamp": _ts(days_ago=2)})
+    r = client.get("/api/caffeine-entries/summary/range").json()
+    assert r["first_date"] is not None and r["last_date"] is not None
+    assert r["first_date"] <= r["last_date"]

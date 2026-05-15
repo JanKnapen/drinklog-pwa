@@ -25,12 +25,23 @@ export function useEntries(params?: { limit?: number; offset?: number; confirmed
   })
 }
 
-export function useEntrySummary(period: 'week' | 'month' | 'year' | 'all') {
+export function useEntrySummary(params: { start: string; end: string } | null) {
   return useQuery({
-    queryKey: [...ENTRIES_SUMMARY_KEY, period] as const,
-    queryFn: () => apiFetch<EntrySummaryItem[]>(`/api/alcohol-entries/summary?period=${period}`),
-    staleTime: period === 'year' || period === 'all' ? Infinity : undefined,
+    queryKey: [...ENTRIES_SUMMARY_KEY, params?.start ?? null, params?.end ?? null] as const,
+    queryFn: () => apiFetch<EntrySummaryItem[]>(
+      `/api/alcohol-entries/summary?start=${params!.start}&end=${params!.end}`
+    ),
+    enabled: params !== null,
     placeholderData: keepPreviousData,
+  })
+}
+
+export function useEntryRange() {
+  return useQuery({
+    queryKey: [...ENTRIES_SUMMARY_KEY, 'range'] as const,
+    queryFn: () => apiFetch<{ first_date: string | null; last_date: string | null }>(
+      '/api/alcohol-entries/summary/range'
+    ),
   })
 }
 

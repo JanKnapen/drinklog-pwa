@@ -1,4 +1,3 @@
-from datetime import datetime, timezone, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,9 +8,10 @@ from config import ALCOHOL_UNIT_DIVISOR
 from database import get_db
 from models import DrinkTemplate, DrinkEntry, User
 from routers.deps import get_current_user
+from routers.summary_utils import resolve_window
 from schemas import (
     DrinkEntryCreate, DrinkEntryUpdate, DrinkEntryResponse, ConfirmAllRequest,
-    EntrySummaryItem,
+    EntrySummaryItem, SummaryRange,
 )
 
 router = APIRouter(tags=["alcohol-entries"])
@@ -121,12 +121,31 @@ def create_entry(
     return entry
 
 
-@router.get("/alcohol-entries/summary", response_model=list[EntrySummaryItem])
-def entries_summary(
-    period: Literal["week", "month", "year", "all"] = Query(default="all"),
+@router.get("/alcohol-entries/summary/range", response_model=SummaryRange)
+def entries_summary_range(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    row = (
+        db.query(
+            func.min(func.date(DrinkEntry.timestamp)),
+            func.max(func.date(DrinkEntry.timestamp)),
+        )
+        .filter(DrinkEntry.user_id == current_user.id)
+        .one()
+    )
+    return SummaryRange(first_date=row[0], last_date=row[1])
+
+
+@router.get("/alcohol-entries/summary", response_model=list[EntrySummaryItem])
+def entries_summary(
+    period: Literal["week", "month", "year", "all"] | None = Query(default=None),
+    start: str | None = Query(default=None, description="Inclusive ISO date YYYY-MM-DD"),
+    end: str | None = Query(default=None, description="Inclusive ISO date YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    start_dt, end_dt = resolve_window(period, start, end)
     q = (
         db.query(
             func.date(DrinkEntry.timestamp).label("date"),
@@ -137,11 +156,10 @@ def entries_summary(
         )
         .filter(DrinkEntry.user_id == current_user.id)
     )
-    if period != "all":
-        days = {"week": 7, "month": 30, "year": 365}[period]
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        # timestamps stored as naive UTC
-        q = q.filter(DrinkEntry.timestamp >= cutoff.replace(tzinfo=None))
+    if start_dt is not None:
+        q = q.filter(DrinkEntry.timestamp >= start_dt)
+    if end_dt is not None:
+        q = q.filter(DrinkEntry.timestamp <= end_dt)
     rows = (
         q.group_by(func.date(DrinkEntry.timestamp))
         .order_by(func.date(DrinkEntry.timestamp).asc())
