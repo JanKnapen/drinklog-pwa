@@ -55,7 +55,7 @@ export default function ManageTab() {
           <EmptyState message={emptyMsg} />
         ) : (
           <div className="flex flex-col gap-2">
-            {[...templates].sort((a, b) => b.usage_count - a.usage_count).map((t) => (
+            {[...templates].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })).map((t) => (
               <div key={t.id} className="flex items-center gap-2 bg-neutral-100 dark:bg-neutral-800 rounded-xl px-3 py-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">{t.name}</p>

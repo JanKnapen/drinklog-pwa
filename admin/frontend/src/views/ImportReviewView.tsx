@@ -457,9 +457,9 @@ export default function ImportReviewView() {
             const isOpen = openDropdown === name;
             const count = entryCountForName(name, session.rawEntries);
             const selectedTemplate = templates.find(t => t.id === m.templateId);
-            const filtered = templates.filter(t =>
-              m.search === '' || t.name.toLowerCase().includes(m.search.toLowerCase()),
-            );
+            const filtered = templates
+              .filter(t => m.search === '' || t.name.toLowerCase().includes(m.search.toLowerCase()))
+              .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
             return (
               <div key={name} className={`bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4 ${isOpen ? 'relative z-20' : ''}`}>
                 <div className="flex items-start justify-between mb-3">
