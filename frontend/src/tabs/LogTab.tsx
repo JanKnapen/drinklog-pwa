@@ -15,6 +15,7 @@ import {
   useUpdateCaffeineEntry,
 } from '../api/caffeine-entries'
 import { apiFetch } from '../api/client'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
 
 function mapEntry(e: DrinkEntry | CaffeineEntry, activeModule: 'alcohol' | 'caffeine'): TrackerEntry {
   if (activeModule === 'alcohol') {
@@ -58,6 +59,7 @@ export default function LogTab() {
   const deleteCaffeine = useDeleteCaffeineEntry()
   const confirmAllAlcohol = useConfirmAll()
   const confirmAllCaffeine = useConfirmAllCaffeineEntries()
+  const isOnline = useOnlineStatus()
 
   const [filter, setFilter] = useState<'unconfirmed' | 'confirmed'>('unconfirmed')
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set([todayKey()]))
@@ -213,11 +215,12 @@ export default function LogTab() {
         {filter === 'unconfirmed' && (
           <button
             onClick={() => handleConfirmAll(midnight)}
-            disabled={!hasEligibleToConfirm}
+            disabled={!hasEligibleToConfirm || !isOnline}
+            title={!isOnline ? 'Confirm All requires an internet connection' : undefined}
             className="flex items-center justify-center gap-2 bg-blue-500 disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white disabled:text-neutral-400 font-semibold text-sm py-2.5 rounded-full transition-colors"
           >
             <CheckCircleIcon className="w-5 h-5" />
-            Confirm All
+            {isOnline ? 'Confirm All' : 'Confirm All (offline)'}
           </button>
         )}
         <div className="flex rounded-xl border border-neutral-200 dark:border-neutral-700">

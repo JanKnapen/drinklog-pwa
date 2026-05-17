@@ -1,6 +1,6 @@
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { apiFetch } from './client'
-import type { CaffeineEntry, EntrySummaryItem } from '../types'
+import { useQuery, useMutation, useQueryClient, keepPreviousData, type QueryKey } from '@tanstack/react-query'
+import { apiFetch, OfflineQueuedError } from './client'
+import type { CaffeineEntry, CaffeineTemplate, EntrySummaryItem } from '../types'
 import { CAFFEINE_TEMPLATES_KEY } from './caffeine-templates'
 
 export const CAFFEINE_ENTRIES_KEY = ['caffeine-entries'] as const
@@ -45,16 +45,61 @@ export function useCaffeineRange() {
   })
 }
 
+type CreateCaffeineEntryPayload = {
+  template_id?: string
+  custom_name?: string
+  mg: number
+  timestamp: string
+  fraction?: number
+}
+
+interface OptimisticContext {
+  snapshots: Array<[QueryKey, CaffeineEntry[] | undefined]>
+}
+
 export function useCreateCaffeineEntry() {
   const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: {
-      template_id?: string
-      custom_name?: string
-      mg: number
-      timestamp: string
-      fraction?: number
-    }) => apiFetch<CaffeineEntry>('/api/caffeine-entries', { method: 'POST', body: JSON.stringify(data) }),
+  return useMutation<CaffeineEntry, Error, CreateCaffeineEntryPayload, OptimisticContext>({
+    mutationFn: (data) =>
+      apiFetch<CaffeineEntry>('/api/caffeine-entries', { method: 'POST', body: JSON.stringify(data) }),
+    onMutate: async (data) => {
+      await qc.cancelQueries({ queryKey: CAFFEINE_ENTRIES_KEY })
+      const fraction = data.fraction ?? 1
+      const template = data.template_id
+        ? (qc.getQueryData<CaffeineTemplate[]>(CAFFEINE_TEMPLATES_KEY) ?? []).find(t => t.id === data.template_id) ?? null
+        : null
+      const optimistic: CaffeineEntry = {
+        id: `optimistic-${crypto.randomUUID()}`,
+        template_id: data.template_id ?? null,
+        template,
+        custom_name: data.custom_name ?? null,
+        mg: data.mg,
+        timestamp: data.timestamp,
+        is_marked: false,
+        caffeine_units: (data.mg / 80) * fraction,
+        fraction: data.fraction ?? null,
+      }
+      const snapshots: Array<[QueryKey, CaffeineEntry[] | undefined]> = []
+      // Predicate filters out summary queries (which share the 'caffeine-entries' prefix
+      // but have 'summary' as the second key element and a different value shape).
+      const matches = qc.getQueriesData<CaffeineEntry[]>({
+        predicate: (q) => {
+          const k = q.queryKey
+          return Array.isArray(k) && k[0] === 'caffeine-entries' && typeof k[1] === 'object' && k[1] !== null
+        },
+      })
+      for (const [key, prev] of matches) {
+        const params = (key as readonly unknown[])[1] as { confirmedOnly?: boolean }
+        if (params.confirmedOnly) continue
+        snapshots.push([key, prev])
+        if (Array.isArray(prev)) qc.setQueryData(key, [optimistic, ...prev])
+      }
+      return { snapshots }
+    },
+    onError: (err, _vars, ctx) => {
+      if (err instanceof OfflineQueuedError) return
+      ctx?.snapshots.forEach(([key, prev]) => qc.setQueryData(key, prev))
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_KEY })
       qc.invalidateQueries({ queryKey: CAFFEINE_TEMPLATES_KEY })

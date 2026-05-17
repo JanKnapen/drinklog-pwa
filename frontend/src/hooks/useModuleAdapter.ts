@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useSettings } from '../contexts/SettingsContext'
+import { OfflineQueuedError } from '../api/client'
 import { useTemplates, useCreateTemplate, useUpdateTemplate, useDeleteTemplate } from '../api/templates'
 import { useEntries, useCreateEntry, useDeleteEntry, useUpdateEntry, useConfirmAll } from '../api/entries'
 import {
@@ -18,6 +19,15 @@ import {
 import { standardUnits, caffeineUnits } from '../utils'
 import { useAppConfig } from '../api/config'
 import type { TrackerTemplate, TrackerEntry } from '../types'
+
+async function runLog(p: Promise<unknown>): Promise<void> {
+  try {
+    await p
+  } catch (e) {
+    if (e instanceof OfflineQueuedError) return
+    throw e
+  }
+}
 
 export interface ModuleAdapter {
   templates: TrackerTemplate[]
@@ -113,26 +123,26 @@ export function useModuleAdapter(): ModuleAdapter {
       moduleTitle: 'CaffeineLog',
       logFromTemplate: (t) => {
         const raw = caffeineTemplates.find((r) => r.id === t.id)!
-        return createCaffeineEntry.mutateAsync(
+        return runLog(createCaffeineEntry.mutateAsync(
           { template_id: raw.id, mg: raw.default_mg, timestamp: new Date().toISOString() },
-        ).then(() => {})
+        ))
       },
       logFromTemplateWithOptions: async (t, count, timestamp, fraction) => {
         const raw = caffeineTemplates.find((r) => r.id === t.id)!
         for (let i = 0; i < count; i++) {
-          await createCaffeineEntry.mutateAsync({ template_id: raw.id, mg: raw.default_mg, timestamp })
+          await runLog(createCaffeineEntry.mutateAsync({ template_id: raw.id, mg: raw.default_mg, timestamp }))
         }
         if (fraction != null) {
-          await createCaffeineEntry.mutateAsync({ template_id: raw.id, mg: raw.default_mg, timestamp, fraction })
+          await runLog(createCaffeineEntry.mutateAsync({ template_id: raw.id, mg: raw.default_mg, timestamp, fraction }))
         }
       },
       logFromPendingEntry: async (e, count, timestamp, fraction) => {
         const raw = caffeineEntries.find((r) => r.id === e.id)!
         for (let i = 0; i < count; i++) {
-          await createCaffeineEntry.mutateAsync({ custom_name: raw.custom_name!, mg: raw.mg, timestamp })
+          await runLog(createCaffeineEntry.mutateAsync({ custom_name: raw.custom_name!, mg: raw.mg, timestamp }))
         }
         if (fraction != null) {
-          await createCaffeineEntry.mutateAsync({ custom_name: raw.custom_name!, mg: raw.mg, timestamp, fraction })
+          await runLog(createCaffeineEntry.mutateAsync({ custom_name: raw.custom_name!, mg: raw.mg, timestamp, fraction }))
         }
       },
       confirmAll: (cutoff) => confirmAllCaffeine.mutateAsync(cutoff.toISOString()).then(() => {}),
@@ -158,26 +168,26 @@ export function useModuleAdapter(): ModuleAdapter {
     moduleTitle: 'DrinkLog',
     logFromTemplate: (t) => {
       const raw = drinkTemplates.find((r) => r.id === t.id)!
-      return createDrinkEntry.mutateAsync(
+      return runLog(createDrinkEntry.mutateAsync(
         { template_id: raw.id, ml: raw.default_ml, abv: raw.default_abv, timestamp: new Date().toISOString() },
-      ).then(() => {})
+      ))
     },
     logFromTemplateWithOptions: async (t, count, timestamp, fraction) => {
       const raw = drinkTemplates.find((r) => r.id === t.id)!
       for (let i = 0; i < count; i++) {
-        await createDrinkEntry.mutateAsync({ template_id: raw.id, ml: raw.default_ml, abv: raw.default_abv, timestamp })
+        await runLog(createDrinkEntry.mutateAsync({ template_id: raw.id, ml: raw.default_ml, abv: raw.default_abv, timestamp }))
       }
       if (fraction != null) {
-        await createDrinkEntry.mutateAsync({ template_id: raw.id, ml: raw.default_ml, abv: raw.default_abv, timestamp, fraction })
+        await runLog(createDrinkEntry.mutateAsync({ template_id: raw.id, ml: raw.default_ml, abv: raw.default_abv, timestamp, fraction }))
       }
     },
     logFromPendingEntry: async (e, count, timestamp, fraction) => {
       const raw = drinkEntries.find((r) => r.id === e.id)!
       for (let i = 0; i < count; i++) {
-        await createDrinkEntry.mutateAsync({ custom_name: raw.custom_name!, ml: raw.ml, abv: raw.abv, timestamp })
+        await runLog(createDrinkEntry.mutateAsync({ custom_name: raw.custom_name!, ml: raw.ml, abv: raw.abv, timestamp }))
       }
       if (fraction != null) {
-        await createDrinkEntry.mutateAsync({ custom_name: raw.custom_name!, ml: raw.ml, abv: raw.abv, timestamp, fraction })
+        await runLog(createDrinkEntry.mutateAsync({ custom_name: raw.custom_name!, ml: raw.ml, abv: raw.abv, timestamp, fraction }))
       }
     },
     confirmAll: (cutoff) => confirmAllDrink.mutateAsync(cutoff.toISOString()).then(() => {}),

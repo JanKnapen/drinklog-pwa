@@ -176,7 +176,7 @@ Two-token JWT pattern. All data endpoints require a valid access token.
 
 **`username` in `SettingsContext`** — session-only state, not persisted to localStorage. Populated from `GET /api/auth/me` after every successful refresh. Cleared on logout. The login/logout state of the app is derived solely from whether `username` is non-null.
 
-**Query cache cleared on logout** — `AppContent` in `App.tsx` has a `useEffect` that calls `queryClient.clear()` and `caches.delete('api-cache')` whenever `username` becomes `null`. The `caches.delete` wipes the service worker's runtime cache so a logged-out device cannot see cached API responses offline. Do not remove either call.
+**Query cache cleared on logout** — `AppContent` in `App.tsx` has a `useEffect` that calls `queryClient.clear()`, `caches.delete('api-cache')`, and `clearMutations()` (the offline queue) whenever `username` becomes `null`. The `caches.delete` wipes the service worker's runtime cache so a logged-out device cannot see cached API responses offline. `clearMutations()` drops queued offline writes so they can't replay onto a different account after re-login. Do not remove any of the three calls.
 
 **`secure=True` on the refresh cookie** — the cookie is only sent over HTTPS. Local dev without TLS will not receive the cookie and the silent refresh will always fail. Use the Tailscale dev setup (`docker-compose.local.yml`) for end-to-end auth testing.
 
@@ -302,6 +302,26 @@ The response includes dev-testing telemetry fields (`latency_ms`, `strategy_used
 **`handleConnect` operation order** — barcode update fires first, entries second. This is intentional: the update is idempotent (barcode already set = no-op), so if entry logging fails partway through, the user can retry `handleConnect` and get the entries without re-attaching the barcode. Reversing the order (entries first) would create duplicate entries on retry.
 
 **Cross-module local match:** When a scan returns `source: "local"` with `module !== activeModule`, `handleScan` calls `updateSettings({ activeModule })` and stores the template ID in `pendingScanTemplateId` state rather than opening `ScanMatchModal` immediately. A `useEffect` watching `[templates, pendingScanTemplateId]` opens the modal once the module adapter's `templates` array has updated on the next render. This deferred pattern is necessary because the module switch is reflected in the adapter synchronously on the next render cycle, not immediately.
+
+## Offline Support
+
+The PWA supports logging entries while offline. Reads use the service worker's NetworkFirst cache (already in place); writes use a client-side IndexedDB queue. **Only the two log endpoints are queueable** — `POST /api/alcohol-entries` and `POST /api/caffeine-entries`. Everything else (template CRUD, entry edits/deletes, confirm-all) requires a live connection.
+
+**Queue (`frontend/src/api/offline-queue.ts`)** — an IndexedDB store (`drinklog-offline.pending-mutations`) holding `{ id, url, method, body, createdAt }`. Capped at 1000 entries (enqueue throws if full). Exports a `queueEvents` `EventTarget` that fires `change` on every mutation — `OfflineBanner` subscribes to it to refresh the pending count without polling.
+
+**Queueable check in `apiFetch`** — gated on three things: the error is a `TypeError` (real network failure from `fetch`, not a 4xx/5xx response), the method+path is in the `QUEUEABLE` set, and `init.body` is a string. HTTP errors (ApiError) are never queued — they reached the server and were rejected on purpose. When queued, `apiFetch` throws `OfflineQueuedError` so callers can distinguish "queued, will sync" from "actually failed". **Do not add edit/delete/confirm-all endpoints to `QUEUEABLE`** — they have ordering/idempotency issues (a queued edit replayed after a queued create wouldn't find the optimistic id; confirm-all is intentionally online-only).
+
+**Optimistic updates** — `useCreateEntry` and `useCreateCaffeineEntry` use TanStack Query's `onMutate` to insert a placeholder entry (id prefixed with `optimistic-`) into every non-`confirmedOnly` entries cache. `onError` only rolls back when the error is NOT `OfflineQueuedError` — queued mutations keep their optimistic state until the real entry arrives via post-drain invalidation. The `confirmedOnly: true` caches are skipped because new entries are always `is_marked: false`.
+
+**Drain on reconnect** — `App.tsx` registers an `online` event listener (and runs once on mount/login) that calls `drainOfflineQueue()` from `client.ts`. The drainer iterates queued mutations, replays each with the current in-memory access token, retries once with a fresh token on 401, removes the queued item on any 2xx or 4xx response, and bails out on 5xx / network error / failed refresh (entries stay in the queue for the next online event). After any progress, all entry/template queries are invalidated so optimistic entries get replaced with real server data.
+
+**Adapter swallows `OfflineQueuedError`** — `useModuleAdapter`'s `logFromTemplate` / `logFromTemplateWithOptions` / `logFromPendingEntry` wrap each mutation in `runLog()`, which treats `OfflineQueuedError` as success so callers (HomeTab quick-log buttons, modals) show the normal "Logged: X" toast instead of "Something went wrong". Loops in `*WithOptions` keep iterating after a queued error so all N entries get queued, not just the first.
+
+**No idempotency keys** — there is currently no protection against double-logging if a request hit the server but the response was lost in transit (e.g. flaky Tailscale link drops the response packet). The common case (truly offline) is fine. If this becomes a real problem, the fix is to add a client-generated `request_id` UUID to the entry POST payload and a uniqueness check on the backend.
+
+**Queue cleared on logout** — see the auth section above. The queue is per-device, not per-user; clearing on logout prevents replay onto a different account.
+
+**Confirm All is disabled while offline** — `LogTab.tsx` uses `useOnlineStatus()` and adds `|| !isOnline` to the disabled prop, with the label switching to `Confirm All (offline)`. The endpoint mutates many rows server-side and depends on the live unconfirmed set; queueing it would be racy with the pending logs.
 
 ## iOS Safari Scroll/Touch Quirks
 
