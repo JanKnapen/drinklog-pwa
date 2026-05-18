@@ -13,6 +13,17 @@ export interface TemplateOption {
   default_ml?: number;
   default_abv?: number;
   default_mg?: number;
+  barcode?: string | null;
+  entry_count?: number;
+  confirmed_entry_count?: number;
+}
+
+export interface TemplateUpdate {
+  name?: string;
+  default_ml?: number;
+  default_abv?: number;
+  default_mg?: number;
+  barcode?: string | null;
 }
 
 export interface RawImportEntry {

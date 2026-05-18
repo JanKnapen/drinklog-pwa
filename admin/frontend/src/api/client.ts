@@ -1,4 +1,4 @@
-import type { AdminUser, TemplateOption, ImportRequest, Module } from '../types';
+import type { AdminUser, TemplateOption, TemplateUpdate, ImportRequest, Module } from '../types';
 
 const TOKEN_KEY = 'admin_token';
 
@@ -71,6 +71,18 @@ export async function deleteUser(userId: number): Promise<void> {
 
 export async function fetchUserTemplates(userId: number, module: Module): Promise<TemplateOption[]> {
   return apiFetch(`/api/admin/users/${userId}/templates?module=${module}`);
+}
+
+export async function updateUserTemplate(
+  userId: number,
+  templateId: string,
+  module: Module,
+  body: TemplateUpdate,
+): Promise<TemplateOption> {
+  return apiFetch(`/api/admin/users/${userId}/templates/${templateId}?module=${module}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
 }
 
 export async function postImport(userId: number, body: ImportRequest): Promise<{ inserted: number }> {

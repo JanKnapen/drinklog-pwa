@@ -178,10 +178,136 @@ def get_user_templates(
         raise HTTPException(status_code=404, detail="User not found")
     if module == "alcohol":
         templates = db.query(DrinkTemplate).filter(DrinkTemplate.user_id == user_id).all()
-        return [{"id": t.id, "name": t.name, "default_ml": t.default_ml, "default_abv": t.default_abv} for t in templates]
+        return [
+            {
+                "id": t.id,
+                "name": t.name,
+                "default_ml": t.default_ml,
+                "default_abv": t.default_abv,
+                "barcode": t.barcode,
+                "entry_count": t.entry_count,
+                "confirmed_entry_count": t.confirmed_entry_count,
+            }
+            for t in templates
+        ]
     else:
         templates = db.query(CaffeineTemplate).filter(CaffeineTemplate.user_id == user_id).all()
-        return [{"id": t.id, "name": t.name, "default_mg": t.default_mg} for t in templates]
+        return [
+            {
+                "id": t.id,
+                "name": t.name,
+                "default_mg": t.default_mg,
+                "barcode": t.barcode,
+                "entry_count": t.entry_count,
+                "confirmed_entry_count": t.confirmed_entry_count,
+            }
+            for t in templates
+        ]
+
+
+class TemplateUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    default_ml: float | None = Field(default=None, gt=0, le=5000)
+    default_abv: float | None = Field(default=None, ge=0, le=100)
+    default_mg: float | None = Field(default=None, gt=0, le=2000)
+    barcode: str | None = Field(default=None, max_length=64)
+
+
+@router.patch("/admin/users/{user_id}/templates/{template_id}")
+def update_user_template(
+    user_id: int,
+    template_id: str,
+    body: TemplateUpdateRequest,
+    module: Literal["alcohol", "caffeine"] = "alcohol",
+    db: Session = Depends(get_db),
+    _: None = Depends(get_admin_user),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if module == "alcohol":
+        Template = DrinkTemplate
+        OtherTemplate = CaffeineTemplate
+    else:
+        Template = CaffeineTemplate
+        OtherTemplate = DrinkTemplate
+
+    template = db.query(Template).filter(
+        Template.id == template_id, Template.user_id == user_id
+    ).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    fields_set = body.model_fields_set
+
+    if body.name is not None:
+        new_name = body.name.strip()
+        if not new_name:
+            raise HTTPException(status_code=422, detail="Name cannot be empty")
+        conflict = db.query(Template).filter(
+            Template.user_id == user_id,
+            Template.name == new_name,
+            Template.id != template_id,
+        ).first()
+        if conflict:
+            raise HTTPException(status_code=409, detail="A template with this name already exists")
+        template.name = new_name
+
+    if "barcode" in fields_set:
+        if body.barcode is not None:
+            if db.query(Template).filter(
+                Template.user_id == user_id,
+                Template.barcode == body.barcode,
+                Template.id != template_id,
+            ).first():
+                raise HTTPException(status_code=409, detail="A template with this barcode already exists")
+            if db.query(OtherTemplate).filter(
+                OtherTemplate.user_id == user_id,
+                OtherTemplate.barcode == body.barcode,
+            ).first():
+                other_module = "caffeine" if module == "alcohol" else "alcohol"
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"This barcode is already assigned to a {other_module} template",
+                )
+        template.barcode = body.barcode
+
+    # Admin can edit numeric defaults regardless of confirmed-entry state —
+    # this is the key difference from the main app's template PUT/PATCH.
+    if module == "alcohol":
+        if body.default_ml is not None:
+            template.default_ml = body.default_ml
+        if body.default_abv is not None:
+            template.default_abv = body.default_abv
+    else:
+        if body.default_mg is not None:
+            template.default_mg = body.default_mg
+
+    db.commit()
+    db.refresh(template)
+    logger.warning(
+        "admin: updated %s template id=%s for user id=%d username=%s",
+        module, template.id, user.id, user.username,
+    )
+    if module == "alcohol":
+        return {
+            "id": template.id,
+            "name": template.name,
+            "default_ml": template.default_ml,
+            "default_abv": template.default_abv,
+            "barcode": template.barcode,
+            "entry_count": template.entry_count,
+            "confirmed_entry_count": template.confirmed_entry_count,
+        }
+    return {
+        "id": template.id,
+        "name": template.name,
+        "default_mg": template.default_mg,
+        "barcode": template.barcode,
+        "entry_count": template.entry_count,
+        "confirmed_entry_count": template.confirmed_entry_count,
+    }
 
 
 class ImportEntry(BaseModel):

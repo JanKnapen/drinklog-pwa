@@ -1,12 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchUsers, createUser, changePassword, deleteUser, getToken, ApiError } from '../api/client';
-import type { AdminUser, Module, RawImportEntry, ImportSession } from '../types';
+import {
+  fetchUsers, createUser, changePassword, deleteUser, getToken, ApiError,
+  fetchUserTemplates, updateUserTemplate,
+} from '../api/client';
+import type { AdminUser, Module, RawImportEntry, ImportSession, TemplateOption, TemplateUpdate } from '../types';
 
 type Modal =
   | { kind: 'create' }
   | { kind: 'password'; user: AdminUser }
   | { kind: 'delete'; user: AdminUser }
   | { kind: 'upload'; user: AdminUser }
+  | { kind: 'templates'; user: AdminUser }
   | null;
 
 const IMPORT_SESSION_KEY = 'drinklog-import-session';
@@ -154,6 +158,9 @@ export default function UsersView() {
     setShowFormatInfo(false);
     setModal({ kind: 'upload', user });
   }
+  function openTemplates(user: AdminUser) {
+    setModal({ kind: 'templates', user });
+  }
   function closeModal() { setModal(null); setFormError(''); }
 
   async function handleCreate(e: React.FormEvent) {
@@ -265,6 +272,7 @@ export default function UsersView() {
                 <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">{user.alcohol_entries}</td>
                 <td className="px-4 py-3 text-right text-gray-600 dark:text-gray-400">{user.caffeine_entries}</td>
                 <td className="px-4 py-3 text-right space-x-3">
+                  <button onClick={() => openTemplates(user)} className="text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300">Templates</button>
                   <button onClick={() => openUpload(user)} className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300">Upload</button>
                   <button onClick={() => openPassword(user)} className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">Change password</button>
                   <button onClick={() => openDelete(user)} className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300">Delete</button>
@@ -284,7 +292,8 @@ export default function UsersView() {
           <div key={user.id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <p className="font-medium text-gray-900 dark:text-gray-100 mb-1">{user.username}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{user.alcohol_entries} alcohol · {user.caffeine_entries} caffeine</p>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
+              <button onClick={() => openTemplates(user)} className="text-sm text-purple-600 dark:text-purple-400">Templates</button>
               <button onClick={() => openUpload(user)} className="text-sm text-green-600 dark:text-green-400">Upload</button>
               <button onClick={() => openPassword(user)} className="text-sm text-blue-600 dark:text-blue-400">Change password</button>
               <button onClick={() => openDelete(user)} className="text-sm text-red-600 dark:text-red-400">Delete</button>
@@ -425,6 +434,11 @@ export default function UsersView() {
           </div>
         </ModalOverlay>
       )}
+
+      {/* Templates Modal */}
+      {modal?.kind === 'templates' && (
+        <TemplatesModal user={modal.user} onClose={closeModal} />
+      )}
     </>
   );
 }
@@ -470,5 +484,191 @@ function ModalActions({ onCancel, submitLabel, submitting }: {
         {submitting ? `${submitLabel}…` : submitLabel}
       </button>
     </div>
+  );
+}
+
+function TemplatesModal({ user, onClose }: { user: AdminUser; onClose: () => void }) {
+  const [module, setModule] = useState<Module>('alcohol');
+  const [templates, setTemplates] = useState<TemplateOption[] | null>(null);
+  const [error, setError] = useState('');
+  const [editing, setEditing] = useState<TemplateOption | null>(null);
+
+  const load = useCallback(async () => {
+    setTemplates(null);
+    setError('');
+    try {
+      setTemplates(await fetchUserTemplates(user.id, module));
+    } catch {
+      setError('Failed to load templates.');
+    }
+  }, [user.id, module]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (editing) {
+    return (
+      <TemplateEditModal
+        user={user}
+        module={module}
+        template={editing}
+        onCancel={() => setEditing(null)}
+        onSaved={() => { setEditing(null); load(); }}
+      />
+    );
+  }
+
+  return (
+    <ModalOverlay onClose={onClose}>
+      <h3 className="text-lg font-semibold mb-1 text-gray-900 dark:text-gray-100">Templates</h3>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{user.username}</p>
+
+      <div className="mb-4 inline-flex rounded-md border border-gray-300 dark:border-gray-600 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setModule('alcohol')}
+          className={`px-4 py-2 text-sm ${module === 'alcohol' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+        >
+          Alcohol
+        </button>
+        <button
+          type="button"
+          onClick={() => setModule('caffeine')}
+          className={`px-4 py-2 text-sm border-l border-gray-300 dark:border-gray-600 ${module === 'caffeine' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+        >
+          Caffeine
+        </button>
+      </div>
+
+      {error && <p className="text-sm text-red-600 dark:text-red-400 mb-3">{error}</p>}
+
+      {templates === null && !error ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
+      ) : templates && templates.length === 0 ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400">No templates yet.</p>
+      ) : (
+        <ul className="divide-y divide-gray-200 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-md max-h-80 overflow-y-auto">
+          {templates?.map(t => (
+            <li key={t.id} className="px-3 py-2 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{t.name}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {module === 'alcohol'
+                    ? `${t.default_ml} ml · ${t.default_abv}%`
+                    : `${t.default_mg} mg`}
+                  {' · '}
+                  {t.confirmed_entry_count ?? 0}/{t.entry_count ?? 0} confirmed
+                </p>
+              </div>
+              <button
+                onClick={() => setEditing(t)}
+                className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 shrink-0"
+              >
+                Edit
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex justify-end pt-4">
+        <button onClick={onClose} className="text-sm text-gray-600 dark:text-gray-400 px-4 py-2">Close</button>
+      </div>
+    </ModalOverlay>
+  );
+}
+
+function TemplateEditModal({ user, module, template, onCancel, onSaved }: {
+  user: AdminUser;
+  module: Module;
+  template: TemplateOption;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(template.name);
+  const [ml, setMl] = useState(template.default_ml?.toString() ?? '');
+  const [abv, setAbv] = useState(template.default_abv?.toString() ?? '');
+  const [mg, setMg] = useState(template.default_mg?.toString() ?? '');
+  const [barcode, setBarcode] = useState(template.barcode ?? '');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const confirmed = template.confirmed_entry_count ?? 0;
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    const body: TemplateUpdate = {};
+    const trimmedName = name.trim();
+    if (trimmedName !== template.name) body.name = trimmedName;
+    if (module === 'alcohol') {
+      const mlNum = parseFloat(ml);
+      const abvNum = parseFloat(abv);
+      if (!isFinite(mlNum) || mlNum <= 0) { setError('ml must be a positive number.'); return; }
+      if (!isFinite(abvNum) || abvNum < 0 || abvNum > 100) { setError('abv must be between 0 and 100.'); return; }
+      if (mlNum !== template.default_ml) body.default_ml = mlNum;
+      if (abvNum !== template.default_abv) body.default_abv = abvNum;
+    } else {
+      const mgNum = parseFloat(mg);
+      if (!isFinite(mgNum) || mgNum <= 0) { setError('mg must be a positive number.'); return; }
+      if (mgNum !== template.default_mg) body.default_mg = mgNum;
+    }
+    const trimmedBarcode = barcode.trim();
+    const currentBarcode = template.barcode ?? '';
+    if (trimmedBarcode !== currentBarcode) {
+      body.barcode = trimmedBarcode === '' ? null : trimmedBarcode;
+    }
+    if (Object.keys(body).length === 0) { onCancel(); return; }
+
+    setSubmitting(true);
+    try {
+      await updateUserTemplate(user.id, template.id, module, body);
+      onSaved();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setError(err.message || 'Conflict — name or barcode already in use.');
+      } else {
+        setError('Failed to update template.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <ModalOverlay onClose={onCancel}>
+      <h3 className="text-lg font-semibold mb-1 text-gray-900 dark:text-gray-100">Edit template</h3>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{user.username} · {module}</p>
+
+      {confirmed > 0 && (
+        <p className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2 mb-4">
+          This template has {confirmed} confirmed {confirmed === 1 ? 'entry' : 'entries'}.
+          The main app blocks editing the numeric defaults in that case; the admin can override.
+          Existing entries will keep their original values.
+        </p>
+      )}
+
+      <form onSubmit={handleSave} className="space-y-3">
+        <LabeledInput label="Name" value={name} onChange={setName} type="text" />
+        {module === 'alcohol' ? (
+          <>
+            <LabeledInput label="Default ml" value={ml} onChange={setMl} type="text" />
+            <LabeledInput label="Default ABV %" value={abv} onChange={setAbv} type="text" />
+          </>
+        ) : (
+          <LabeledInput label="Default mg" value={mg} onChange={setMg} type="text" />
+        )}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Barcode (optional)</label>
+          <input
+            type="text"
+            value={barcode}
+            onChange={e => setBarcode(e.target.value)}
+            className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        <ModalActions onCancel={onCancel} submitLabel="Save" submitting={submitting} />
+      </form>
+    </ModalOverlay>
   );
 }
