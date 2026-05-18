@@ -344,9 +344,23 @@ Good code quality and refactoring are always welcome when touching existing code
 - No `Co-Authored-By` lines in commits
 - **Never commit without explicit user instruction.** Do not commit after completing a task — always wait for the user to say "commit this" or similar before running any `git commit` command.
 
-## CLAUDE.md Review (on request)
+## Post-Implementation Workflow
 
-When the user asks for a CLAUDE.md review after an implementation, review what was just implemented and update `CLAUDE.md` if any of the following were discovered:
+After completing an implementation and pushing the changes, walk through this sequence before considering the work done. Each step gates the next — do not advance past a step until the user has explicitly confirmed it, and do not run steps in parallel.
+
+### 1. Testing confirmation
+
+Pause and wait for the user to confirm that they have tested the branch on the deployed app / their own setup, and that no further changes are needed. If the user identifies additional changes, implement them, push, and return to this step. Do not advance to the security review until the user explicitly says testing is complete and the branch is ready.
+
+### 2. Security review
+
+Once testing is confirmed, assess whether the changes warrant a security review. They do if the diff touches any of: authentication / authorization / session handling, secrets or env-var handling, user input parsing or validation, data exposed across user boundaries, network surface (new endpoints, headers, CORS, CSP), file or path handling, third-party APIs or untrusted external data, cryptography, or dependency additions. If any of those apply — or if the user explicitly requests one — invoke the `security-review` skill. Address findings before continuing. Wait for the user to explicitly confirm the security review is complete and satisfactory.
+
+If you assess that no security review is needed, briefly tell the user why and ask them to confirm skipping it before advancing.
+
+### 3. CLAUDE.md review
+
+Once both prior steps are confirmed, review what was just implemented and update `CLAUDE.md` if any of the following were discovered:
 - **Architecture or patterns** – new conventions, abstractions, or structural decisions made
 - **Non-obvious technical decisions** – _why_ something was done a certain way (tradeoffs, constraints, gotchas)
 - **Reusable knowledge** – utilities, helpers, or APIs in this codebase a future context would benefit from knowing about
@@ -358,10 +372,9 @@ When the user asks for a CLAUDE.md review after an implementation, review what w
 - Obvious or generic best practices
 - Step-by-step summaries of what was just built (that's git history)
 
-**If nothing meaningful was learned that a future context would need, make no changes.**
-Commit if any changes.
+**If nothing meaningful was learned that a future context would need, make no changes.** Commit if any changes.
 
-Do not run this review unprompted — wait for the user to ask.
+Do not run any step of this workflow unprompted — each phase requires explicit user confirmation before proceeding to the next.
 
 ## Security Constraints
 
