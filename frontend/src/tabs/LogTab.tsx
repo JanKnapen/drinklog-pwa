@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { TrashIcon, PencilIcon, CheckCircleIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
+import { TrashIcon, PencilIcon, CheckCircleIcon, Cog6ToothIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import TimestampPicker from '../components/TimestampPicker'
@@ -8,14 +8,18 @@ import { groupByDate, localMidnightISO, todayKey, toLocalDateKey } from '../util
 import type { TrackerEntry, DrinkEntry, CaffeineEntry } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
 import { useEntries, useDeleteEntry, useConfirmAll, useUpdateEntry } from '../api/entries'
+import { useTemplates } from '../api/templates'
 import {
   useCaffeineEntries,
   useDeleteCaffeineEntry,
   useConfirmAllCaffeineEntries,
   useUpdateCaffeineEntry,
 } from '../api/caffeine-entries'
+import { useCaffeineTemplates } from '../api/caffeine-templates'
 import { apiFetch } from '../api/client'
+import { removeMutation } from '../api/offline-queue'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { usePendingAlcoholEntries, usePendingCaffeineEntries, isPendingId, PENDING_ID_PREFIX } from '../hooks/usePendingEntries'
 
 function mapEntry(e: DrinkEntry | CaffeineEntry, activeModule: 'alcohol' | 'caffeine'): TrackerEntry {
   if (activeModule === 'alcohol') {
@@ -29,6 +33,7 @@ function mapEntry(e: DrinkEntry | CaffeineEntry, activeModule: 'alcohol' | 'caff
       isMarked: d.is_marked,
       value: d.standard_units,
       displayInfo: `${d.ml}ml · ${d.abv.toFixed(1)}% · ${d.standard_units.toFixed(1)} units`,
+      isPending: isPendingId(d.id),
     }
   }
   const c = e as CaffeineEntry
@@ -41,6 +46,7 @@ function mapEntry(e: DrinkEntry | CaffeineEntry, activeModule: 'alcohol' | 'caff
     isMarked: c.is_marked,
     value: c.caffeine_units,
     displayInfo: `${c.mg}mg · ${c.caffeine_units.toFixed(1)} units`,
+    isPending: isPendingId(c.id),
   }
 }
 
@@ -52,7 +58,7 @@ export default function LogTab() {
   const alcoholQuery = useEntries()
   const caffeineQuery = useCaffeineEntries()
   const query = activeModule === 'alcohol' ? alcoholQuery : caffeineQuery
-  const rawEntries = query.data ?? []
+  const serverEntries = query.data ?? []
 
   // Both called unconditionally (React rules)
   const deleteAlcohol = useDeleteEntry()
@@ -60,6 +66,17 @@ export default function LogTab() {
   const confirmAllAlcohol = useConfirmAll()
   const confirmAllCaffeine = useConfirmAllCaffeineEntries()
   const isOnline = useOnlineStatus()
+
+  // Pending (offline-queued) entries are hydrated from IndexedDB and prepended so
+  // they appear at the top of the unconfirmed list — same source the adapter uses.
+  const { data: drinkTemplates = [] } = useTemplates()
+  const { data: caffeineTemplatesData = [] } = useCaffeineTemplates()
+  const pendingAlcohol = usePendingAlcoholEntries(drinkTemplates)
+  const pendingCaffeine = usePendingCaffeineEntries(caffeineTemplatesData)
+  const rawEntries = useMemo(() => {
+    if (activeModule === 'alcohol') return [...pendingAlcohol, ...(serverEntries as DrinkEntry[])]
+    return [...pendingCaffeine, ...(serverEntries as CaffeineEntry[])]
+  }, [activeModule, pendingAlcohol, pendingCaffeine, serverEntries])
 
   const [filter, setFilter] = useState<'unconfirmed' | 'confirmed'>('unconfirmed')
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set([todayKey()]))
@@ -97,7 +114,8 @@ export default function LogTab() {
   const groups = groupByDate(displayed)
   const today = todayKey()
 
-  const hasEligibleToConfirm = allUnconfirmed.some((e) => toLocalDateKey(e.timestamp) < today)
+  // Pending entries haven't reached the server, so Confirm All can't affect them.
+  const hasEligibleToConfirm = allUnconfirmed.some((e) => !e.isPending && toLocalDateKey(e.timestamp) < today)
 
   function toggleDate(date: string) {
     setExpandedDates((prev) => {
@@ -108,8 +126,17 @@ export default function LogTab() {
   }
 
   function handleDelete(id: string) {
+    if (isPendingId(id)) {
+      removeMutation(id.slice(PENDING_ID_PREFIX.length)).catch(() => {})
+      return
+    }
     if (activeModule === 'alcohol') deleteAlcohol.mutate(id)
     else deleteCaffeine.mutate(id)
+  }
+
+  function handleEdit(id: string) {
+    if (isPendingId(id)) return
+    setEditingEntryId(id)
   }
 
   async function handleConfirmAll(cutoff: Date) {
@@ -189,7 +216,7 @@ export default function LogTab() {
                           key={entry.id}
                           entry={entry}
                           isConfirmed={filter === 'confirmed'}
-                          onEdit={() => setEditingEntryId(entry.id)}
+                          onEdit={() => handleEdit(entry.id)}
                           onDelete={() => handleDelete(entry.id)}
                         />
                       ))}
@@ -250,23 +277,39 @@ function EntryRow({ entry, isConfirmed, onEdit, onDelete }: {
   entry: TrackerEntry; isConfirmed: boolean; onEdit: () => void; onDelete: () => void
 }) {
   const time = new Date(entry.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  const bg = entry.isPending
+    ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40'
+    : 'bg-white dark:bg-neutral-800'
 
   return (
-    <div className="flex items-center gap-2 bg-white dark:bg-neutral-800 rounded-xl px-3 py-2.5">
+    <div className={`flex items-center gap-2 ${bg} rounded-xl px-3 py-2.5`}>
       <div className="flex-1 min-w-0">
         {entry.name && (
           <p className={`text-sm font-medium truncate ${entry.templateId === null ? 'text-neutral-500 dark:text-neutral-400' : 'text-neutral-900 dark:text-neutral-100'}`}>
             {entry.name}
           </p>
         )}
-        <p className="text-xs text-neutral-500 tabular-nums">{entry.displayInfo} · {time}</p>
+        <p className="text-xs text-neutral-500 tabular-nums flex items-center gap-1.5">
+          <span>{entry.displayInfo} · {time}</span>
+          {entry.isPending && (
+            <span className="inline-flex items-center gap-0.5 text-amber-700 dark:text-amber-300 font-medium">
+              <ArrowPathIcon className="w-3 h-3 animate-spin" aria-hidden="true" />
+              Pending sync
+            </span>
+          )}
+        </p>
       </div>
       <span className="text-sm font-bold text-neutral-900 dark:text-neutral-100 tabular-nums">
         {entry.value.toFixed(1)}<span className="text-xs font-normal text-neutral-400 ml-0.5">u</span>
       </span>
       {!isConfirmed && (
         <>
-          <button onClick={onEdit} className="p-1 text-neutral-400 hover:text-blue-500 transition-colors">
+          <button
+            onClick={onEdit}
+            disabled={entry.isPending}
+            className="p-1 text-neutral-400 hover:text-blue-500 disabled:hover:text-neutral-300 disabled:opacity-40 transition-colors"
+            title={entry.isPending ? 'Edit available after sync' : undefined}
+          >
             <PencilIcon className="w-4 h-4" />
           </button>
           <button onClick={onDelete} className="p-1 text-neutral-400 hover:text-red-500 transition-colors">

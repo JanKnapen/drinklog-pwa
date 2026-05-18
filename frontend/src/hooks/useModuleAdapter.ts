@@ -16,6 +16,7 @@ import {
   useUpdateCaffeineEntry,
   useConfirmAllCaffeineEntries,
 } from '../api/caffeine-entries'
+import { usePendingAlcoholEntries, usePendingCaffeineEntries, isPendingId } from './usePendingEntries'
 import { standardUnits, caffeineUnits } from '../utils'
 import { useAppConfig } from '../api/config'
 import type { TrackerTemplate, TrackerEntry } from '../types'
@@ -72,8 +73,20 @@ export function useModuleAdapter(): ModuleAdapter {
   const createCaffeineTemplate = useCreateCaffeineTemplate()
   const deleteCaffeineTemplate = useDeleteCaffeineTemplate()
 
-  // Memoize mapped arrays so consumers only see a new reference when underlying data changes,
-  // not on every render (avoids spurious effect triggers in HomeTab snapshot logic)
+  // Pending entries (queued offline writes) hydrated from IndexedDB. Prepended so they
+  // appear at the top of their date group in the unconfirmed list.
+  const pendingAlcohol = usePendingAlcoholEntries(drinkTemplates)
+  const pendingCaffeine = usePendingCaffeineEntries(caffeineTemplates)
+
+  const allDrinkEntries = useMemo(
+    () => [...pendingAlcohol, ...drinkEntries],
+    [pendingAlcohol, drinkEntries],
+  )
+  const allCaffeineEntries = useMemo(
+    () => [...pendingCaffeine, ...caffeineEntries],
+    [pendingCaffeine, caffeineEntries],
+  )
+
   const alcoholTemplatesMapped = useMemo((): TrackerTemplate[] => drinkTemplates.map((t) => ({
     id: t.id,
     name: t.name,
@@ -83,7 +96,7 @@ export function useModuleAdapter(): ModuleAdapter {
     displayInfo: `${t.default_ml}ml · ${t.default_abv.toFixed(1)}% · ${standardUnits(t.default_ml, t.default_abv, config.alcohol_unit_divisor).toFixed(1)}u`,
   })), [drinkTemplates, config.alcohol_unit_divisor])
 
-  const alcoholEntriesMapped = useMemo((): TrackerEntry[] => drinkEntries.map((e) => ({
+  const alcoholEntriesMapped = useMemo((): TrackerEntry[] => allDrinkEntries.map((e) => ({
     id: e.id,
     templateId: e.template_id,
     customName: e.custom_name,
@@ -92,7 +105,8 @@ export function useModuleAdapter(): ModuleAdapter {
     isMarked: e.is_marked,
     value: e.standard_units,
     displayInfo: `${e.ml}ml · ${e.abv.toFixed(1)}% · ${e.standard_units.toFixed(1)} units`,
-  })), [drinkEntries])
+    isPending: isPendingId(e.id),
+  })), [allDrinkEntries])
 
   const caffeineTemplatesMapped = useMemo((): TrackerTemplate[] => caffeineTemplates.map((t) => ({
     id: t.id,
@@ -103,7 +117,7 @@ export function useModuleAdapter(): ModuleAdapter {
     displayInfo: `${t.default_mg}mg · ${caffeineUnits(t.default_mg, config.caffeine_unit_divisor).toFixed(1)}u`,
   })), [caffeineTemplates, config.caffeine_unit_divisor])
 
-  const caffeineEntriesMapped = useMemo((): TrackerEntry[] => caffeineEntries.map((e) => ({
+  const caffeineEntriesMapped = useMemo((): TrackerEntry[] => allCaffeineEntries.map((e) => ({
     id: e.id,
     templateId: e.template_id,
     customName: e.custom_name,
@@ -112,7 +126,8 @@ export function useModuleAdapter(): ModuleAdapter {
     isMarked: e.is_marked,
     value: e.caffeine_units,
     displayInfo: `${e.mg}mg · ${e.caffeine_units.toFixed(1)} units`,
-  })), [caffeineEntries])
+    isPending: isPendingId(e.id),
+  })), [allCaffeineEntries])
 
   if (activeModule === 'caffeine') {
     return {
@@ -137,7 +152,7 @@ export function useModuleAdapter(): ModuleAdapter {
         }
       },
       logFromPendingEntry: async (e, count, timestamp, fraction) => {
-        const raw = caffeineEntries.find((r) => r.id === e.id)!
+        const raw = allCaffeineEntries.find((r) => r.id === e.id)!
         for (let i = 0; i < count; i++) {
           await runLog(createCaffeineEntry.mutateAsync({ custom_name: raw.custom_name!, mg: raw.mg, timestamp }))
         }
@@ -182,7 +197,7 @@ export function useModuleAdapter(): ModuleAdapter {
       }
     },
     logFromPendingEntry: async (e, count, timestamp, fraction) => {
-      const raw = drinkEntries.find((r) => r.id === e.id)!
+      const raw = allDrinkEntries.find((r) => r.id === e.id)!
       for (let i = 0; i < count; i++) {
         await runLog(createDrinkEntry.mutateAsync({ custom_name: raw.custom_name!, ml: raw.ml, abv: raw.abv, timestamp }))
       }
