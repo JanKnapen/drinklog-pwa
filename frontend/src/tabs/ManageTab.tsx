@@ -69,7 +69,7 @@ export default function ManageTab() {
               {([['name', 'Name'], ['entries', 'Entries']] as const).map(([id, label]) => (
                 <button
                   key={id}
-                  onClick={() => setSortField(id)}
+                  onClick={() => { setSortField(id); setSortAsc(id === 'name') }}
                   className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                     sortField === id ? 'bg-blue-500 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
                   }`}
