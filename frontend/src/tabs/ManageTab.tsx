@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PlusIcon, PencilIcon, TrashIcon, Cog6ToothIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PencilIcon, TrashIcon, Cog6ToothIcon, BarsArrowUpIcon, BarsArrowDownIcon } from '@heroicons/react/24/outline'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import { Field, inputCls, primaryBtn } from '../components/FormFields'
@@ -20,6 +20,15 @@ export default function ManageTab() {
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<TrackerTemplate | null>(null)
   const [deleting, setDeleting] = useState<TrackerTemplate | null>(null)
+  const [sortField, setSortField] = useState<'name' | 'entries'>('name')
+  const [sortAsc, setSortAsc] = useState(true)
+
+  const sortedTemplates = [...templates].sort((a, b) => {
+    const cmp = sortField === 'name'
+      ? a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+      : a.entryCount - b.entryCount
+    return sortAsc ? cmp : -cmp
+  })
 
   function handleDelete() {
     if (!deleting) return
@@ -54,8 +63,30 @@ export default function ManageTab() {
         {templates.length === 0 ? (
           <EmptyState message={emptyMsg} />
         ) : (
-          <div className="flex flex-col gap-2">
-            {[...templates].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })).map((t) => (
+          <>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">Sort</span>
+              {([['name', 'Name'], ['entries', 'Entries']] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  onClick={() => setSortField(id)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    sortField === id ? 'bg-blue-500 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                onClick={() => setSortAsc((v) => !v)}
+                aria-label={sortAsc ? 'Sort ascending' : 'Sort descending'}
+                className="ml-auto p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 active:scale-95 transition-transform"
+              >
+                {sortAsc ? <BarsArrowUpIcon className="w-4 h-4" /> : <BarsArrowDownIcon className="w-4 h-4" />}
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+            {sortedTemplates.map((t) => (
               <div key={t.id} className="flex items-center gap-2 bg-neutral-100 dark:bg-neutral-800 rounded-xl px-3 py-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">{t.name}</p>
@@ -74,7 +105,8 @@ export default function ManageTab() {
                 )}
               </div>
             ))}
-          </div>
+            </div>
+          </>
         )}
       </div>
 
