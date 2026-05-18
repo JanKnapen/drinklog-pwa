@@ -176,7 +176,7 @@ Two-token JWT pattern. All data endpoints require a valid access token.
 
 **`username` in `SettingsContext`** — session-only state, not persisted to localStorage. Populated from `GET /api/auth/me` after every successful refresh. Cleared on logout. The login/logout state of the app is derived solely from whether `username` is non-null.
 
-**Query cache cleared on logout** — `AppContent` in `App.tsx` has a `useEffect` that calls `queryClient.clear()`, `caches.delete('api-cache')`, and `clearMutations()` (the offline queue) whenever `username` becomes `null`. The `caches.delete` wipes the service worker's runtime cache so a logged-out device cannot see cached API responses offline. `clearMutations()` drops queued offline writes so they can't replay onto a different account after re-login. Do not remove any of the three calls.
+**Query cache cleared on logout** — `AppContent` in `App.tsx` has a `useEffect` that calls `queryClient.clear()` and `caches.delete('api-cache')` whenever `username` becomes `null`. The `caches.delete` wipes the service worker's runtime cache so a logged-out device cannot see cached API responses offline. Do not remove either call.
 
 **`secure=True` on the refresh cookie** — the cookie is only sent over HTTPS. Local dev without TLS will not receive the cookie and the silent refresh will always fail. Use the Tailscale dev setup (`docker-compose.local.yml`) for end-to-end auth testing.
 
@@ -303,28 +303,6 @@ The response includes dev-testing telemetry fields (`latency_ms`, `strategy_used
 
 **Cross-module local match:** When a scan returns `source: "local"` with `module !== activeModule`, `handleScan` calls `updateSettings({ activeModule })` and stores the template ID in `pendingScanTemplateId` state rather than opening `ScanMatchModal` immediately. A `useEffect` watching `[templates, pendingScanTemplateId]` opens the modal once the module adapter's `templates` array has updated on the next render. This deferred pattern is necessary because the module switch is reflected in the adapter synchronously on the next render cycle, not immediately.
 
-## Offline Support
-
-The PWA supports logging entries while offline. Reads use the service worker's NetworkFirst cache (already in place); writes use a client-side IndexedDB queue. **Only the two log endpoints are queueable** — `POST /api/alcohol-entries` and `POST /api/caffeine-entries`. Everything else (template CRUD, entry edits/deletes, confirm-all) requires a live connection.
-
-**Queue (`frontend/src/api/offline-queue.ts`)** — an IndexedDB store (`drinklog-offline.pending-mutations`) holding `{ id, url, method, body, createdAt }`. Capped at 1000 entries (enqueue throws if full). Exports a `queueEvents` `EventTarget` that fires `change` on every mutation — `OfflineBanner` subscribes to it to refresh the pending count without polling.
-
-**Queueable check in `apiFetch`** — gated on two things: the method+path is in the `QUEUEABLE` set, and `init.body` is a string. Errors thrown from `fetch` itself (browser `TypeError` or workbox `WorkboxError` from the SW's NetworkFirst handler bailing on a POST) are treated as "no response, queue it". HTTP errors (ApiError) are never queued — they reached the server and were rejected on purpose. When queued, `apiFetch` throws `OfflineQueuedError` so callers can distinguish "queued, will sync" from "actually failed". **Do not add edit/delete/confirm-all endpoints to `QUEUEABLE`** — they have ordering/idempotency issues and confirm-all depends on the live unconfirmed set.
-
-**Pending entries hydrated from the queue (`hooks/usePendingEntries.ts`)** — instead of TanStack Query optimistic updates, pending offline writes are materialised by reading the IDB queue. `usePendingMutations()` subscribes to `queueEvents` and refreshes via `listMutations()` on every `change`. `usePendingAlcoholEntries(templates)` / `usePendingCaffeineEntries(templates)` parse each queued POST body, look up the linked template, compute units, and produce a synthetic `DrinkEntry` / `CaffeineEntry` with `id` = `pending-<queueId>`. **Both the adapter and `LogTab` call these hooks and prepend the pending entries to the server's entries list before mapping** — that's why pending entries appear in the Unconfirmed list and persist across reloads. The single-source-of-truth design is the reason `useCreateEntry` / `useCreateCaffeineEntry` deliberately have *no* `onMutate`/`onError` optimistic logic — adding one back would double-render every offline log (once from optimistic cache + once from queue hydration).
-
-**`isPending` flag** — derived from `id.startsWith('pending-')` via `isPendingId()`. Propagated through `TrackerEntry.isPending`. The `EntryRow` in `LogTab` renders pending entries with an amber background + spinning `ArrowPathIcon` + "Pending sync" label, disables the edit button (no server id), and reroutes delete to `removeMutation()` so the trash icon dequeues instead of calling `DELETE /api/...`. `hasEligibleToConfirm` excludes pending entries because the server has not seen them yet — Confirm All can't affect them until drain completes.
-
-**Drain on reconnect** — `App.tsx` registers an `online` event listener (and runs once on mount/login) that calls `drainOfflineQueue()` from `client.ts`. The drainer iterates queued mutations, replays each with the current in-memory access token, retries once with a fresh token on 401, removes the queued item on any 2xx or 4xx response, and bails out on 5xx / network error / failed refresh (entries stay in the queue for the next online event). After any progress, all entry/template queries are invalidated so optimistic entries get replaced with real server data.
-
-**Adapter swallows `OfflineQueuedError`** — `useModuleAdapter`'s `logFromTemplate` / `logFromTemplateWithOptions` / `logFromPendingEntry` wrap each mutation in `runLog()`, which treats `OfflineQueuedError` as success so callers (HomeTab quick-log buttons, modals) show the normal "Logged: X" toast instead of "Something went wrong". Loops in `*WithOptions` keep iterating after a queued error so all N entries get queued, not just the first.
-
-**No idempotency keys** — there is currently no protection against double-logging if a request hit the server but the response was lost in transit (e.g. flaky Tailscale link drops the response packet). The common case (truly offline) is fine. If this becomes a real problem, the fix is to add a client-generated `request_id` UUID to the entry POST payload and a uniqueness check on the backend.
-
-**Queue cleared on logout** — see the auth section above. The queue is per-device, not per-user; clearing on logout prevents replay onto a different account.
-
-**Confirm All is disabled while offline** — `LogTab.tsx` uses `useOnlineStatus()` and adds `|| !isOnline` to the disabled prop, with the label switching to `Confirm All (offline)`. The endpoint mutates many rows server-side and depends on the live unconfirmed set; queueing it would be racy with the pending logs.
-
 ## iOS Safari Scroll/Touch Quirks
 
 These fixes are intentional — do not revert them:
@@ -365,7 +343,25 @@ Good code quality and refactoring are always welcome when touching existing code
 - Conventional commit messages: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`
 - No `Co-Authored-By` lines in commits
 - **Never commit without explicit user instruction.** Do not commit after completing a task — always wait for the user to say "commit this" or similar before running any `git commit` command.
-- **Before committing:** review whether the changes introduce anything non-obvious that future sessions would need to know (hidden constraints, invariants, intentional workarounds). If so, update CLAUDE.md first. Don't document UI details or anything self-evident from reading the code.
+
+## CLAUDE.md Review (on request)
+
+When the user asks for a CLAUDE.md review after an implementation, review what was just implemented and update `CLAUDE.md` if any of the following were discovered:
+- **Architecture or patterns** – new conventions, abstractions, or structural decisions made
+- **Non-obvious technical decisions** – _why_ something was done a certain way (tradeoffs, constraints, gotchas)
+- **Reusable knowledge** – utilities, helpers, or APIs in this codebase a future context would benefit from knowing about
+- **Pitfalls to avoid** – things that were tried and didn't work, or footguns in this codebase
+- **Setup/env changes** – new dependencies, env vars, config, or tooling introduced
+
+**Do not add:**
+- Things already documented
+- Obvious or generic best practices
+- Step-by-step summaries of what was just built (that's git history)
+
+**If nothing meaningful was learned that a future context would need, make no changes.**
+Commit if any changes.
+
+Do not run this review unprompted — wait for the user to ask.
 
 ## Security Constraints
 
