@@ -643,10 +643,12 @@ function NewScanModal({
   const connectableAlcohol = alcoholTemplatesRaw
     .filter((t) => !t.barcode)
     .filter((t) => t.name.toLowerCase().includes(connectSearch.toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 
   const connectableCaffeine = caffeineTemplatesRaw
     .filter((t) => !t.barcode)
     .filter((t) => t.name.toLowerCase().includes(connectSearch.toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 
   function reset() {
     setName(''); setMl(''); setAbv(''); setMg('')
@@ -1002,7 +1004,9 @@ function OtherModal({ open, onClose, templates, onLog, onLogged }: {
 
   useEffect(() => { if (open) { setTs(new Date()); setHalf(false) } }, [open])
 
-  const filtered = templates.filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
+  const filtered = templates
+    .filter((t) => t.name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 
   async function logTemplate(t: TrackerTemplate) {
     await onLog(t, count, ts.toISOString(), half ? 0.5 : undefined)
