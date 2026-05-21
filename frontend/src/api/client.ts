@@ -61,6 +61,18 @@ function isQueueable(url: string, method: string): boolean {
 }
 
 export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? 'GET').toUpperCase()
+
+  // Fast path: when the browser already knows we're offline, skip the fetch and queue
+  // immediately. Without this, iOS Safari (and some Chromium configurations) hang on
+  // fetch for ~5-15 s before throwing, so handleNetworkFailure runs too late — the click
+  // handler is stuck waiting on a promise that won't reject until the OS gives up.
+  if (!navigator.onLine && isQueueable(url, method) && typeof init?.body === 'string') {
+    await enqueueMutation({ url, method, body: init.body })
+    console.info('[offline-queue] queued (offline precheck)', method, url)
+    throw new OfflineQueuedError()
+  }
+
   let res: Response
   try {
     res = await fetchWithAuth(url, init)
