@@ -20,6 +20,7 @@ import { useCreateCaffeineEntry } from '../api/caffeine-entries'
 import { AuthError } from '../api/client'
 import { useCreateCaffeineTemplate, useUpdateCaffeineTemplate, useCaffeineTemplates } from '../api/caffeine-templates'
 import { lookupBarcode, type BarcodeResult } from '../api/barcode'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
 
 interface QuickLogSnapshot {
   todayTopTwo: Array<{ template: TrackerTemplate; count: number; lastTs: string }>
@@ -31,6 +32,8 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
   const adapter = useModuleAdapter()
   const { openSettings, updateSettings } = useSettings()
   const { templates, entries, isEntriesFetched, activeModule } = adapter
+  const isOnline = useOnlineStatus()
+  const loggedMsg = (name: string) => isOnline ? `Logged: ${name}` : `Saved offline: ${name}`
 
   const [modal, setModal] = useState<'new' | 'enter' | 'other' | 'pending' | 'scanner' | 'scan-match' | null>(null)
   const [scanPrefill, setScanPrefill] = useState<BarcodeResult | null>(null)
@@ -101,11 +104,12 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
 
   // Refresh once entries have definitively loaded — catches the case where templates
   // arrive from cache before entries, leaving today/pending absent from the snapshot.
-  // Also re-fires when templates change after entries are already fetched (e.g. navigating
-  // from LogTab which doesn't fetch templates, so templates arrive later than entries).
+  // Also re-fires when templates or entries change after entries are already fetched.
+  // `entries` is needed for offline logs (no server roundtrip → templates don't change,
+  // so the templates-only dep would never re-fire and the snapshot would stay stale).
   useEffect(() => {
     if (isEntriesFetched) refreshSnapshot()
-  }, [isEntriesFetched, templates, refreshSnapshot])
+  }, [isEntriesFetched, templates, entries, refreshSnapshot])
 
   async function handleScan(code: string) {
     setModal(null)
@@ -196,7 +200,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
             </p>
             <div className="flex flex-col gap-2">
               {todayTopTwo.map(({ template }) => (
-                <TemplateButton key={template.id} template={template} onClick={async () => { try { await adapter.logFromTemplate(template); onToast(`Logged: ${template.name}`) } catch (e) { if (!(e instanceof AuthError)) onToast('Something went wrong') } }} />
+                <TemplateButton key={template.id} template={template} onClick={async () => { try { await adapter.logFromTemplate(template); onToast(loggedMsg(template.name)) } catch (e) { if (!(e instanceof AuthError)) onToast('Something went wrong') } }} />
               ))}
 
               {todayTopTwo.length > 0 && alltimeItems.length > 0 && (
@@ -204,7 +208,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
               )}
 
               {alltimeItems.map((t) => (
-                <TemplateButton key={t.id} template={t} onClick={async () => { try { await adapter.logFromTemplate(t); onToast(`Logged: ${t.name}`) } catch (e) { if (!(e instanceof AuthError)) onToast('Something went wrong') } }} />
+                <TemplateButton key={t.id} template={t} onClick={async () => { try { await adapter.logFromTemplate(t); onToast(loggedMsg(t.name)) } catch (e) { if (!(e instanceof AuthError)) onToast('Something went wrong') } }} />
               ))}
 
               {pendingDrinks.length > 0 && (
@@ -233,7 +237,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
           onClose={() => { setScanPrefill(null); setScanCode(null); setModal(null) }}
           barcode={scanCode}
           initialResult={scanPrefill}
-          onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(`Logged: ${name}`); setModal(null) }}
+          onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(loggedMsg(name)); setModal(null) }}
         />
       ) : activeModule === 'alcohol' ? (
         <NewAlcoholModal
@@ -243,7 +247,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
           pendingDrinks={pendingDrinks}
           prefill={scanPrefill}
           barcode={scanCode}
-          onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(`Logged: ${name}`); setModal(null) }}
+          onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(loggedMsg(name)); setModal(null) }}
         />
       ) : (
         <NewCaffeineModal
@@ -253,27 +257,27 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
           pendingDrinks={pendingDrinks}
           prefill={scanPrefill}
           barcode={scanCode}
-          onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(`Logged: ${name}`); setModal(null) }}
+          onLogged={(name) => { setScanPrefill(null); setScanCode(null); onToast(loggedMsg(name)); setModal(null) }}
         />
       )}
       {activeModule === 'alcohol' ? (
-        <EnterAlcoholModal open={modal === 'enter'} onClose={() => setModal(null)} onLogged={(val) => { onToast(`Logged: ${val}`); setModal(null) }} />
+        <EnterAlcoholModal open={modal === 'enter'} onClose={() => setModal(null)} onLogged={(val) => { onToast(loggedMsg(val)); setModal(null) }} />
       ) : (
-        <EnterCaffeineModal open={modal === 'enter'} onClose={() => setModal(null)} onLogged={(val) => { onToast(`Logged: ${val}`); setModal(null) }} />
+        <EnterCaffeineModal open={modal === 'enter'} onClose={() => setModal(null)} onLogged={(val) => { onToast(loggedMsg(val)); setModal(null) }} />
       )}
       <OtherModal
         open={modal === 'other'}
         onClose={() => setModal(null)}
         templates={templates}
         onLog={(t, count, timestamp, fraction) => adapter.logFromTemplateWithOptions(t, count, timestamp, fraction)}
-        onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
+        onLogged={(name) => { onToast(loggedMsg(name)); setModal(null) }}
       />
       <PendingDrinksModal
         open={modal === 'pending'}
         onClose={() => setModal(null)}
         entries={pendingDrinks}
         onLog={(e, count, timestamp, fraction) => adapter.logFromPendingEntry(e, count, timestamp, fraction)}
-        onLogged={(name) => { onToast(`Logged: ${name}`); setModal(null) }}
+        onLogged={(name) => { onToast(loggedMsg(name)); setModal(null) }}
       />
       {modal === 'scanner' && (
         <BarcodeScanner onScan={handleScan} onClose={() => setModal(null)} />
@@ -283,7 +287,7 @@ export default function HomeTab({ onToast, onScannerOpen }: { onToast: (msg: str
         template={scanMatchTemplate}
         onClose={() => { setScanMatchTemplate(null); setModal(null) }}
         onLog={(t, count, timestamp, fraction) => adapter.logFromTemplateWithOptions(t, count, timestamp, fraction)}
-        onLogged={(name) => { setScanMatchTemplate(null); onToast(`Logged: ${name}`); setModal(null) }}
+        onLogged={(name) => { setScanMatchTemplate(null); onToast(loggedMsg(name)); setModal(null) }}
       />
     </div>
   )
