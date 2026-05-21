@@ -2,6 +2,11 @@ import { enqueueMutation, listMutations, removeMutation } from './offline-queue'
 
 let accessToken: string | null = null
 let refreshPromise: Promise<boolean> | null = null
+// Mirror of the authenticated SettingsContext username so that module-level functions
+// (apiFetch, drainOfflineQueue) can stamp queued mutations with an owner and refuse to
+// replay mutations belonging to a different user after a re-login on the same device.
+// Kept in sync via setCurrentUsername(), called from SettingsContext on every change.
+let currentUsername: string | null = null
 
 export function setAccessToken(token: string): void {
   accessToken = token
@@ -9,6 +14,10 @@ export function setAccessToken(token: string): void {
 
 export function clearAccessToken(): void {
   accessToken = null
+}
+
+export function setCurrentUsername(name: string | null): void {
+  currentUsername = name
 }
 
 export async function refreshAccessToken(): Promise<boolean> {
@@ -74,8 +83,8 @@ export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   // immediately. Without this, iOS Safari (and some Chromium configurations) hang on
   // fetch for ~5-15 s before throwing, so handleNetworkFailure runs too late — the click
   // handler is stuck waiting on a promise that won't reject until the OS gives up.
-  if (!navigator.onLine && queueable) {
-    await enqueueMutation({ url, method, body: init!.body as string })
+  if (!navigator.onLine && queueable && currentUsername) {
+    await enqueueMutation({ url, method, body: init!.body as string, username: currentUsername })
     console.info('[offline-queue] queued (offline precheck)', method, url)
     throw new OfflineQueuedError()
   }
@@ -138,8 +147,8 @@ async function handleNetworkFailure<T>(err: unknown, url: string, init?: Request
   // service worker's NetworkFirst handler bails on a POST while offline. In both cases
   // we have no server response, so queueing the request for later replay is correct.
   const method = (init?.method ?? 'GET').toUpperCase()
-  if (isQueueable(url, method) && typeof init?.body === 'string') {
-    await enqueueMutation({ url, method, body: init.body })
+  if (isQueueable(url, method) && typeof init?.body === 'string' && currentUsername) {
+    await enqueueMutation({ url, method, body: init.body, username: currentUsername })
     console.info('[offline-queue] queued', method, url)
     throw new OfflineQueuedError()
   }
@@ -160,11 +169,21 @@ export interface DrainResult {
 }
 
 export async function drainOfflineQueue(): Promise<DrainResult> {
+  if (!currentUsername) return { drained: 0, failed: 0, remaining: 0 }
   const pending = await listMutations()
   let drained = 0
   let failed = 0
 
   for (const m of pending) {
+    // Items stamped with a different username belong to a previous session on this
+    // device. Refuse to replay them under the current user's credentials — delete as
+    // cleanup. Same treatment for legacy items without a username field at all.
+    if (!m.username || m.username !== currentUsername) {
+      await removeMutation(m.id)
+      console.warn('[offline-queue] discarding mutation from foreign session', m.id, m.username)
+      continue
+    }
+
     let res: Response
     try {
       res = await replayRequest(m.url, m.method, m.body)

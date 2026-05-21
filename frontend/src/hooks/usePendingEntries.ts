@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { listMutations, queueEvents, type PendingMutation } from '../api/offline-queue'
+import { useSettings } from '../contexts/SettingsContext'
 import type { DrinkEntry, DrinkTemplate, CaffeineEntry, CaffeineTemplate } from '../types'
 
 export const PENDING_ID_PREFIX = 'pending-'
@@ -9,6 +10,7 @@ export function isPendingId(id: string): boolean {
 }
 
 function usePendingMutations(): PendingMutation[] {
+  const { username } = useSettings()
   const [pending, setPending] = useState<PendingMutation[]>([])
   useEffect(() => {
     let cancelled = false
@@ -16,8 +18,11 @@ function usePendingMutations(): PendingMutation[] {
       listMutations()
         .then(m => {
           if (cancelled) return
-          console.info('[offline-queue] hydrated', m.length, 'pending mutation(s)')
-          setPending(m)
+          // Filter to the current user's own mutations. Items belonging to a previous
+          // session on this device are invisible until the drain reclaims them.
+          const mine = username ? m.filter(x => x.username === username) : []
+          console.info('[offline-queue] hydrated', mine.length, 'pending mutation(s) of', m.length, 'total')
+          setPending(mine)
         })
         .catch(err => console.warn('[offline-queue] hydrate failed', err))
     }
@@ -27,7 +32,7 @@ function usePendingMutations(): PendingMutation[] {
       cancelled = true
       queueEvents.removeEventListener('change', refresh)
     }
-  }, [])
+  }, [username])
   return pending
 }
 

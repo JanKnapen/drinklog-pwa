@@ -45,13 +45,18 @@ function AppContent() {
   const [scannerOpen, setScannerOpen] = useState(false)
   const hiddenAtRef = useRef<number | null>(null)
 
+  // Logout cleanup. Gated on `authChecked` so the cold-start render (where `username`
+  // is initially null before the silent refresh resolves) does NOT wipe a queue that
+  // belongs to the user we're about to authenticate. Only fires once the silent
+  // refresh has settled and we know whether the user is logged in or out.
   useEffect(() => {
+    if (!authChecked) return
     if (!username) {
       queryClient.clear()
       caches.delete('api-cache')
       clearMutations().catch(() => {})
     }
-  }, [username])
+  }, [username, authChecked])
 
   // Proactively refresh the access token when the app returns from background if the
   // 15-minute access token has likely expired, before TanStack Query's refetches fire.

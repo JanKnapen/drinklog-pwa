@@ -9,6 +9,14 @@ export interface PendingMutation {
   method: string
   body: string
   createdAt: number
+  /**
+   * Username of the session that enqueued this mutation. Stamped at enqueue
+   * time so the drain path can refuse to replay a previous user's writes
+   * under a new user's credentials on a shared device. Items without a
+   * username (legacy / corrupted) are treated as foreign and deleted on
+   * sight by the drain.
+   */
+  username: string
 }
 
 export const queueEvents = new EventTarget()
@@ -43,6 +51,7 @@ function run<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequ
 export async function enqueueMutation(
   mutation: Omit<PendingMutation, 'id' | 'createdAt'>,
 ): Promise<PendingMutation> {
+  if (!mutation.username) throw new Error('Cannot enqueue without an authenticated username')
   const count = await run<number>('readonly', s => s.count())
   if (count >= MAX_PENDING) throw new Error('Offline queue is full')
   const entry: PendingMutation = {
