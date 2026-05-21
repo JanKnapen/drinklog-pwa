@@ -48,6 +48,9 @@ export function useCaffeineRange() {
 export function useCreateCaffeineEntry() {
   const qc = useQueryClient()
   return useMutation({
+    // See useCreateEntry — TanStack Query v5 defaults to networkMode 'online', which
+    // pauses the mutationFn when offline and prevents the request from reaching our queue.
+    networkMode: 'always',
     mutationFn: (data: {
       template_id?: string
       custom_name?: string
