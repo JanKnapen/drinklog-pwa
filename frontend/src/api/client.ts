@@ -60,25 +60,48 @@ function isQueueable(url: string, method: string): boolean {
   return QUEUEABLE.has(`${method.toUpperCase()} ${path}`)
 }
 
+const QUEUEABLE_TIMEOUT_MS = 5000
+
 export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase()
+  const queueable = isQueueable(url, method) && typeof init?.body === 'string'
+
+  if (queueable) {
+    console.info('[offline-queue] apiFetch', method, url, 'navigator.onLine=', navigator.onLine)
+  }
 
   // Fast path: when the browser already knows we're offline, skip the fetch and queue
   // immediately. Without this, iOS Safari (and some Chromium configurations) hang on
   // fetch for ~5-15 s before throwing, so handleNetworkFailure runs too late — the click
   // handler is stuck waiting on a promise that won't reject until the OS gives up.
-  if (!navigator.onLine && isQueueable(url, method) && typeof init?.body === 'string') {
-    await enqueueMutation({ url, method, body: init.body })
+  if (!navigator.onLine && queueable) {
+    await enqueueMutation({ url, method, body: init!.body as string })
     console.info('[offline-queue] queued (offline precheck)', method, url)
     throw new OfflineQueuedError()
   }
 
+  // Bounded fetch for queueable POSTs — abort and queue after QUEUEABLE_TIMEOUT_MS.
+  // Catches the case where navigator.onLine reports true but fetch actually hangs
+  // (iOS Safari OS network-timeout, throttled connections, captive portals, etc.).
+  let initToSend = init
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  if (queueable) {
+    const controller = new AbortController()
+    timeoutId = setTimeout(() => {
+      console.info('[offline-queue] fetch timeout, aborting', method, url)
+      controller.abort()
+    }, QUEUEABLE_TIMEOUT_MS)
+    initToSend = { ...init, signal: controller.signal }
+  }
+
   let res: Response
   try {
-    res = await fetchWithAuth(url, init)
+    res = await fetchWithAuth(url, initToSend)
   } catch (err) {
+    if (timeoutId) clearTimeout(timeoutId)
     return handleNetworkFailure<T>(err, url, init)
   }
+  if (timeoutId) clearTimeout(timeoutId)
 
   if (res.status === 401) {
     const refreshed = await refreshAccessToken()
