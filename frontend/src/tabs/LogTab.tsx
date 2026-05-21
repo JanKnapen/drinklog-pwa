@@ -292,10 +292,7 @@ function EntryRow({ entry, isConfirmed, onEdit, onDelete }: {
         <p className="text-xs text-neutral-500 tabular-nums flex items-center gap-1.5">
           <span>{entry.displayInfo} · {time}</span>
           {entry.isPending && (
-            <span className="inline-flex items-center gap-0.5 text-amber-700 dark:text-amber-300 font-medium">
-              <ArrowPathIcon className="w-3 h-3 animate-spin" aria-hidden="true" />
-              Pending sync
-            </span>
+            <ArrowPathIcon className="w-3 h-3 text-amber-700 dark:text-amber-300 animate-spin" aria-label="Pending sync" />
           )}
         </p>
       </div>
