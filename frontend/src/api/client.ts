@@ -105,8 +105,10 @@ async function handleNetworkFailure<T>(err: unknown, url: string, init?: Request
   const method = (init?.method ?? 'GET').toUpperCase()
   if (isQueueable(url, method) && typeof init?.body === 'string') {
     await enqueueMutation({ url, method, body: init.body })
+    console.info('[offline-queue] queued', method, url)
     throw new OfflineQueuedError()
   }
+  console.warn('[offline-queue] network failure not queued', method, url, err)
   throw err
 }
 

@@ -14,8 +14,12 @@ function usePendingMutations(): PendingMutation[] {
     let cancelled = false
     const refresh = () => {
       listMutations()
-        .then(m => { if (!cancelled) setPending(m) })
-        .catch(() => {})
+        .then(m => {
+          if (cancelled) return
+          console.info('[offline-queue] hydrated', m.length, 'pending mutation(s)')
+          setPending(m)
+        })
+        .catch(err => console.warn('[offline-queue] hydrate failed', err))
     }
     refresh()
     queueEvents.addEventListener('change', refresh)
