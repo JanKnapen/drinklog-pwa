@@ -81,30 +81,68 @@ function AppContent() {
   }, [username])
 
   // Drain queued offline mutations when online (on mount/login, on reconnect, on tab
-  // re-focus, and on manual user retry via the OfflineBanner). After progress, invalidate
-  // entry/template queries so the server's authoritative rows replace the pending
-  // placeholders. Multiple trigger sources are intentional — `online` doesn't always
-  // fire reliably on iOS PWA after airplane mode toggling, and a hung first fetch on
-  // resume can abort via the replay timeout, leaving items for the visibility/retry
-  // triggers to drive forward.
+  // re-focus, on manual user retry, and via auto-retry after a partial drain). After
+  // progress, invalidate entry/template queries so the server's authoritative rows
+  // replace the pending placeholders. Multiple trigger sources are intentional — on iOS
+  // PWA the `online` event isn't always fired reliably after airplane-mode toggling, and
+  // the first fetch after resume often hangs past the 10s replay timeout, so an auto
+  // retry with exponential backoff drives the queue forward without user action.
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryAttemptRef = useRef(0)
+  const drainQueueRef = useRef<((reason: string) => Promise<void>) | null>(null)
+
+  const cancelPendingRetry = useCallback(() => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = null
+    }
+  }, [])
+
   const drainQueue = useCallback(async (reason: string) => {
+    cancelPendingRetry()
+    // External triggers reset the backoff so the next failure starts at the shortest
+    // delay. Auto-retries advance through the schedule.
+    if (reason !== 'auto-retry') {
+      retryAttemptRef.current = 0
+    }
     if (!username) return
     if (!navigator.onLine) {
       console.info('[offline-queue] drain trigger (' + reason + ') ignored, navigator.onLine=false')
       return
     }
     console.info('[offline-queue] drain trigger:', reason)
-    const { drained, failed } = await drainOfflineQueue()
-    if (drained > 0 || failed > 0) {
+    const result = await drainOfflineQueue()
+    if (result.drained > 0 || result.failed > 0) {
       queryClient.invalidateQueries({ queryKey: ENTRIES_KEY })
       queryClient.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_KEY })
       queryClient.invalidateQueries({ queryKey: TEMPLATES_KEY })
       queryClient.invalidateQueries({ queryKey: CAFFEINE_TEMPLATES_KEY })
     }
-  }, [username])
+    if (result.remaining > 0) {
+      // 1s, 2s, 4s, 8s, 16s, capped at 30s. Keeps retrying indefinitely; an external
+      // trigger or a successful drain resets retryAttemptRef.
+      const delayMs = Math.min(1000 * Math.pow(2, retryAttemptRef.current), 30_000)
+      retryAttemptRef.current++
+      console.info('[offline-queue] auto-retry in', delayMs, 'ms (attempt', retryAttemptRef.current + ')')
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null
+        drainQueueRef.current?.('auto-retry')
+      }, delayMs)
+    }
+  }, [username, cancelPendingRetry])
+
+  // Keep ref in sync so the auto-retry timer callback always sees the latest closure
+  // (e.g. after a username change).
+  useEffect(() => {
+    drainQueueRef.current = drainQueue
+  }, [drainQueue])
 
   useEffect(() => {
-    if (!username) return
+    if (!username) {
+      cancelPendingRetry()
+      retryAttemptRef.current = 0
+      return
+    }
     drainQueue('login/mount')
     const onOnline = () => drainQueue('online-event')
     const onVisible = () => {
@@ -115,8 +153,9 @@ function AppContent() {
     return () => {
       window.removeEventListener('online', onOnline)
       document.removeEventListener('visibilitychange', onVisible)
+      cancelPendingRetry()
     }
-  }, [username, drainQueue])
+  }, [username, drainQueue, cancelPendingRetry])
 
   useEffect(() => {
     ;(async () => {
