@@ -169,16 +169,6 @@ export interface DrainResult {
 }
 
 let drainInProgress = false
-export const drainEvents = new EventTarget()
-
-export function isDrainInProgress(): boolean {
-  return drainInProgress
-}
-
-function setDrainInProgress(value: boolean): void {
-  drainInProgress = value
-  drainEvents.dispatchEvent(new Event('change'))
-}
 
 export async function drainOfflineQueue(): Promise<DrainResult> {
   if (drainInProgress) {
@@ -189,11 +179,11 @@ export async function drainOfflineQueue(): Promise<DrainResult> {
     console.info('[offline-queue] drain skipped, no currentUsername')
     return { drained: 0, failed: 0, remaining: 0 }
   }
-  setDrainInProgress(true)
+  drainInProgress = true
   try {
     return await runDrain()
   } finally {
-    setDrainInProgress(false)
+    drainInProgress = false
   }
 }
 

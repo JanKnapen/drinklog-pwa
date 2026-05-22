@@ -182,7 +182,7 @@ function AppContent() {
 
   return (
     <div className="fixed inset-0 bg-neutral-50 dark:bg-neutral-900 pt-safe pb-safe-nav flex flex-col">
-      <OfflineBanner onRetry={() => drainQueue('manual-retry')} />
+      <OfflineBanner />
       <Suspense fallback={<div className="flex-1" />}>
         {activeTab === 'home' && <HomeTab onToast={setToast} onScannerOpen={setScannerOpen} />}
         {activeTab === 'log' && <LogTab />}
