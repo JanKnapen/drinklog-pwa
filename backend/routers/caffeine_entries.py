@@ -107,6 +107,14 @@ def create_caffeine_entry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # See entries.py create_entry — request_id is the offline-queue idempotency key.
+    if data.request_id:
+        existing = db.query(CaffeineEntry).filter(
+            CaffeineEntry.request_id == data.request_id,
+            CaffeineEntry.user_id == current_user.id,
+        ).first()
+        if existing:
+            return existing
     entry = CaffeineEntry(**data.model_dump(), user_id=current_user.id)
     db.add(entry)
     if data.template_id:

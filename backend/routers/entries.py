@@ -108,6 +108,17 @@ def create_entry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Idempotency: when the client sends a request_id, return any existing matching row
+    # instead of inserting a duplicate. This lets the offline queue retry aggressively
+    # without risking a duplicate when the original request reached the server but its
+    # response was lost in transit.
+    if data.request_id:
+        existing = db.query(DrinkEntry).filter(
+            DrinkEntry.request_id == data.request_id,
+            DrinkEntry.user_id == current_user.id,
+        ).first()
+        if existing:
+            return existing
     entry = DrinkEntry(**data.model_dump(), user_id=current_user.id)
     db.add(entry)
     if data.template_id:

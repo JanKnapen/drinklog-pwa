@@ -119,9 +119,10 @@ function AppContent() {
       queryClient.invalidateQueries({ queryKey: CAFFEINE_TEMPLATES_KEY })
     }
     if (result.remaining > 0) {
-      // 1s, 2s, 4s, 8s, 16s, capped at 30s. Keeps retrying indefinitely; an external
-      // trigger or a successful drain resets retryAttemptRef.
-      const delayMs = Math.min(1000 * Math.pow(2, retryAttemptRef.current), 30_000)
+      // 0.5s, 1s, 2s, 4s, 8s, 16s, capped at 30s. Keeps retrying indefinitely; an
+      // external trigger or a successful drain resets retryAttemptRef. Safe to retry
+      // aggressively because the POST carries an idempotency key — see entries.ts.
+      const delayMs = Math.min(500 * Math.pow(2, retryAttemptRef.current), 30_000)
       retryAttemptRef.current++
       console.info('[offline-queue] auto-retry in', delayMs, 'ms (attempt', retryAttemptRef.current + ')')
       retryTimerRef.current = setTimeout(() => {

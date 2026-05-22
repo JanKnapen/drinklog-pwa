@@ -291,3 +291,14 @@ def test_caffeine_summary_range_returns_min_max(client):
     r = client.get("/api/caffeine-entries/summary/range").json()
     assert r["first_date"] is not None and r["last_date"] is not None
     assert r["first_date"] <= r["last_date"]
+
+
+def test_create_caffeine_entry_with_request_id_is_idempotent(client):
+    payload = {"custom_name": "Coffee", "mg": 80, "timestamp": _now(), "request_id": "xyz-789"}
+    r1 = client.post("/api/caffeine-entries", json=payload)
+    assert r1.status_code == 201
+    first_id = r1.json()["id"]
+    r2 = client.post("/api/caffeine-entries", json=payload)
+    assert r2.status_code in (200, 201)
+    assert r2.json()["id"] == first_id
+    assert len(client.get("/api/caffeine-entries").json()) == 1
