@@ -85,8 +85,12 @@ function AppContent() {
   // server-assigned state instead of the optimistic placeholders.
   useEffect(() => {
     if (!username) return
-    const drain = async () => {
-      if (!navigator.onLine) return
+    const drain = async (reason: string) => {
+      if (!navigator.onLine) {
+        console.info('[offline-queue] drain trigger (' + reason + ') ignored, navigator.onLine=false')
+        return
+      }
+      console.info('[offline-queue] drain trigger:', reason)
       const { drained, failed } = await drainOfflineQueue()
       if (drained > 0 || failed > 0) {
         queryClient.invalidateQueries({ queryKey: ENTRIES_KEY })
@@ -95,9 +99,10 @@ function AppContent() {
         queryClient.invalidateQueries({ queryKey: CAFFEINE_TEMPLATES_KEY })
       }
     }
-    drain()
-    window.addEventListener('online', drain)
-    return () => window.removeEventListener('online', drain)
+    drain('login/mount')
+    const onOnline = () => drain('online-event')
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
   }, [username])
 
   useEffect(() => {
