@@ -176,7 +176,7 @@ Two-token JWT pattern. All data endpoints require a valid access token.
 
 **`username` in `SettingsContext`** — session-only state, not persisted to localStorage. Populated from `GET /api/auth/me` after every successful refresh. Cleared on logout. The login/logout state of the app is derived solely from whether `username` is non-null.
 
-**Query cache cleared on logout** — `AppContent` in `App.tsx` has a `useEffect` that calls `queryClient.clear()` and `caches.delete('api-cache')` whenever `username` becomes `null`. The `caches.delete` wipes the service worker's runtime cache so a logged-out device cannot see cached API responses offline. Do not remove either call.
+**Query cache cleared on logout** — `AppContent` in `App.tsx` has a `useEffect` that calls `queryClient.clear()`, `caches.delete('api-cache')`, and `clearMutations()` (offline queue) when `username` is `null` — gated on `authChecked` so the cold-start render (where `username` starts at `null` before silent refresh resolves) does **not** wipe the queue out from under the user we're about to authenticate. The `caches.delete` wipes the service worker's runtime cache so a logged-out device cannot see cached API responses offline. See the Offline Support section for the rationale on `clearMutations()` and the `authChecked` gate.
 
 **`secure=True` on the refresh cookie** — the cookie is only sent over HTTPS. Local dev without TLS will not receive the cookie and the silent refresh will always fail. Use the Tailscale dev setup (`docker-compose.local.yml`) for end-to-end auth testing.
 
@@ -303,6 +303,34 @@ The response includes dev-testing telemetry fields (`latency_ms`, `strategy_used
 
 **Cross-module local match:** When a scan returns `source: "local"` with `module !== activeModule`, `handleScan` calls `updateSettings({ activeModule })` and stores the template ID in `pendingScanTemplateId` state rather than opening `ScanMatchModal` immediately. A `useEffect` watching `[templates, pendingScanTemplateId]` opens the modal once the module adapter's `templates` array has updated on the next render. This deferred pattern is necessary because the module switch is reflected in the adapter synchronously on the next render cycle, not immediately.
 
+## Offline Support
+
+Logging entries works while offline. Reads continue to use the existing service-worker `NetworkFirst` cache; writes use a client-side IndexedDB queue that replays when the connection returns. **Only the two log endpoints are queueable** — `POST /api/alcohol-entries` and `POST /api/caffeine-entries`. Edits, deletes, template CRUD, and Confirm All all require live connectivity.
+
+**Queue (`frontend/src/api/offline-queue.ts`)** — IndexedDB store `drinklog-offline.pending-mutations`, each row `{ id, url, method, body, createdAt, username }`. Capped at 1000 entries. Exports a `queueEvents` `EventTarget` that fires `change` on every enqueue / remove / clear so subscribers (`OfflineBanner`, `usePendingEntries`) refresh without polling. `enqueueMutation` **refuses to write without a `username`** — the queue is identity-bound by construction.
+
+**TanStack Query mutations need `networkMode: 'always'`** — TQ v5's default mutation `networkMode` is `'online'`, which **pauses the entire mutationFn** when `navigator.onLine === false`. That short-circuits `apiFetch` before our queueing path can run; on reconnect TQ resumes the paused mutation and the request just goes online normally — making it look like the offline path "worked" while the queue stays empty. `useCreateEntry` and `useCreateCaffeineEntry` opt into `networkMode: 'always'`. Other mutations keep the default since pausing is the right behavior for them.
+
+**`navigator.onLine` precheck + 5 s `AbortController` fallback in `apiFetch`** — on iOS Safari and some Chromium throttling configs, `fetch` doesn't throw immediately when offline; it hangs on the OS connectivity timeout for 5–15 s before rejecting. `apiFetch` first checks `navigator.onLine` and queues synchronously if it's already `false` (fast path). For the "navigator lies" case (`onLine = true` but fetch still hangs), queueable POSTs are wrapped in an `AbortController` that aborts after 5 s; the aborted fetch rejects through `handleNetworkFailure` and gets queued, unblocking the click handler within ~5 s instead of waiting for the OS timeout. Removing either path reintroduces the original "nothing happens when offline" UX bug.
+
+**Queue is identity-bound — `currentUsername` mirror from `SettingsContext` into `client.ts`** — `client.ts` keeps a module-level `currentUsername` that `SettingsContext` syncs via `setCurrentUsername()` on every username change (a `useEffect` in the provider). `apiFetch` stamps each enqueue with this value. `drainOfflineQueue` only replays items whose stamp matches the current session — items with a foreign or missing username are **deleted on sight as cleanup**, never replayed under the new user's credentials. This is the security boundary against cross-user replay on a shared device (the main deployment is multi-user, admin-registered). `usePendingEntries` also filters by current username so a freshly logged-in user never sees a previous session's queue.
+
+**Logout-clear gated on `authChecked`** — see the Authentication section. Without the gate, the cold-start render (where `username` is initially `null` before the silent refresh resolves) would wipe the queue belonging to the user about to be authenticated. Real logout (username transitions to `null` *after* `authChecked = true`) still clears everything.
+
+**Pending entries hydrated from the queue, not TanStack optimistic updates (`hooks/usePendingEntries.ts`)** — `usePendingMutations` subscribes to `queueEvents.change` and re-reads via `listMutations()`. `usePendingAlcoholEntries(templates)` / `usePendingCaffeineEntries(templates)` parse each queued POST body, enrich with the linked template, and produce a synthetic `DrinkEntry` / `CaffeineEntry` with `id = pending-<queueId>`. **Both the adapter and `LogTab` prepend these to the server's entries list** — that's why pending entries appear in Unconfirmed and survive a PWA cold restart. **Do not add `onMutate`/`onError` optimistic logic back to `useCreateEntry` / `useCreateCaffeineEntry`** — they'd double-render every offline log (cache placeholder + queue hydration).
+
+**`isPending` flag in `TrackerEntry`** — derived from `id.startsWith('pending-')` via `isPendingId()` (exported from `hooks/usePendingEntries.ts`). `LogTab`'s `EntryRow` gives pending rows an amber background + spinning `ArrowPathIcon`, disables the edit button (no server id), and reroutes the trash icon to `removeMutation(id.slice(PENDING_ID_PREFIX.length))` so it dequeues instead of calling `DELETE /api/...`. `hasEligibleToConfirm` excludes pending entries because the server hasn't seen them; Confirm All can't affect them until drain completes.
+
+**`HomeTab` snapshot must include `entries` in its refresh deps** — online logs bump `templates.usage_count` server-side, which used to be the only trigger for the snapshot recompute. Offline logs don't hit the server, so without `entries` in the dep array the Quick Log buttons would never reorder until reconnect. `templates` stays in the dep array (existing snapshot-refresh invariant); both are required.
+
+**Drain replays use the in-memory access token** — `drainOfflineQueue` fires on the `online` event and on login. It refreshes the token once on 401 via the existing `refreshPromise` lock (sharing with concurrent 401 retries from queries). On 4xx the item is dropped (server already rejected it); on 5xx or network error the drain bails out and retries on the next `online` event. After progress, `App.tsx` invalidates entries/templates queries so the synthetic pending rows are replaced by the real server entries.
+
+**Confirm All is intentionally not queueable** — its semantics depend on the live unconfirmed set at the server, and queueing it would race with pending logs in the queue. `LogTab` disables the button + relabels it `"Confirm All (offline)"` via `useOnlineStatus()`. Do not add `confirm-all` to the `QUEUEABLE` set.
+
+**Toast text reflects offline state via `useOnlineStatus()`** — `HomeTab` derives `loggedMsg = isOnline ? "Logged: X" : "Saved offline: X"` and passes it through every `onLogged` callback. The closure captures `isOnline` at click time, so a click-while-offline followed by reconnect still shows "Saved offline: X" — accurate because the entry went through the queue.
+
+**No idempotency keys (yet)** — there's no protection against double-logging if a request reaches the server but the response is lost in transit (e.g. flaky Tailscale link dropping the response packet). The common case (truly offline) is fine. If this becomes a real problem the fix is a client-generated `request_id` UUID on the entry POST payload with a backend uniqueness check.
+
 ## iOS Safari Scroll/Touch Quirks
 
 These fixes are intentional — do not revert them:
@@ -343,7 +371,38 @@ Good code quality and refactoring are always welcome when touching existing code
 - Conventional commit messages: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`
 - No `Co-Authored-By` lines in commits
 - **Never commit without explicit user instruction.** Do not commit after completing a task — always wait for the user to say "commit this" or similar before running any `git commit` command.
-- **Before committing:** review whether the changes introduce anything non-obvious that future sessions would need to know (hidden constraints, invariants, intentional workarounds). If so, update CLAUDE.md first. Don't document UI details or anything self-evident from reading the code.
+
+## Post-Implementation Workflow
+
+After completing an implementation and pushing the changes, walk through this sequence before considering the work done. Each step gates the next — do not advance past a step until the user has explicitly confirmed it, and do not run steps in parallel.
+
+### 1. Testing confirmation
+
+Pause and wait for the user to confirm that they have tested the branch on the deployed app / their own setup, and that no further changes are needed. If the user identifies additional changes, implement them, push, and return to this step. Do not advance to the security review until the user explicitly says testing is complete and the branch is ready.
+
+### 2. Security review
+
+Once testing is confirmed, assess whether the changes warrant a security review. They do if the diff touches any of: authentication / authorization / session handling, secrets or env-var handling, user input parsing or validation, data exposed across user boundaries, network surface (new endpoints, headers, CORS, CSP), file or path handling, third-party APIs or untrusted external data, cryptography, or dependency additions. If any of those apply — or if the user explicitly requests one — invoke the `security-review` skill. Address findings before continuing. Wait for the user to explicitly confirm the security review is complete and satisfactory.
+
+If you assess that no security review is needed, briefly tell the user why and ask them to confirm skipping it before advancing.
+
+### 3. CLAUDE.md review
+
+Once both prior steps are confirmed, review what was just implemented and update `CLAUDE.md` if any of the following were discovered:
+- **Architecture or patterns** – new conventions, abstractions, or structural decisions made
+- **Non-obvious technical decisions** – _why_ something was done a certain way (tradeoffs, constraints, gotchas)
+- **Reusable knowledge** – utilities, helpers, or APIs in this codebase a future context would benefit from knowing about
+- **Pitfalls to avoid** – things that were tried and didn't work, or footguns in this codebase
+- **Setup/env changes** – new dependencies, env vars, config, or tooling introduced
+
+**Do not add:**
+- Things already documented
+- Obvious or generic best practices
+- Step-by-step summaries of what was just built (that's git history)
+
+**If nothing meaningful was learned that a future context would need, make no changes.** Commit if any changes.
+
+Do not run any step of this workflow unprompted — each phase requires explicit user confirmation before proceeding to the next.
 
 ## Security Constraints
 
