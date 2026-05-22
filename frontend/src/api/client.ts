@@ -243,11 +243,12 @@ async function runDrain(): Promise<DrainResult> {
   return { drained, failed, remaining: 0 }
 }
 
-// Short replay timeout (3s) is safe because the POST carries an idempotency key
+// Short replay timeout (2s) is safe because the POST carries an idempotency key
 // (request_id) — if the request actually reached the server but the response was lost
 // to the abort, the next retry returns the existing row instead of creating a duplicate.
-// Keeps recovery time on iOS post-airplane-mode resume well under 5s in the common case.
-const REPLAY_TIMEOUT_MS = 3_000
+// 2s is roughly the iOS Safari post-airplane-mode network-stack settle time; below 2s
+// we'd start aborting genuinely slow but successful requests.
+const REPLAY_TIMEOUT_MS = 2_000
 
 function replayRequest(url: string, method: string, body: string): Promise<Response> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
