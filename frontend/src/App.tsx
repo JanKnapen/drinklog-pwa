@@ -1,4 +1,4 @@
-import { useState, useRef, lazy, Suspense, useEffect } from 'react'
+import { useState, useRef, lazy, Suspense, useEffect, useCallback } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import BottomNav, { type Tab } from './components/BottomNav'
 import OfflineBanner from './components/OfflineBanner'
@@ -80,30 +80,43 @@ function AppContent() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [username])
 
-  // Drain queued offline mutations when online (on mount/login and on reconnect).
-  // After successful drain, invalidate entry/template queries so the UI shows the
-  // server-assigned state instead of the optimistic placeholders.
+  // Drain queued offline mutations when online (on mount/login, on reconnect, on tab
+  // re-focus, and on manual user retry via the OfflineBanner). After progress, invalidate
+  // entry/template queries so the server's authoritative rows replace the pending
+  // placeholders. Multiple trigger sources are intentional — `online` doesn't always
+  // fire reliably on iOS PWA after airplane mode toggling, and a hung first fetch on
+  // resume can abort via the replay timeout, leaving items for the visibility/retry
+  // triggers to drive forward.
+  const drainQueue = useCallback(async (reason: string) => {
+    if (!username) return
+    if (!navigator.onLine) {
+      console.info('[offline-queue] drain trigger (' + reason + ') ignored, navigator.onLine=false')
+      return
+    }
+    console.info('[offline-queue] drain trigger:', reason)
+    const { drained, failed } = await drainOfflineQueue()
+    if (drained > 0 || failed > 0) {
+      queryClient.invalidateQueries({ queryKey: ENTRIES_KEY })
+      queryClient.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_KEY })
+      queryClient.invalidateQueries({ queryKey: TEMPLATES_KEY })
+      queryClient.invalidateQueries({ queryKey: CAFFEINE_TEMPLATES_KEY })
+    }
+  }, [username])
+
   useEffect(() => {
     if (!username) return
-    const drain = async (reason: string) => {
-      if (!navigator.onLine) {
-        console.info('[offline-queue] drain trigger (' + reason + ') ignored, navigator.onLine=false')
-        return
-      }
-      console.info('[offline-queue] drain trigger:', reason)
-      const { drained, failed } = await drainOfflineQueue()
-      if (drained > 0 || failed > 0) {
-        queryClient.invalidateQueries({ queryKey: ENTRIES_KEY })
-        queryClient.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_KEY })
-        queryClient.invalidateQueries({ queryKey: TEMPLATES_KEY })
-        queryClient.invalidateQueries({ queryKey: CAFFEINE_TEMPLATES_KEY })
-      }
+    drainQueue('login/mount')
+    const onOnline = () => drainQueue('online-event')
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') drainQueue('visibility-change')
     }
-    drain('login/mount')
-    const onOnline = () => drain('online-event')
     window.addEventListener('online', onOnline)
-    return () => window.removeEventListener('online', onOnline)
-  }, [username])
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [username, drainQueue])
 
   useEffect(() => {
     ;(async () => {
@@ -130,7 +143,7 @@ function AppContent() {
 
   return (
     <div className="fixed inset-0 bg-neutral-50 dark:bg-neutral-900 pt-safe pb-safe-nav flex flex-col">
-      <OfflineBanner />
+      <OfflineBanner onRetry={() => drainQueue('manual-retry')} />
       <Suspense fallback={<div className="flex-1" />}>
         {activeTab === 'home' && <HomeTab onToast={setToast} onScannerOpen={setScannerOpen} />}
         {activeTab === 'log' && <LogTab />}

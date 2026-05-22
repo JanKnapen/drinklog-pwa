@@ -168,11 +168,36 @@ export interface DrainResult {
   remaining: number
 }
 
+let drainInProgress = false
+export const drainEvents = new EventTarget()
+
+export function isDrainInProgress(): boolean {
+  return drainInProgress
+}
+
+function setDrainInProgress(value: boolean): void {
+  drainInProgress = value
+  drainEvents.dispatchEvent(new Event('change'))
+}
+
 export async function drainOfflineQueue(): Promise<DrainResult> {
+  if (drainInProgress) {
+    console.info('[offline-queue] drain skipped, already in progress')
+    return { drained: 0, failed: 0, remaining: -1 }
+  }
   if (!currentUsername) {
     console.info('[offline-queue] drain skipped, no currentUsername')
     return { drained: 0, failed: 0, remaining: 0 }
   }
+  setDrainInProgress(true)
+  try {
+    return await runDrain()
+  } finally {
+    setDrainInProgress(false)
+  }
+}
+
+async function runDrain(): Promise<DrainResult> {
   const pending = await listMutations()
   console.info('[offline-queue] drain starting,', pending.length, 'item(s) in queue, navigator.onLine=', navigator.onLine)
   let drained = 0
