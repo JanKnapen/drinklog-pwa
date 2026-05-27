@@ -286,14 +286,14 @@ export default function DataTab() {
   )
 }
 
-function XTick({ x, y, payload, multiYear }: { x: number; y: number; payload: { value: string }; multiYear: boolean }) {
+function XTick({ x, y, payload, multiYear, fill }: { x: number; y: number; payload: { value: string }; multiYear: boolean; fill?: string }) {
   const d = parseDateKey(payload.value)
   const dayMonth = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
   return (
     <g transform={`translate(${x},${y})`}>
-      <text x={0} y={0} dy={12} textAnchor="middle" fontSize={10} fill="currentColor">{dayMonth}</text>
+      <text x={0} y={0} dy={12} textAnchor="middle" fontSize={10} fill={fill}>{dayMonth}</text>
       {multiYear && (
-        <text x={0} y={0} dy={23} textAnchor="middle" fontSize={9} fill="currentColor" opacity={0.55}>{d.getFullYear()}</text>
+        <text x={0} y={0} dy={23} textAnchor="middle" fontSize={9} fill={fill} opacity={0.55}>{d.getFullYear()}</text>
       )}
     </g>
   )
