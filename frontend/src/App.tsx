@@ -1,4 +1,4 @@
-import { useState, useRef, lazy, Suspense, useEffect } from 'react'
+import { useState, useRef, lazy, Suspense, useEffect, useCallback } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import BottomNav, { type Tab } from './components/BottomNav'
 import OfflineBanner from './components/OfflineBanner'
@@ -80,25 +80,83 @@ function AppContent() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [username])
 
-  // Drain queued offline mutations when online (on mount/login and on reconnect).
-  // After successful drain, invalidate entry/template queries so the UI shows the
-  // server-assigned state instead of the optimistic placeholders.
-  useEffect(() => {
-    if (!username) return
-    const drain = async () => {
-      if (!navigator.onLine) return
-      const { drained, failed } = await drainOfflineQueue()
-      if (drained > 0 || failed > 0) {
-        queryClient.invalidateQueries({ queryKey: ENTRIES_KEY })
-        queryClient.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_KEY })
-        queryClient.invalidateQueries({ queryKey: TEMPLATES_KEY })
-        queryClient.invalidateQueries({ queryKey: CAFFEINE_TEMPLATES_KEY })
-      }
+  // Drain queued offline mutations when online (on mount/login, on reconnect, on tab
+  // re-focus, on manual user retry, and via auto-retry after a partial drain). After
+  // progress, invalidate entry/template queries so the server's authoritative rows
+  // replace the pending placeholders. Multiple trigger sources are intentional — on iOS
+  // PWA the `online` event isn't always fired reliably after airplane-mode toggling, and
+  // the first fetch after resume often hangs past the 10s replay timeout, so an auto
+  // retry with exponential backoff drives the queue forward without user action.
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryAttemptRef = useRef(0)
+  const drainQueueRef = useRef<((reason: string) => Promise<void>) | null>(null)
+
+  const cancelPendingRetry = useCallback(() => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current)
+      retryTimerRef.current = null
     }
-    drain()
-    window.addEventListener('online', drain)
-    return () => window.removeEventListener('online', drain)
-  }, [username])
+  }, [])
+
+  const drainQueue = useCallback(async (reason: string) => {
+    cancelPendingRetry()
+    // External triggers reset the backoff so the next failure starts at the shortest
+    // delay. Auto-retries advance through the schedule.
+    if (reason !== 'auto-retry') {
+      retryAttemptRef.current = 0
+    }
+    if (!username) return
+    if (!navigator.onLine) {
+      console.info('[offline-queue] drain trigger (' + reason + ') ignored, navigator.onLine=false')
+      return
+    }
+    console.info('[offline-queue] drain trigger:', reason)
+    const result = await drainOfflineQueue()
+    if (result.drained > 0 || result.failed > 0) {
+      queryClient.invalidateQueries({ queryKey: ENTRIES_KEY })
+      queryClient.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_KEY })
+      queryClient.invalidateQueries({ queryKey: TEMPLATES_KEY })
+      queryClient.invalidateQueries({ queryKey: CAFFEINE_TEMPLATES_KEY })
+    }
+    if (result.remaining > 0) {
+      // 0.5s, 1s, 2s, 4s, 8s, 16s, capped at 30s. Keeps retrying indefinitely; an
+      // external trigger or a successful drain resets retryAttemptRef. Safe to retry
+      // aggressively because the POST carries an idempotency key — see entries.ts.
+      const delayMs = Math.min(500 * Math.pow(2, retryAttemptRef.current), 30_000)
+      retryAttemptRef.current++
+      console.info('[offline-queue] auto-retry in', delayMs, 'ms (attempt', retryAttemptRef.current + ')')
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null
+        drainQueueRef.current?.('auto-retry')
+      }, delayMs)
+    }
+  }, [username, cancelPendingRetry])
+
+  // Keep ref in sync so the auto-retry timer callback always sees the latest closure
+  // (e.g. after a username change).
+  useEffect(() => {
+    drainQueueRef.current = drainQueue
+  }, [drainQueue])
+
+  useEffect(() => {
+    if (!username) {
+      cancelPendingRetry()
+      retryAttemptRef.current = 0
+      return
+    }
+    drainQueue('login/mount')
+    const onOnline = () => drainQueue('online-event')
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') drainQueue('visibility-change')
+    }
+    window.addEventListener('online', onOnline)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      document.removeEventListener('visibilitychange', onVisible)
+      cancelPendingRetry()
+    }
+  }, [username, drainQueue, cancelPendingRetry])
 
   useEffect(() => {
     ;(async () => {

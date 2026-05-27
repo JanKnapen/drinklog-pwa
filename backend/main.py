@@ -185,6 +185,25 @@ def _migrate():
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN imported BOOLEAN"))
                 conn.commit()
 
+    # Add request_id (offline-queue idempotency key) to entry tables if missing, plus
+    # a partial unique index on (request_id, user_id) so concurrent retries can't slip
+    # past the application-level check in the POST handler and create duplicates.
+    for table in ("drink_entries", "caffeine_entries"):
+        existing_cols = {c["name"] for c in inspector.get_columns(table)}
+        if "request_id" not in existing_cols:
+            with engine.connect() as conn:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN request_id VARCHAR"))
+                conn.commit()
+        existing_indexes = {i["name"] for i in inspector.get_indexes(table)}
+        request_id_index = f"uq_{table}_request_id_user"
+        if request_id_index not in existing_indexes:
+            with engine.connect() as conn:
+                conn.execute(text(
+                    f"CREATE UNIQUE INDEX IF NOT EXISTS {request_id_index} "
+                    f"ON {table}(request_id, user_id) WHERE request_id IS NOT NULL"
+                ))
+                conn.commit()
+
     # Create indexes on entry tables for pagination, filtering, and joins
     for table, columns in [
         ("drink_entries", ["timestamp", "is_marked", "template_id"]),

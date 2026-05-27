@@ -168,9 +168,28 @@ export interface DrainResult {
   remaining: number
 }
 
+let drainInProgress = false
+
 export async function drainOfflineQueue(): Promise<DrainResult> {
-  if (!currentUsername) return { drained: 0, failed: 0, remaining: 0 }
+  if (drainInProgress) {
+    console.info('[offline-queue] drain skipped, already in progress')
+    return { drained: 0, failed: 0, remaining: -1 }
+  }
+  if (!currentUsername) {
+    console.info('[offline-queue] drain skipped, no currentUsername')
+    return { drained: 0, failed: 0, remaining: 0 }
+  }
+  drainInProgress = true
+  try {
+    return await runDrain()
+  } finally {
+    drainInProgress = false
+  }
+}
+
+async function runDrain(): Promise<DrainResult> {
   const pending = await listMutations()
+  console.info('[offline-queue] drain starting,', pending.length, 'item(s) in queue, navigator.onLine=', navigator.onLine)
   let drained = 0
   let failed = 0
 
@@ -179,26 +198,35 @@ export async function drainOfflineQueue(): Promise<DrainResult> {
     // device. Refuse to replay them under the current user's credentials — delete as
     // cleanup. Same treatment for legacy items without a username field at all.
     if (!m.username || m.username !== currentUsername) {
-      await removeMutation(m.id)
       console.warn('[offline-queue] discarding mutation from foreign session', m.id, m.username)
+      await removeMutation(m.id)
       continue
     }
 
+    console.info('[offline-queue] replaying', m.method, m.url, '(queue id', m.id + ')')
     let res: Response
     try {
       res = await replayRequest(m.url, m.method, m.body)
-    } catch {
+    } catch (err) {
+      console.warn('[offline-queue] replay request errored, leaving in queue', m.id, err)
       return { drained, failed, remaining: pending.length - drained - failed }
     }
+    console.info('[offline-queue] replay response', m.id, 'status=', res.status)
 
     if (res.status === 401) {
+      console.info('[offline-queue] got 401, attempting refresh')
       const refreshed = await refreshAccessToken()
-      if (!refreshed) return { drained, failed, remaining: pending.length - drained - failed }
-      try {
-        res = await replayRequest(m.url, m.method, m.body)
-      } catch {
+      if (!refreshed) {
+        console.warn('[offline-queue] refresh failed, aborting drain')
         return { drained, failed, remaining: pending.length - drained - failed }
       }
+      try {
+        res = await replayRequest(m.url, m.method, m.body)
+      } catch (err) {
+        console.warn('[offline-queue] replay errored after refresh, leaving in queue', m.id, err)
+        return { drained, failed, remaining: pending.length - drained - failed }
+      }
+      console.info('[offline-queue] replay-after-refresh response', m.id, 'status=', res.status)
     }
 
     if (res.ok || (res.status >= 400 && res.status < 500)) {
@@ -206,15 +234,34 @@ export async function drainOfflineQueue(): Promise<DrainResult> {
       if (res.ok) drained++
       else failed++
     } else {
+      console.warn('[offline-queue] replay got 5xx, leaving in queue', m.id, res.status)
       return { drained, failed, remaining: pending.length - drained - failed }
     }
   }
 
+  console.info('[offline-queue] drain finished, drained=', drained, 'failed=', failed)
   return { drained, failed, remaining: 0 }
 }
+
+// Short replay timeout (2s) is safe because the POST carries an idempotency key
+// (request_id) — if the request actually reached the server but the response was lost
+// to the abort, the next retry returns the existing row instead of creating a duplicate.
+// 2s is roughly the iOS Safari post-airplane-mode network-stack settle time; below 2s
+// we'd start aborting genuinely slow but successful requests.
+const REPLAY_TIMEOUT_MS = 2_000
 
 function replayRequest(url: string, method: string, body: string): Promise<Response> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
-  return fetch(url, { method, headers, body, credentials: 'include' })
+  // Bound the replay fetch the same way apiFetch does. Without a timeout, an iOS Safari
+  // post-airplane-mode resume that hangs the network stack will leave the drain stuck
+  // forever and the banner glued to "Syncing N entries…". On abort, the drain bails out,
+  // leaves the item in the queue, and the next online event retries.
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => {
+    console.warn('[offline-queue] replay timeout, aborting', method, url)
+    controller.abort()
+  }, REPLAY_TIMEOUT_MS)
+  return fetch(url, { method, headers, body, credentials: 'include', signal: controller.signal })
+    .finally(() => clearTimeout(timeoutId))
 }

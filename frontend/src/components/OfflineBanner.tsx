@@ -23,9 +23,7 @@ export default function OfflineBanner() {
 
   const noun = pending === 1 ? 'entry' : 'entries'
   const msg = !isOnline
-    ? pending > 0
-      ? `Offline — ${pending} ${noun} pending sync`
-      : 'Offline'
+    ? pending > 0 ? `Offline — ${pending} ${noun} pending sync` : 'Offline'
     : `Syncing ${pending} ${noun}…`
 
   return (

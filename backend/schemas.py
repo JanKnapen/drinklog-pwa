@@ -66,6 +66,10 @@ class DrinkEntryCreate(BaseModel):
     abv: float = Field(ge=0, le=100)
     timestamp: datetime
     fraction: Optional[float] = Field(default=None, gt=0, le=1)
+    # Client-generated idempotency key. When present, an existing entry with the same
+    # (user_id, request_id) is returned instead of creating a duplicate — makes offline
+    # replay safe against responses lost in transit.
+    request_id: Optional[str] = Field(default=None, max_length=64)
 
     @field_validator("timestamp")
     @classmethod
@@ -152,6 +156,8 @@ class CaffeineEntryCreate(BaseModel):
     mg: float = Field(gt=0, le=2000)
     timestamp: datetime
     fraction: Optional[float] = Field(default=None, gt=0, le=1)
+    # See DrinkEntryCreate.request_id.
+    request_id: Optional[str] = Field(default=None, max_length=64)
 
     @field_validator("timestamp")
     @classmethod

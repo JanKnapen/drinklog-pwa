@@ -60,7 +60,14 @@ export function useCreateEntry() {
       abv: number
       timestamp: string
       fraction?: number
-    }) => apiFetch<DrinkEntry>('/api/alcohol-entries', { method: 'POST', body: JSON.stringify(data) }),
+    }) => {
+      // Generate the idempotency key here (not in the caller) so it's stamped into the
+      // POST body exactly once per call and stored in the offline queue as part of the
+      // body. Retries reuse the same key and the server short-circuits to the existing
+      // row instead of inserting a duplicate.
+      const payload = { ...data, request_id: crypto.randomUUID() }
+      return apiFetch<DrinkEntry>('/api/alcohol-entries', { method: 'POST', body: JSON.stringify(payload) })
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ENTRIES_KEY })
       qc.invalidateQueries({ queryKey: TEMPLATES_KEY })
