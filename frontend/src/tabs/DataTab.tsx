@@ -279,13 +279,7 @@ export default function DataTab() {
           <SummaryCard
             title="Heaviest Day"
             value={stats.heaviest ? stats.heaviest.total.toFixed(1) : '—'}
-            subtitle={stats.heaviest ? (() => {
-              const d = parseDateKey(stats.heaviest.date)
-              const showYear = d.getFullYear() !== new Date().getFullYear()
-              return d.toLocaleDateString(undefined, showYear
-                ? { month: 'short', day: 'numeric', year: 'numeric' }
-                : { month: 'short', day: 'numeric' })
-            })() : undefined}
+            subtitle={stats.heaviest ? parseDateKey(stats.heaviest.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : undefined}
           />
         </div>
       </div>
