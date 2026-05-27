@@ -116,6 +116,7 @@ export default function UsersView() {
   const [submitting, setSubmitting] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
 
   // Upload dialog state
   const [uploadModule, setUploadModule] = useState<Module>('alcohol');
@@ -148,6 +149,7 @@ export default function UsersView() {
   }
   function openDelete(user: AdminUser) {
     setFormError('');
+    setDeleteConfirmation('');
     setModal({ kind: 'delete', user });
   }
   function openUpload(user: AdminUser) {
@@ -193,6 +195,7 @@ export default function UsersView() {
 
   async function handleDelete() {
     if (modal?.kind !== 'delete') return;
+    if (deleteConfirmation !== modal.user.username) return;
     setSubmitting(true); setFormError('');
     try {
       await deleteUser(modal.user.id);
@@ -336,13 +339,26 @@ export default function UsersView() {
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
             This will permanently delete <strong>{modal.user.username}</strong> and all their entries and templates. This cannot be undone.
           </p>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Type <span className="font-mono text-gray-900 dark:text-gray-100">{modal.user.username}</span> to confirm
+            </label>
+            <input
+              type="text"
+              value={deleteConfirmation}
+              onChange={e => setDeleteConfirmation(e.target.value)}
+              autoFocus
+              autoComplete="off"
+              className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+            />
+          </div>
           {formError && <p className="text-sm text-red-600 dark:text-red-400 mb-2">{formError}</p>}
           <div className="flex justify-end gap-2">
             <button onClick={closeModal} className="text-sm text-gray-600 dark:text-gray-400 px-4 py-2">Cancel</button>
             <button
               onClick={handleDelete}
-              disabled={submitting}
-              className="text-sm bg-red-600 text-white rounded-md px-4 py-2 hover:bg-red-700 disabled:opacity-50"
+              disabled={submitting || deleteConfirmation !== modal.user.username}
+              className="text-sm bg-red-600 text-white rounded-md px-4 py-2 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? 'Deleting…' : 'Delete'}
             </button>

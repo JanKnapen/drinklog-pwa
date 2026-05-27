@@ -48,13 +48,20 @@ export function useCaffeineRange() {
 export function useCreateCaffeineEntry() {
   const qc = useQueryClient()
   return useMutation({
+    // See useCreateEntry — TanStack Query v5 defaults to networkMode 'online', which
+    // pauses the mutationFn when offline and prevents the request from reaching our queue.
+    networkMode: 'always',
     mutationFn: (data: {
       template_id?: string
       custom_name?: string
       mg: number
       timestamp: string
       fraction?: number
-    }) => apiFetch<CaffeineEntry>('/api/caffeine-entries', { method: 'POST', body: JSON.stringify(data) }),
+    }) => {
+      // Idempotency key — see useCreateEntry for rationale.
+      const payload = { ...data, request_id: crypto.randomUUID() }
+      return apiFetch<CaffeineEntry>('/api/caffeine-entries', { method: 'POST', body: JSON.stringify(payload) })
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: CAFFEINE_ENTRIES_KEY })
       qc.invalidateQueries({ queryKey: CAFFEINE_TEMPLATES_KEY })

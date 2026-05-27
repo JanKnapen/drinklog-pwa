@@ -48,6 +48,11 @@ export function useEntryRange() {
 export function useCreateEntry() {
   const qc = useQueryClient()
   return useMutation({
+    // networkMode: 'always' — TanStack Query v5 defaults to 'online', which PAUSES the
+    // mutationFn when navigator.onLine is false. That short-circuits apiFetch before our
+    // queueable precheck can write to IndexedDB. 'always' lets the mutationFn run
+    // regardless, so offline writes reach the queue immediately.
+    networkMode: 'always',
     mutationFn: (data: {
       template_id?: string
       custom_name?: string
@@ -55,7 +60,14 @@ export function useCreateEntry() {
       abv: number
       timestamp: string
       fraction?: number
-    }) => apiFetch<DrinkEntry>('/api/alcohol-entries', { method: 'POST', body: JSON.stringify(data) }),
+    }) => {
+      // Generate the idempotency key here (not in the caller) so it's stamped into the
+      // POST body exactly once per call and stored in the offline queue as part of the
+      // body. Retries reuse the same key and the server short-circuits to the existing
+      // row instead of inserting a duplicate.
+      const payload = { ...data, request_id: crypto.randomUUID() }
+      return apiFetch<DrinkEntry>('/api/alcohol-entries', { method: 'POST', body: JSON.stringify(payload) })
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ENTRIES_KEY })
       qc.invalidateQueries({ queryKey: TEMPLATES_KEY })

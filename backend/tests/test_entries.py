@@ -433,3 +433,23 @@ def test_summary_range_returns_min_max(client):
     r = client.get("/api/alcohol-entries/summary/range").json()
     assert r["first_date"] is not None and r["last_date"] is not None
     assert r["first_date"] <= r["last_date"]
+
+
+def test_create_entry_with_request_id_is_idempotent(client):
+    payload = {"custom_name": "Beer", "ml": 330, "abv": 5.0, "timestamp": _now(), "request_id": "abc-123"}
+    r1 = client.post("/api/alcohol-entries", json=payload)
+    assert r1.status_code == 201
+    first_id = r1.json()["id"]
+    # Same request_id → server returns the existing row, no new entry created.
+    r2 = client.post("/api/alcohol-entries", json=payload)
+    assert r2.status_code in (200, 201)
+    assert r2.json()["id"] == first_id
+    assert len(client.get("/api/alcohol-entries").json()) == 1
+
+
+def test_create_entry_different_request_ids_create_separate_rows(client):
+    base = {"custom_name": "Beer", "ml": 330, "abv": 5.0, "timestamp": _now()}
+    r1 = client.post("/api/alcohol-entries", json={**base, "request_id": "a"})
+    r2 = client.post("/api/alcohol-entries", json={**base, "request_id": "b"})
+    assert r1.json()["id"] != r2.json()["id"]
+    assert len(client.get("/api/alcohol-entries").json()) == 2
