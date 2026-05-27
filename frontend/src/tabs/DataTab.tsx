@@ -55,11 +55,6 @@ function addByStep(d: Date, unit: StepUnit, sign: 1 | -1): Date {
   else r.setFullYear(r.getFullYear() + sign)
   return r
 }
-function formatLabel(d: Date, showYear = false): string {
-  return d.toLocaleDateString(undefined, showYear
-    ? { month: 'short', day: 'numeric', year: '2-digit' }
-    : { month: 'short', day: 'numeric' })
-}
 function formatRangeLabel(start: Date, end: Date): string {
   const sameYear = start.getFullYear() === end.getFullYear()
   const today = todayLocal()
@@ -139,20 +134,12 @@ export default function DataTab() {
     }
     // Slice to visible window
     const windowStartKey = toDateKey(windowStart)
-    const multiYear = windowStart.getFullYear() !== windowEnd.getFullYear()
-    const result: { date: string; units: number; label: string }[] = []
+    const result: { date: string; units: number }[] = []
     for (let i = 0; i < fullSeries.length; i++) {
       const { key, total } = fullSeries[i]
       if (key < windowStartKey) continue
       const value = avgWindow > 0 ? maSeries[i] : total
-      const d = parseDateKey(key)
-      // In multi-year views, show year on Jan 1 and the first visible data point
-      const showYear = multiYear && (result.length === 0 || (d.getMonth() === 0 && d.getDate() === 1))
-      result.push({
-        date: key,
-        units: parseFloat(value.toFixed(2)),
-        label: formatLabel(d, showYear),
-      })
+      result.push({ date: key, units: parseFloat(value.toFixed(2)) })
     }
     return result
   }, [summaryData, windowStart, fetchStart, fetchEnd, avgWindow])
@@ -183,6 +170,8 @@ export default function DataTab() {
     })
   }
   const resetToToday = () => setAnchorEnd(today)
+
+  const multiYear = windowStart !== null && windowStart.getFullYear() !== windowEnd.getFullYear()
 
   const isInitialLoading = summaryQuery.isFetching && !summaryQuery.data
   const noDataAll = period === 'all' && !rangeQuery.isLoading && !rangeQuery.data?.first_date
@@ -262,10 +251,20 @@ export default function DataTab() {
           <div className={`bg-neutral-100 dark:bg-neutral-800 rounded-2xl p-4 mb-4 transition-opacity ${summaryQuery.isFetching ? 'opacity-50 pointer-events-none' : ''}`}>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                <XAxis
+                  dataKey="date"
+                  tick={(props) => <XTick {...props} multiYear={multiYear} />}
+                  tickLine={false}
+                  axisLine={false}
+                  interval="preserveStartEnd"
+                  height={multiYear ? 38 : 22}
+                />
                 <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v: number) => v.toFixed(1)} />
-                <Tooltip formatter={(v: number) => [`${v.toFixed(1)} units`, avgWindow > 0 ? `${avgWindow}d avg` : 'Units']}
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }} />
+                <Tooltip
+                  formatter={(v: number) => [`${v.toFixed(1)} units`, avgWindow > 0 ? `${avgWindow}d avg` : 'Units']}
+                  labelFormatter={(dateKey: string) => parseDateKey(dateKey).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                  contentStyle={{ fontSize: 12, borderRadius: 8, border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}
+                />
                 <Line dataKey="units" type="monotone" stroke="#3b82f6" strokeWidth={2} dot={false} activeDot={{ r: 5 }} />
               </LineChart>
             </ResponsiveContainer>
@@ -284,6 +283,19 @@ export default function DataTab() {
         </div>
       </div>
     </div>
+  )
+}
+
+function XTick({ x, y, payload, multiYear }: { x: number; y: number; payload: { value: string }; multiYear: boolean }) {
+  const d = parseDateKey(payload.value)
+  const dayMonth = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text x={0} y={0} dy={12} textAnchor="middle" fontSize={10} fill="currentColor">{dayMonth}</text>
+      {multiYear && (
+        <text x={0} y={0} dy={23} textAnchor="middle" fontSize={9} fill="currentColor" opacity={0.55}>{d.getFullYear()}</text>
+      )}
+    </g>
   )
 }
 
