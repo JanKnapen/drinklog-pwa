@@ -8,56 +8,36 @@ DrinkLog is a self-hosted PWA for tracking consumption. It supports two modes �
 
 **Stack:** React 18 + Vite + TypeScript + TailwindCSS (frontend) · FastAPI + SQLAlchemy + SQLite (backend) · Docker Compose with nginx
 
+## Supplementary Docs
+
+- **`admin/CLAUDE.md`** — Admin interface details. Auto-loaded by Claude Code when working in `admin/`.
+- **`docs/deployment.md`** — Docker setup, env vars, nginx, non-root containers, service worker. **Read this before any deployment, Docker, nginx, or env-var work.**
+
 ## Icons
 
-The app icon source is `frontend/public/favicon.svg` (also copied to `admin/frontend/public/favicon.svg`). The PNG variants are generated from it via `npx sharp-cli` (available as a dev dependency in `frontend/`). If the SVG is updated, regenerate from `frontend/`:
-
-```bash
-npx sharp-cli --input public/favicon.svg --output public/icons/icon-192x192.png resize 192 192
-npx sharp-cli --input public/favicon.svg --output public/icons/icon-512x512.png resize 512 512
-npx sharp-cli --input public/favicon.svg --output public/apple-touch-icon.png resize 180 180
-```
-
-Also copy the updated SVG to `admin/frontend/public/favicon.svg`.
+PNG icons generated from `frontend/public/favicon.svg` via `npx sharp-cli` (dev dep in `frontend/`): resize to 192×192, 512×512, and 180×180 (apple-touch-icon). Also copy the SVG to `admin/frontend/public/favicon.svg`.
 
 ## Development Commands
 
 **Backend** (from `backend/`):
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
 PYTHONPATH=.. uvicorn main:app --reload          # runs on :8000
-DEBUG=true PYTHONPATH=.. pytest                             # all tests (DEBUG=true required — startup check rejects missing JWT secrets)
-DEBUG=true PYTHONPATH=.. pytest tests/test_entries.py       # single test file
-DEBUG=true PYTHONPATH=.. pytest -k "test_confirm_all"       # single test by name
+DEBUG=true PYTHONPATH=.. pytest                  # all tests (DEBUG=true required)
+DEBUG=true PYTHONPATH=.. pytest tests/test_entries.py
+DEBUG=true PYTHONPATH=.. pytest -k "test_confirm_all"
 ```
 
 **Admin Backend** (from `admin/backend/`):
 ```bash
-pip install -r requirements.txt
 PYTHONPATH=../.. uvicorn main:app --reload --port 8001
 PYTHONPATH=../.. pytest tests/
 ```
 
-**Admin Frontend** (from `admin/frontend/`):
-```bash
-npm install
-npm run dev      # runs on :5174, proxies /api → :8001
-npm run build    # vite build
-```
+**Admin Frontend** (from `admin/frontend/`): `npm run dev` (:5174, proxies → :8001) · `npm run build`
 
-**Frontend** (from `frontend/`):
-```bash
-npm install
-npm run dev      # runs on :5173, proxies /api → :8000
-npm run build    # tsc + vite build
-npm test         # vitest
-```
+**Frontend** (from `frontend/`): `npm run dev` (:5173, proxies → :8000) · `npm run build` (tsc + vite) · `npm test`
 
-**Docker** (from root):
-```bash
-docker compose up --build   # full stack on :80
-```
+**Docker** (from root): `docker compose up --build`
 
 ## Architecture
 
@@ -65,392 +45,256 @@ docker compose up --build   # full stack on :80
 
 **Alcohol:** `DrinkTemplate` / `DrinkEntry`. `standard_units = (ml * abv / 100) / 15` — SQLAlchemy `@property`, mirrored in `frontend/src/utils.ts`.
 
-**Caffeine:** `CaffeineTemplate` / `CaffeineEntry`. `caffeine_units = mg / 80` — same pattern. No `ml` or `abv` fields. Tables are created automatically by `Base.metadata.create_all()` on startup.
+**Caffeine:** `CaffeineTemplate` / `CaffeineEntry`. `caffeine_units = mg / 80` — same pattern. No `ml` or `abv` fields. Tables created by `Base.metadata.create_all()` on startup.
 
-**Fractional entries:** Both entry tables have a nullable `fraction` float column (`NULL` = 1.0). It is multiplied into `standard_units`/`caffeine_units` in the ORM `@property` and into the summary SQL aggregation via `COALESCE(fraction, 1.0)`. A ½ drink is stored as a **separate** DB entry with `fraction=0.5` — logging `2½` creates 3 rows (two with `fraction=NULL`, one with `fraction=0.5`). The column is added to existing DBs by `_migrate()`. The ½ toggle in the `Stepper` component bumps the counter from 0 to 1 when disabled at 0 — this is intentional to prevent submitting 0 drinks.
+**Fractional entries:** Both entry tables have a nullable `fraction` float column (`NULL` = 1.0). Multiplied into `standard_units`/`caffeine_units` via ORM `@property` and summary SQL via `COALESCE(fraction, 1.0)`. A ½ drink is a **separate** DB entry with `fraction=0.5` — logging `2½` creates 3 rows. Added to existing DBs by `_migrate()`. The ½ toggle in `Stepper` bumps counter from 0→1 when disabled at 0 — intentional to prevent submitting 0 drinks.
 
 Both modules share the same structural rules:
 - An entry is either linked to a template (`template_id`) or has a free-text `custom_name`. `is_marked = true` means confirmed.
 - "Confirm All" marks unconfirmed entries before a cutoff and auto-promotes `custom_name` entries into templates.
 - **Router ordering:** `confirm-all` endpoint must be registered before `/{entry_id}` in both `routers/entries.py` and `routers/caffeine_entries.py` or FastAPI matches `"confirm-all"` as an ID.
-- **Entry editing:** template-linked entries can only have their timestamp changed (HTTP 400 for any other field); enforced on both backend and frontend. Both `entries.py` and `caffeine_entries.py` implement this consistently — the check strips `timestamp` from the payload and raises 400 only if non-timestamp fields remain.
-- **Name / custom_name invariant:** a template name and an unconfirmed entry `custom_name` with the same value cannot coexist (HTTP 409). Confirm-all auto-promotes pending entries into templates. Multiple unconfirmed entries with the same `custom_name` are allowed — confirm-all handles them correctly by linking all to one template. The frontend enforces against duplicate names when the user types a new drink name in `NewAlcohol/CaffeineModal` (inline error before the request), but `logFromPendingEntry` intentionally creates duplicate-named entries.
-- **`usage_count` is incremented server-side** — `POST /alcohol-entries` and `POST /caffeine-entries` increment the linked template's `usage_count` directly when a `template_id` is present. `DrinkTemplateUpdate` and `CaffeineTemplateUpdate` do **not** expose `usage_count` — it is not client-writable.
+- **Entry editing:** template-linked entries can only have their timestamp changed (HTTP 400 for any other field); enforced on both backend and frontend. The check strips `timestamp` from the payload and raises 400 only if non-timestamp fields remain.
+- **Name / custom_name invariant:** a template name and an unconfirmed entry `custom_name` with the same value cannot coexist (HTTP 409). Multiple unconfirmed entries with the same `custom_name` are allowed — confirm-all links all to one template. The frontend enforces against duplicate names in `NewAlcohol/CaffeineModal` (inline error), but `logFromPendingEntry` intentionally creates duplicate-named entries.
+- **`usage_count` is incremented server-side** — not client-writable. `DrinkTemplateUpdate` / `CaffeineTemplateUpdate` do not expose it.
 
 ### Frontend state management
 
 All server state lives in **TanStack Query**. No global client-side state store. The sole app-level state in `App.tsx` is `activeTab` and `toast`.
 
-API layer lives in `frontend/src/api/`:
+API layer in `frontend/src/api/`:
 - `client.ts` — `apiFetch<T>()` wrapper + `ApiError`
 - `entries.ts` / `templates.ts` — alcohol hooks
-- `caffeine-entries.ts` / `caffeine-templates.ts` — caffeine hooks (same patterns, PATCH instead of PUT)
+- `caffeine-entries.ts` / `caffeine-templates.ts` — caffeine hooks (PATCH instead of PUT)
 
 Query keys: `['entries']`, `['templates']`, `['caffeine-entries']`, `['caffeine-templates']`. Mutations invalidate both entry and template keys for their module where needed.
 
-**`mutate()` vs `mutateAsync()`** — use `mutate()` only for true fire-and-forget operations (deletes, timestamp updates) where no UI feedback depends on success. If a toast, callback, or state change must only happen on success, use `mutateAsync()` and `await` it — `mutate()` returns `void` immediately and any code after it runs regardless of outcome. Catch blocks around `mutateAsync` should narrow to the specific error type rather than swallowing all exceptions (e.g. `catch (e) { if (!(e instanceof AuthError)) onToast('Something went wrong') }`).
+**`mutate()` vs `mutateAsync()`** — use `mutate()` only for true fire-and-forget (deletes, timestamp updates). If a toast, callback, or state change must only happen on success, use `mutateAsync()` and `await` it. Catch blocks should narrow to the specific error type rather than swallowing all exceptions.
 
 ### Module adapter pattern
 
-**All four tabs use only `useModuleAdapter()`** (`frontend/src/hooks/useModuleAdapter.ts`) — no direct API imports in the main tab component. The adapter reads `activeModule` from `SettingsContext`, calls all hooks unconditionally (React rules), then returns module-appropriate normalised data:
+**All four tabs use only `useModuleAdapter()`** (`frontend/src/hooks/useModuleAdapter.ts`) — no direct API imports in the main tab component. The adapter reads `activeModule` from `SettingsContext`, calls all hooks unconditionally (React rules), and returns normalised data:
 
-- `templates: TrackerTemplate[]` — includes `displayInfo` (pre-formatted string), `entryCount`, `confirmedEntryCount`
-- `entries: TrackerEntry[]` — includes `value` (standard_units or caffeine_units), `displayInfo`, `name` (template name or custom_name)
+- `templates: TrackerTemplate[]` — includes `displayInfo`, `entryCount`, `confirmedEntryCount`
+- `entries: TrackerEntry[]` — includes `value` (standard_units or caffeine_units), `displayInfo`, `name`
 - Action methods: `logFromTemplate`, `logFromTemplateWithOptions(t, count, timestamp)`, `logFromPendingEntry(e, count, timestamp)`, `confirmAll`, `deleteEntry`, `updateEntryTimestamp`, `createTemplate`, `updateTemplate`, `deleteTemplate`
 
-**Adapter bypasses** — Several components call API hooks directly instead of going through `useModuleAdapter`:
-- **Edit modals** (`EditAlcoholEntry`, `EditCaffeineEntry`, `EditAlcoholTemplate`, `EditCaffeineTemplate`): call hooks directly and fetch raw data by ID. The adapter doesn't expose raw ml/abv/mg fields.
-- **DataTab**: calls `useEntrySummary` / `useCaffeineSummary` directly. Summary data has a different shape (`{ date, total }[]`) and depends on `period` (local UI state).
-- **LogTab**: calls `useEntries` / `useCaffeineEntries` directly. Needs pagination state (`confirmedOnly`, `offset`) for "Load more" that the adapter doesn't support.
+**Adapter bypasses** — Several components call API hooks directly:
+- **Edit modals** (`EditAlcoholEntry`, `EditCaffeineEntry`, `EditAlcoholTemplate`, `EditCaffeineTemplate`): need raw ml/abv/mg fields not exposed by adapter.
+- **DataTab**: calls `useEntrySummary` / `useCaffeineSummary` directly; summary shape `{ date, total }[]` depends on `period` state.
+- **LogTab**: calls `useEntries` / `useCaffeineEntries` directly; needs pagination (`confirmedOnly`, `offset`).
 
 `groupByDate` in `utils.ts` is generic (`<T extends { timestamp: string }>`).
 
 ### Component conventions
 
-- Shared form primitives are in `FormFields.tsx`: `Field`, `UnitPreview`, `inputCls`, `primaryBtn` — use these instead of writing one-off Tailwind classes for inputs/buttons.
+- Shared form primitives in `FormFields.tsx`: `Field`, `UnitPreview`, `inputCls`, `primaryBtn` — use these instead of one-off Tailwind classes.
 - Tabs are lazy-loaded (`React.lazy`) in `App.tsx`. Each tab is a single file in `frontend/src/tabs/`.
 - Modals are rendered inside the tab component that owns them (not portaled), using `Modal` from `components/Modal.tsx`.
-- Toast notifications bubble up via `onToast` prop from `HomeTab` → `App` → `BottomNav` → `Toast`.
+- Toast notifications bubble up via `onToast` prop: `HomeTab` → `App` → `BottomNav` → `Toast`.
 
 ### Data tab
 
-The `/summary` endpoints (`/api/alcohol-entries/summary`, `/api/caffeine-entries/summary`) accept either `start`+`end` (ISO `YYYY-MM-DD`, inclusive) or the legacy `period` shortcut. Explicit `start`/`end` win when both are supplied. Window length is silently clamped to 5 years (see `MAX_WINDOW_DAYS` in `backend/routers/summary_utils.py`). Summary includes both confirmed and unconfirmed entries — the previous `is_marked == True` filter was removed so the chart reflects everything the user has logged.
+The `/summary` endpoints accept either `start`+`end` (ISO `YYYY-MM-DD`, inclusive) or legacy `period` shortcut. Explicit `start`/`end` win when both supplied. Window clamped to 5 years (`MAX_WINDOW_DAYS` in `backend/routers/summary_utils.py`). Summary includes both confirmed and unconfirmed entries.
 
-`/summary/range` returns `{ first_date, last_date }` (both nullable when no data exists) — used by the frontend when period=All to bound the chart to the user's actual data span.
+`/summary/range` returns `{ first_date, last_date }` (both nullable) — used by frontend when period=All.
 
-**Trailing moving-average padding:** When the user selects a 7- or 14-day average, the DataTab fetches `(avgWindow - 1)` days *before* `windowStart` so the MA value at the leftmost visible day has a full lookback window. The padding days are computed into the MA series but sliced out before rendering. Stats cards always use raw daily totals over the visible window, not the smoothed series.
+**Trailing moving-average padding:** DataTab fetches `(avgWindow - 1)` days before `windowStart` so the MA at the leftmost visible day has a full lookback. Padding days are sliced out before rendering. Stats cards use raw daily totals, not the smoothed series.
 
-**Window navigation:** `anchorEnd` (a local-time `Date`) is the right edge of the visible window. `period` defines width; `stepUnit` (`day`/`week`/`month`/`year`) defines shift size and is independent of period. Forward shifts clamp to today. Switching period resets `anchorEnd` to today. Navigation strip is hidden when period=All.
+**Window navigation:** `anchorEnd` is the right edge of the visible window. `period` defines width; `stepUnit` defines shift size (independent of period). Forward shifts clamp to today. Switching period resets `anchorEnd` to today. Navigation strip hidden when period=All.
 
-Composite index `ix_{drink,caffeine}_entries_user_id_timestamp` is created by `_migrate()` to keep date-range queries efficient as data grows.
+Composite index `ix_{drink,caffeine}_entries_user_id_timestamp` created by `_migrate()`.
 
 ### Home tab quick-log button logic
 
-The quick-log section shows exactly 5 buttons total, filled in this order:
+Shows exactly 5 buttons total, filled in order:
+1. **"Most used"** — templates ranked by `usage_count`, most-recently-used as tiebreaker (max 5)
+2. **"Today"** — templates logged today via existing template (max 2)
+3. **"New drinks"** — single button if any entry today used a free-text `custom_name` (max 1)
 
-1. **"Most used"** — templates ranked by all-time `usage_count`, most-recently-used as tiebreaker (max 5)
-2. **"Today"** — templates logged today via an existing template (max 2)
-3. **"New drinks"** — a single button if any entry today used a free-text `custom_name` (max 1)
+Today and New drinks consume slots from the 5-button total.
 
-The Today and New drinks buttons consume slots from the 5-button total, pushing out lower-ranked Most used buttons.
-
-**Snapshot refresh invariant:** The quick-log buttons are derived from a `snapshot` state built by `refreshSnapshot()`, which reads `templatesRef` and `entriesRef`. The `isEntriesFetched` effect is the primary trigger — but it only fires when `isEntriesFetched` *changes*. `LogTab` fetches entries but not templates, so after a logout/login cycle on LogTab, entries are already cached (`isEntriesFetched = true`) when HomeTab mounts, but templates are not yet loaded. The effect fires once with empty templates, builds an empty snapshot, then never re-fires (because `isEntriesFetched` stays `true`). To handle this, `templates` is included in the `isEntriesFetched` effect's dep array so the snapshot rebuilds whenever templates arrive while entries are already fetched. Do not remove `templates` from that dep array.
+**Snapshot refresh invariant:** Quick-log buttons derive from `snapshot` built by `refreshSnapshot()`. The `isEntriesFetched` effect is the primary trigger. `templates` is included in that effect's dep array so the snapshot rebuilds when templates arrive while entries are already fetched (e.g. after a logout/login cycle on LogTab). Do not remove `templates` from that dep array.
 
 ## Authentication
 
 Two-token JWT pattern. All data endpoints require a valid access token.
 
 ### Token architecture
-- **Access token** — 15-min lifetime. Returned in the login response body. Stored in a module-level variable in `frontend/src/api/client.ts` — never written to localStorage, sessionStorage, or any cookie. Sent as `Authorization: Bearer <token>` on every request.
-- **Refresh token** — 30-day lifetime. Set by the server as an `httpOnly; SameSite=Strict; Secure` cookie named `refresh_token`. JavaScript cannot read it. Used only by `POST /api/auth/refresh` to issue a new access token and a new refresh token (rotation). Each token carries a `jti` (UUID) that is stored in the `refresh_tokens` DB table. On refresh the old jti is deleted and a new one is inserted. If the jti is not found in the DB (already consumed), all refresh tokens for that user are wiped — reuse/theft detected. Expired tokens are purged from the table on each startup.
+- **Access token** — 15-min lifetime. Returned in login response body. Stored in a module-level variable in `frontend/src/api/client.ts` — never written to localStorage/sessionStorage/cookie. Sent as `Authorization: Bearer <token>`.
+- **Refresh token** — 30-day lifetime. `httpOnly; SameSite=Strict; Secure` cookie named `refresh_token`. Used only by `POST /api/auth/refresh` (rotation). Each token carries a `jti` stored in the `refresh_tokens` DB table. Old jti deleted on refresh, new one inserted. If jti not found (already consumed), all refresh tokens for that user are wiped — reuse/theft detected. Expired tokens purged on startup.
 
 ### Backend
 
-**`backend/auth.py`** — `hash_password` / `verify_password` (using `bcrypt` directly) and `create_access_token` / `create_refresh_token` / `decode_*` (using `PyJWT`). Do not use `passlib` or `python-jose` — both are abandoned and have known issues with modern Python environments. **`create_refresh_token` returns a tuple `(token, jti, expires_at)`** — not a plain string. All callers must unpack all three values; the jti and expires_at are needed to store the token in the `refresh_tokens` table.
+**`backend/auth.py`** — `hash_password` / `verify_password` (bcrypt directly) and `create_access_token` / `create_refresh_token` / `decode_*` (PyJWT). Do not use `passlib` or `python-jose` — both abandoned. **`create_refresh_token` returns `(token, jti, expires_at)`** — all callers must unpack all three.
 
-**`backend/routers/deps.py`** — `get_current_user` dependency. Validates the `Authorization: Bearer` header and returns the `User` ORM object. Every data router (`entries`, `templates`, `caffeine_entries`, `caffeine_templates`, `barcode`) must include this as a dependency on every endpoint. Every query in those routers filters by `user_id == current_user.id` — no cross-user leakage is possible.
+**`backend/routers/deps.py`** — `get_current_user` dependency. Every data router must include it on every endpoint. Every query filters by `user_id == current_user.id`.
 
-**`backend/routers/auth.py`** — login / refresh / logout / me endpoints. Login is rate-limited to 5 requests/minute per IP via `slowapi`. The `limiter` instance is created in `auth.py` and registered on the FastAPI app in `main.py`. To rate-limit any other endpoint, import this same `limiter` from `routers.auth` (don't create a new instance — only one can be registered on `app.state`) and add `request: Request` as the first parameter of the handler (slowapi requires it to extract the key). Login also has an in-memory per-IP **lockout**: 10 failed attempts within 15 minutes returns HTTP 423 with `Retry-After: 900`; the counter resets on a successful login. State lives in `_failures` / `_failures_lock` at module level in `routers/auth.py` (and the same pattern in `admin/backend/routers/admin.py`). **Test gotcha:** slowapi's 5/minute limit fires before the lockout handler, so in tests attempts 6+ are blocked by the rate limiter and never reach `_record_failure`. Lockout tests must call `limiter.reset()` before each failed request so all 10 reach the handler — see `test_login_locked_out_after_10_failures` in both test suites for the pattern.
+**`backend/routers/auth.py`** — login / refresh / logout / me endpoints. Login rate-limited to 5 req/min per IP via `slowapi`. The `limiter` instance is created in `auth.py` and registered on the app in `main.py` — import it from `routers.auth` to rate-limit other endpoints (only one can be registered on `app.state`). Login also has in-memory per-IP **lockout**: 10 failures within 15 min → HTTP 423 with `Retry-After: 900`. **Test gotcha:** slowapi's rate limit fires before the lockout handler, so attempts 6+ never reach `_record_failure`. Call `limiter.reset()` before each failed request in lockout tests — see `test_login_locked_out_after_10_failures`.
 
-**Rate limiter IP extraction** — `slowapi`'s default `get_remote_address` reads `request.client.host`, which is the nginx container's internal Docker IP behind the proxy — not the real client IP. Both auth routers define `_get_real_ip(request)` which reads the `X-Real-IP` header nginx sets, falling back to `request.client.host`. Always use `_get_real_ip` as the `Limiter(key_func=...)` and for lockout tracking. Do not switch back to `get_remote_address`.
+**Rate limiter IP extraction** — `_get_real_ip(request)` reads `X-Real-IP` header nginx sets, falls back to `request.client.host`. Both auth routers use this as `Limiter(key_func=...)` and for lockout tracking. Do not use slowapi's default `get_remote_address` (returns nginx container's internal Docker IP).
 
-**Logging** — use `logging.getLogger("uvicorn.error")` (not `__name__`) when adding log statements to any backend router. Using `__name__` produces unformatted output with no level prefix; `"uvicorn.error"` uses uvicorn's already-configured formatter so log lines are consistent with uvicorn's own output.
+**Logging** — use `logging.getLogger("uvicorn.error")`, not `__name__`. `__name__` produces unformatted output; `"uvicorn.error"` uses uvicorn's formatter.
 
-**Seed mechanism** — on startup, `_ensure_seed_user()` (called from `_migrate()`) checks if the `User` table is empty. If empty and `ADMIN_SEED_USERNAME` / `ADMIN_SEED_PASSWORD` env vars are unset, it raises `RuntimeError` and refuses to start. If the env vars are set, it creates the seed user. Once any user exists the env vars are ignored.
+**Seed mechanism** — `_ensure_seed_user()` (called from `_migrate()`) raises `RuntimeError` if User table empty and `ADMIN_SEED_USERNAME`/`ADMIN_SEED_PASSWORD` unset. Creates seed user if vars set; ignores them once any user exists.
 
-**`_migrate_user_id_columns()`** — adds `user_id` column to all four data tables for existing databases and backfills `NULL` rows with the seed user's ID. Runs after `_ensure_seed_user()` so the seed user's ID is always available for the backfill. Both functions are idempotent.
+**`_migrate_user_id_columns()`** — adds `user_id` to all four data tables and backfills with seed user ID. Runs after `_ensure_seed_user()`. Idempotent.
 
 ### Frontend
 
-**`apiFetch` 401 retry** — on a 401 response, `apiFetch` attempts one silent refresh via `POST /api/auth/refresh`. If the refresh succeeds, the original request is retried. If the refresh fails, the in-memory token is cleared and `window.location.reload()` is called, returning the user to the login screen. The retry is one-shot — it does not loop.
+**`apiFetch` 401 retry** — one silent refresh via `POST /api/auth/refresh` on 401. If refresh succeeds, original request retries. If refresh fails, clears in-memory token and calls `window.location.reload()`. One-shot, no loop.
 
-**`refreshPromise` deduplication lock** — `refreshAccessToken()` in `client.ts` uses a module-level `refreshPromise` variable so that concurrent 401 retries (e.g. TanStack Query refetching all queries on window focus) share a single refresh HTTP call. Without this, each concurrent 401 would fire its own `POST /api/auth/refresh`, the second call would arrive after the first had already rotated the jti, triggering reuse detection and wiping the entire session. Do not bypass or remove this lock when modifying the refresh path.
+**`refreshPromise` deduplication lock** — `refreshAccessToken()` uses a module-level `refreshPromise` so concurrent 401s share one refresh call. Without it, parallel retries consume the jti, triggering reuse detection and wiping the session. Do not bypass or remove this lock.
 
-**TanStack Query retry config** — the `QueryClient` in `App.tsx` is configured with a `retry` function that returns `false` for `AuthError`. Without this, TanStack Query's `retry: 1` default would re-fire failed queries after an auth failure, causing a second round of 401s → a second (now-failing) refresh call → a compounding broken session. Do not replace the retry function with a plain number.
+**TanStack Query retry config** — `QueryClient` configured with `retry: false` for `AuthError`. Default `retry: 1` would cause a second 401 round → second refresh call → broken session. Do not replace with a plain number.
 
-**`credentials: 'include'`** — all `fetch` calls in `client.ts` must use `credentials: 'include'` so the browser sends the `httpOnly` refresh cookie. This is already set in the `fetchWithAuth` helper. Any new API calls added outside `apiFetch` must also include this or refresh will silently fail.
+**`credentials: 'include'`** — all `fetch` calls must include this so the browser sends the `httpOnly` refresh cookie. Any new API calls outside `apiFetch` must also include it.
 
-**Startup flow** — `AppContent` in `App.tsx` calls `refreshAccessToken()` before rendering any tab. A blank screen is shown during this check to avoid a flash of the login screen. If refresh fails (cookie absent or expired), `<LoginView />` is rendered.
+**Startup flow** — `AppContent` calls `refreshAccessToken()` before rendering any tab. Blank screen during this check avoids a flash of the login screen.
 
-**Background resume refresh** — `AppContent` registers a `visibilitychange` listener that proactively calls `refreshAccessToken()` when the app returns from background after ≥14 minutes (1-minute buffer before the 15-minute access token expiry). This pre-empts TanStack Query's window-focus refetches, which would otherwise all hit 401 simultaneously before any token is available. The `refreshPromise` lock ensures only one HTTP call fires regardless of the race.
+**Background resume refresh** — `visibilitychange` listener calls `refreshAccessToken()` after ≥14 min background (1-min buffer before token expiry). Pre-empts TQ's focus-refetches from all racing on 401.
 
-**`username` in `SettingsContext`** — session-only state, not persisted to localStorage. Populated from `GET /api/auth/me` after every successful refresh. Cleared on logout. The login/logout state of the app is derived solely from whether `username` is non-null.
+**`username` in `SettingsContext`** — session-only, not persisted. Populated from `GET /api/auth/me` after every successful refresh. Cleared on logout. Login state derives from `username !== null`.
 
-**Query cache cleared on logout** — `AppContent` in `App.tsx` has a `useEffect` that calls `queryClient.clear()`, `caches.delete('api-cache')`, and `clearMutations()` (offline queue) when `username` is `null` — gated on `authChecked` so the cold-start render (where `username` starts at `null` before silent refresh resolves) does **not** wipe the queue out from under the user we're about to authenticate. The `caches.delete` wipes the service worker's runtime cache so a logged-out device cannot see cached API responses offline. See the Offline Support section for the rationale on `clearMutations()` and the `authChecked` gate.
+**Query cache cleared on logout** — `useEffect` in `AppContent` calls `queryClient.clear()`, `caches.delete('api-cache')`, and `clearMutations()` (offline queue) when `username === null`, gated on `authChecked` — so cold-start render (where `username` starts `null` before silent refresh resolves) does not wipe the queue. See Offline Support for `clearMutations`/`authChecked` rationale.
 
-**`secure=True` on the refresh cookie** — the cookie is only sent over HTTPS. Local dev without TLS will not receive the cookie and the silent refresh will always fail. Use the Tailscale dev setup (`docker-compose.local.yml`) for end-to-end auth testing.
+**`secure=True` on the refresh cookie** — only sent over HTTPS. Local dev without TLS causes silent refresh failure. Use the Tailscale dev setup (`docker-compose.local.yml`) for end-to-end auth testing.
 
 ### Tests
 
-``backend/tests/test_auth.py` — uses a separate `auth_client` fixture with its own in-memory DB (does not use the shared `client` fixture from `conftest.py`). Has autouse `reset_rate_limiter` and `reset_lockout` fixtures that clear slowapi state and the `_failures` dict before each test to prevent state bleeding between tests. The same two fixtures exist in `admin/backend/tests/conftest.py`.
+`backend/tests/test_auth.py` — uses a separate `auth_client` fixture with its own in-memory DB. Has autouse `reset_rate_limiter` and `reset_lockout` fixtures clearing slowapi state and `_failures` dict before each test. Same two fixtures in `admin/backend/tests/conftest.py`.
 
-`conftest.py` — `override_get_current_user` creates or reuses a `testadmin` user in the test DB. This means all non-auth tests run as `testadmin` without needing a token.
-
-## Admin Interface
-
-A separate service for server operators to manage user accounts. It is **not** the same as the main app's user-facing authentication.
-
-### Architecture
-
-The admin is two independent Docker services (`admin-backend`, `admin-frontend`) running alongside the main stack. They share the same `db_data` volume and therefore the same SQLite database. The admin backend imports models from `shared/models.py` (the same ORM models the main backend uses) — it does **not** have its own database or User table.
-
-Admin services listen on ports `8001` (admin-backend) and `8002` (admin-frontend), restricted to Tailscale peers only via `DOCKER-USER` iptables rules on the host (see Deployment Notes).
-
-### Authentication (admin-specific)
-
-The admin uses a **single master password** pattern, not per-user credentials. This is separate from the main app's JWT system.
-
-- **Login:** `POST /api/admin/login` with `{ password }`. Validated against `ADMIN_MASTER_PASSWORD` env var (plain string comparison — no hashing needed because this is a server secret, not a user password). Returns a short-lived JWT.
-- **Admin token** — 60-minute lifetime (default). Signed with `ADMIN_JWT_SECRET`. Payload carries `{ type: "admin" }` — `get_admin_user` dependency in `routers/deps.py` validates this claim.
-- **Token storage** — stored in `sessionStorage` (survives page refresh, cleared on tab close). Unlike the main app, there is no `httpOnly` cookie or refresh mechanism. Logging out clears `sessionStorage`.
-- **Import session handoff** — when navigating to `/import-review`, an `ImportSession` object (including the JWT) is written to `sessionStorage` under key `drinklog-import-session` so the review page can read it after the same-tab navigation. The review page reads and immediately removes it on mount. `sessionStorage` is correct here: it persists through same-tab navigations, is isolated to the tab, and is automatically cleared when the tab closes — no long-lived exposure.
-- **Rate limiting** — login is rate-limited to 5 requests/minute per IP via `slowapi` (same library as the main backend).
-- **`ADMIN_MASTER_PASSWORD` is required at startup** — `main.py` raises `RuntimeError` and refuses to start if the env var is unset or empty.
-- **`ADMIN_JWT_SECRET`** — if unset, a random secret is generated per process restart (same pattern as main app JWT secrets). Always set this in production or the admin will require re-login after every restart.
-
-### Backend
-
-`admin/backend/routers/admin.py` — all endpoints are under the `/api/admin/` prefix and require `get_admin_user` dependency. Endpoints:
-- `GET /api/admin/users` — lists all users with alcohol and caffeine entry counts
-- `POST /api/admin/users` — creates a user (409 if username exists); passwords are hashed with `bcrypt`
-- `PATCH /api/admin/users/{id}/password` — replaces password hash
-- `DELETE /api/admin/users/{id}` — **explicitly** deletes all child rows (DrinkEntry, CaffeineEntry, DrinkTemplate, CaffeineTemplate) before deleting the user. There is no DB-level cascade; the explicit delete loop is intentional.
-- `GET /api/admin/users/{id}/templates?module=alcohol|caffeine` — returns the user's templates for the import mapping UI.
-- `POST /api/admin/users/{id}/import` — bulk import. Accepts named entries (linked to a template via mappings) and anonymous entries (no template, no name). Cap: 50,000 total DB rows per request.
-
-**Import entry types** — the import endpoint accepts two kinds of entries in the same payload. *Named* entries carry a `name` field and are matched to a `DrinkMapping` (existing template or new template). *Anonymous* entries carry only `ml`+`abv` or `mg` and are inserted directly with `template_id=None, custom_name=None` — this is the one place in the codebase where an entry intentionally has both fields null. They appear in the main app log with no name but with correct values.
-
-**`drink_name` vs `template_name` in `DrinkMapping`** — `drink_name` is the immutable key used to match raw entries to their mapping (stays equal to the original name from the file). `template_name` is the user-editable name used when finding or creating the template. They can differ if the admin renames the drink during review. Never swap them: using `template_name` as the lookup key would break entry matching.
-
-**Link mode is frontend-only** — `ImportReviewView` offers a third mapping mode "Link" alongside Existing/New, used when two distinct `drink_name`s in the same file should resolve to a single new template (e.g. "Heineken" and "heineken pils"). The backend has no `link` mode and no awareness of this concept. On submit, the frontend resolves each link via `findLinkTarget` to the target's `drink_name`, rewrites `entry.name` on every linked raw entry to the target's `drink_name`, and omits the link `DrinkMapping` from the request. The backend then sees one mapping → one template with all entries pointing at it. Do not add `link` to `DrinkMapping.mode` on the backend — it would never be sent. Link targets must be *complete* `new` mappings (all numeric fields valid); `findLinkTarget` re-checks completeness on every call so clearing a target's fields invalidates dependent links without leaving stale references.
-
-**Template ownership in import** — every template DB query in the import endpoint must include `user_id == user_id` in the filter, including the pre-fetch query and the `usage_count` batch-update. Omitting `user_id` allows a crafted `template_id` to reference another user's template, corrupting that template's `usage_count` and producing entries that join to an invisible template.
-
-`ALLOWED_ORIGINS` env var (comma-separated) controls CORS. Defaults to `http://localhost,http://localhost:5174`.
-
-### Frontend
-
-`admin/frontend/` is a standalone Vite + React + TS + Tailwind project with no TanStack Query, no PWA/service worker. It has dark mode (`darkMode: 'class'`) managed by `ThemeContext` (`src/contexts/ThemeContext.tsx`), persisted to `localStorage` under key `drinklog-admin-settings` (separate from the main app's `drinklog-settings`).
-
-- `src/api/client.ts` — plain `fetch` wrapper; no `apiFetch` retry logic (no refresh token to retry with).
-- `src/App.tsx` — checks `sessionStorage` for a token on mount; renders `LoginView`, `UsersView`, or `ImportReviewView` based on auth state and `window.location.pathname`. Every render path must be wrapped in `ThemeProvider`.
-- `src/components/AdminHeader.tsx` — shared header used by all admin pages; renders the title and a gear icon that opens `SettingsDialog` (appearance + logout). Add new admin pages by rendering `<AdminHeader onLogout={...} />` — do not write inline headers.
-- `src/views/UsersView.tsx` — inline modal components (`ModalOverlay`, `LabeledInput`, `ModalActions`) rather than a shared Modal component.
-
-**CSP hash for inline dark-mode script** — `admin/nginx.conf` uses `script-src 'self' 'sha256-...'` to allow the inline theme-init script in `admin/frontend/index.html` without `unsafe-inline`. **If the inline script is ever changed, the SHA-256 hash in `admin/nginx.conf` must be recomputed**, or browsers will silently block it (no console error in strict CSP mode, just a flash-of-light-mode). Recompute with: `python3 -c "import hashlib,base64,re; s=open('admin/frontend/index.html').read(); m=re.search(r'<script>(.*?)</script>',s,re.DOTALL); print('sha256-'+base64.b64encode(hashlib.sha256(m.group(1).encode()).digest()).decode())"`
-
-**Viewport:** `index.html` uses `maximum-scale=1, viewport-fit=cover` in the viewport meta tag. `viewport-fit=cover` is required here (unlike the main app, which intentionally omits it) because the admin runs in the browser, not as a standalone PWA — without it `env(safe-area-inset-bottom)` always returns 0 and the footer overlaps the iPhone home indicator. The main app's "do not re-add viewport-fit=cover" note applies only to the main app's `frontend/index.html`.
-
-**`pb-safe` utility** — defined in `admin/frontend/src/index.css` as `max(1rem, env(safe-area-inset-bottom, 0px))` inside `@layer utilities`. The `@layer utilities` wrapper is required; a plain CSS class outside a Tailwind layer is overridden by Tailwind's generated utilities at build time. Apply `pb-safe` to any fixed footer that would otherwise overlap the iPhone home indicator.
-
-**`html, body, #root { height: 100%; overflow: hidden }`** in `index.css` — same pattern as the main app, required so the admin fills the full viewport on mobile without document-level scroll.
-
-**SPA routing** — the admin uses no router library. Sub-pages are detected via `window.location.pathname` (e.g. `pathname === '/import-review'`). The auth check in `App.tsx` must always run before any pathname-based render branch — rendering a sub-page before `authed` is resolved would bypass the login gate.
+`conftest.py` — `override_get_current_user` creates or reuses a `testadmin` user. All non-auth tests run as `testadmin` without needing a token.
 
 ## Barcode Scanner
 
-`BarcodeScanner.tsx` mounts/unmounts conditionally (`{modal === 'scanner' && <BarcodeScanner />}`) — it is never toggled with an `open` prop. `BottomNav` is hidden while the scanner is open (rendered conditionally in `App.tsx` via `scannerOpen` state lifted from `HomeTab`) because z-index stacking made it appear over the fullscreen camera overlay.
+`BarcodeScanner.tsx` mounts/unmounts conditionally (`{modal === 'scanner' && <BarcodeScanner />}`) — never toggled with an `open` prop. `BottomNav` hidden while scanner is open (via `scannerOpen` state lifted from `HomeTab`) to avoid z-index overlap.
 
 ### Scanner library
 
-Native `BarcodeDetector` Web API is unavailable in iOS WKWebView (the PWA runtime) even on iOS 18.7. `@zxing/browser` is used as the primary path for iOS; native `BarcodeDetector` is kept as the preferred path for Chrome/Android where it works. ZXing requires **2 consecutive matching reads** (streak ≥ 2) before firing `onScan` — this filters false positives that appeared reliably on iOS at default resolution. Native path has no confirmation delay; the asymmetry is intentional. ZXing runs at 1080p (`width: { ideal: 1920 }, height: { ideal: 1080 }`) — lower resolutions produced unreliable detection on iOS.
+Native `BarcodeDetector` Web API unavailable in iOS WKWebView (PWA runtime) even on iOS 18.7. `@zxing/browser` is the primary path for iOS; native `BarcodeDetector` preferred on Chrome/Android. ZXing requires **2 consecutive matching reads** (streak ≥ 2) before firing `onScan` — filters false positives on iOS. Native path has no confirmation delay; asymmetry is intentional. ZXing runs at 1080p — lower resolutions produced unreliable detection on iOS.
 
-Camera requires `window.isSecureContext` (HTTPS). Dev setup uses Tailscale certs via `docker-compose.dev.yml` + `nginx.dev.conf.template` with `${TAILSCALE_HOSTNAME}` envsubst.
+Camera requires `window.isSecureContext` (HTTPS). Dev uses Tailscale certs via `docker-compose.dev.yml` + `nginx.dev.conf.template` with `${TAILSCALE_HOSTNAME}` envsubst.
 
 ### Template uniqueness constraints
 
-Both `name` and `barcode` on `DrinkTemplate` / `CaffeineTemplate` are unique **per user**, not globally. They are intentionally **not** marked `unique=True` on the model — `unique=True` on a SQLAlchemy column causes SQLite to bake a global `sqlite_autoindex` into the `CREATE TABLE` statement, which `_migrate()` cannot remove by name and which would block two users from sharing the same product name or barcode. Uniqueness is enforced via migration indexes instead.
+`name` and `barcode` are unique **per user**, not globally. Intentionally **not** `unique=True` on the model — SQLite bakes a global `sqlite_autoindex` that `_migrate()` cannot remove, blocking two users sharing the same name/barcode. Uniqueness enforced via migration indexes instead.
 
-**Name** — composite unique index `uq_{table}_user_name ON (user_id, name)` created by `_migrate()`. Older DBs may have the old global `uq_{table}_name` index — `_migrate()` drops it and replaces it.
+**Name** — composite index `uq_{table}_user_name ON (user_id, name)`. Older DBs may have old global `uq_{table}_name` — `_migrate()` drops and replaces it.
 
-**Barcode** — partial composite unique index `uq_{table}_barcode_user ON (barcode, user_id) WHERE barcode IS NOT NULL` created by `_migrate()`. Older DBs may have the global `uq_{table}_barcode` index — same drop-and-replace pattern.
+**Barcode** — partial composite index `uq_{table}_barcode_user ON (barcode, user_id) WHERE barcode IS NOT NULL`. Same drop-and-replace pattern.
 
-Application-level uniqueness checks (the `if db.query(...).filter(...user_id...).first()` blocks before each write) catch the common case and return a clean 409 with a descriptive message. A global `IntegrityError` exception handler in `backend/main.py` acts as a safety net for race conditions — any constraint violation that slips through returns a 409 JSON response instead of a 500 traceback. Do not remove it; it keeps logs clean and provides a correct HTTP status to the frontend.
+Application-level checks (the `if db.query(...).filter(...user_id...).first()` blocks) catch the common case with a clean 409. A global `IntegrityError` handler in `backend/main.py` acts as safety net for races — returns 409 instead of 500 traceback. Do not remove it.
 
-**Cross-table barcode:** `_check_barcode_cross_module()` helper in both `routers/templates.py` and `routers/caffeine_templates.py` queries the opposite module's table filtered by `user_id` and raises HTTP 409 before any write.
+**Cross-table barcode:** `_check_barcode_cross_module()` in both `routers/templates.py` and `routers/caffeine_templates.py` queries the opposite module's table and raises 409 before any write.
 
-**Nullifying optional fields in PATCH/PUT** — Use `'field_name' in data.model_fields_set` (not `data.field is not None`) to detect whether a Pydantic field was explicitly sent in the payload. `Optional[str] = None` makes both "absent" and "explicit null" produce `data.field == None`; `model_fields_set` distinguishes them. Required for any endpoint that supports clearing a nullable field (e.g. `{"barcode": null}` → set DB column to NULL; omit `barcode` entirely → leave DB column untouched). Skip uniqueness/cross-module checks when the incoming value is null.
+**Nullifying optional fields in PATCH/PUT** — Use `'field_name' in data.model_fields_set` (not `data.field is not None`) to detect explicit null vs absent. Required for any endpoint that supports clearing a nullable field (`{"barcode": null}` → NULL; omit `barcode` → untouched). Skip uniqueness checks when incoming value is null.
 
 ### Barcode lookup endpoint
 
-`GET /api/barcode/{code}?module=alcohol|caffeine&strategy=1|2|3` searches **both** local DB tables first (barcodes are unique per user per module, so a match can only exist in one table for the requesting user). On a miss it calls an external API determined by `strategy`. The `module` param controls which nutrient fields to extract from external APIs. The response includes a `module` field (`"alcohol"` | `"caffeine"` | `null`) for local matches; `null` for external and not-found results.
+`GET /api/barcode/{code}?module=alcohol|caffeine&strategy=1|2|3` — searches local DB first, then external API on miss. Response includes `module` field for local matches; `null` for external/not-found.
 
-### Retrieval strategies (dev-testing infrastructure)
+### Retrieval strategies (temporary)
 
-Three strategies exist for A/B/C comparison — **this is temporary**. Once a preferred strategy is chosen, the other two and all switching UI should be removed per `backlog/changes/05-remove-retrieval-alternatives.md`.
-
-- **Strategy 1 — OFF+** (default): Open Food Facts with improved field parsing (`serving_size` fallback for volume, `alcohol_100g` fallback for ABV, g→mg conversion for caffeine).
-- **Strategy 2 — AH**: Albert Heijn unofficial API (`api.ah.nl`). High accuracy for Dutch product volume/ABV; caffeine rarely available.
-- **Strategy 3 — Hybrid**: Queries both AH and OFF in parallel, stitches best available data, falls back to regex on `ingredients_text` for still-missing fields.
-
-Regex parsing helpers live in `backend/routers/parsers.py` (`parse_ml_from_text`, `parse_abv_from_text`, `parse_caffeine_mg_from_text`). Used by OFF+ and Hybrid; not needed if keeping AH only.
-
-The response includes dev-testing telemetry fields (`latency_ms`, `strategy_used`, `actual_source`) and `source` can be `"ah"` in addition to `"local"` / `"off"` / `"not_found"`.
-
-`barcodeStrategy: 1 | 2 | 3` in `SettingsContext` (persisted to localStorage) and the `StrategyPill` component inside `NewAlcohol/CaffeineModal` are part of this dev-testing UI — both should be removed during cleanup.
+Three strategies (OFF+/AH/Hybrid) exist for A/B/C comparison — **to be removed** per `backlog/changes/05-remove-retrieval-alternatives.md`. `barcodeStrategy` in `SettingsContext` and `StrategyPill` in `NewAlcohol/CaffeineModal` are part of this dev-testing UI. Regex helpers in `backend/routers/parsers.py`.
 
 ### Scan flow invariants
 
-**`NewScanModal` handles all scan flows** — `HomeTab` renders `NewScanModal` (defined inline in `HomeTab.tsx`) whenever `scanCode` is set, regardless of module. `NewAlcohol/CaffeineModal` receive `barcode={scanCode}` where `scanCode` is always `null` when those components are rendered — their barcode-related code is effectively unreachable. Do not add scan-flow logic to `NewAlcohol/CaffeineModal`; put it in `NewScanModal`. `NewScanModal` supports a module toggle (re-queries the barcode for the other module on switch) and caches per-module results in a `useRef` map.
+**`NewScanModal` handles all scan flows** — `HomeTab` renders it whenever `scanCode` is set. `NewAlcohol/CaffeineModal` receive `barcode={scanCode}` where `scanCode` is always `null` — their barcode code is unreachable. Do not add scan-flow logic to those modals. `NewScanModal` supports a module toggle and caches per-module results in a `useRef` map.
 
-**New scan (external result) and not-found scan:** `handleSubmit` in `NewScanModal` always creates a **template** (never a `custom_name` entry) so the barcode is persisted for future scans. If the name duplicates an existing template, the submit is blocked with an error — it does **not** silently attach the barcode to the existing template. If `source: "not_found"`, the modal shows a prompt asking the user to fill in the details manually; on submit the same template-creation path runs.
+**New scan and not-found scan** — `handleSubmit` always creates a **template** so the barcode persists for future scans. Duplicate name → blocked with error, not silently attached. `source: "not_found"` → prompts user to fill details manually, same template-creation path.
 
-**The `Ⓑ` suffix** on prefilled names in `NewScanModal` is intentional — it identifies barcode-originated templates to the user. Users can edit the name before submitting.
+**The `Ⓑ` suffix** on prefilled names in `NewScanModal` is intentional — identifies barcode-originated templates.
 
-**Connect mode in `NewScanModal`:** The modal has a New/Connect toggle. Connect mode lets the user attach the scanned barcode to an existing barcode-free template instead of creating a new one. `useUpdateTemplate` and `useUpdateCaffeineTemplate` are called unconditionally in `NewScanModal` for this — they look unused in `handleSubmit` (which no longer has duplicate-reuse logic), but `handleConnect` still needs them. **Do not remove these hooks when merging changes from main** — this already caused a silent breakage once.
+**Connect mode** — lets user attach the scanned barcode to an existing template. `useUpdateTemplate` and `useUpdateCaffeineTemplate` are called unconditionally for this; they look unused in `handleSubmit` but `handleConnect` needs them. **Do not remove these hooks when merging.**
 
-**`handleConnect` operation order** — barcode update fires first, entries second. This is intentional: the update is idempotent (barcode already set = no-op), so if entry logging fails partway through, the user can retry `handleConnect` and get the entries without re-attaching the barcode. Reversing the order (entries first) would create duplicate entries on retry.
+**`handleConnect` operation order** — barcode update fires first, entries second. Update is idempotent; reversing the order creates duplicate entries on retry.
 
-**Cross-module local match:** When a scan returns `source: "local"` with `module !== activeModule`, `handleScan` calls `updateSettings({ activeModule })` and stores the template ID in `pendingScanTemplateId` state rather than opening `ScanMatchModal` immediately. A `useEffect` watching `[templates, pendingScanTemplateId]` opens the modal once the module adapter's `templates` array has updated on the next render. This deferred pattern is necessary because the module switch is reflected in the adapter synchronously on the next render cycle, not immediately.
+**Cross-module local match** — when a scan returns `source: "local"` with `module !== activeModule`, `handleScan` calls `updateSettings({ activeModule })` and stores the template ID in `pendingScanTemplateId`. A `useEffect` watching `[templates, pendingScanTemplateId]` opens the modal once the adapter's `templates` has updated. This deferred pattern is necessary because the module switch is reflected in the adapter on the next render cycle, not immediately.
 
 ## Offline Support
 
-Logging entries works while offline. Reads continue to use the existing service-worker `NetworkFirst` cache; writes use a client-side IndexedDB queue that replays when the connection returns. **Only the two log endpoints are queueable** — `POST /api/alcohol-entries` and `POST /api/caffeine-entries`. Edits, deletes, template CRUD, and Confirm All all require live connectivity.
+Logging entries works offline. Reads use the service-worker `NetworkFirst` cache. Writes use a client-side IndexedDB queue that replays on reconnect. **Only `POST /api/alcohol-entries` and `POST /api/caffeine-entries` are queueable.** Edits, deletes, template CRUD, and Confirm All require live connectivity.
 
-**Queue (`frontend/src/api/offline-queue.ts`)** — IndexedDB store `drinklog-offline.pending-mutations`, each row `{ id, url, method, body, createdAt, username }`. Capped at 1000 entries. Exports a `queueEvents` `EventTarget` that fires `change` on every enqueue / remove / clear so subscribers (`OfflineBanner`, `usePendingEntries`) refresh without polling. `enqueueMutation` **refuses to write without a `username`** — the queue is identity-bound by construction.
+**Queue (`frontend/src/api/offline-queue.ts`)** — IndexedDB store `drinklog-offline.pending-mutations`, rows `{ id, url, method, body, createdAt, username }`. Capped at 1000. Exports `queueEvents` EventTarget firing `change` on enqueue/remove/clear. `enqueueMutation` refuses without `username`.
 
-**TanStack Query mutations need `networkMode: 'always'`** — TQ v5's default mutation `networkMode` is `'online'`, which **pauses the entire mutationFn** when `navigator.onLine === false`. That short-circuits `apiFetch` before our queueing path can run; on reconnect TQ resumes the paused mutation and the request just goes online normally — making it look like the offline path "worked" while the queue stays empty. `useCreateEntry` and `useCreateCaffeineEntry` opt into `networkMode: 'always'`. Other mutations keep the default since pausing is the right behavior for them.
+**`networkMode: 'always'`** on `useCreateEntry` / `useCreateCaffeineEntry` — TQ v5 default `'online'` pauses `mutationFn` when offline, bypassing our queue. Other mutations keep the default.
 
-**`navigator.onLine` precheck + 5 s `AbortController` fallback in `apiFetch`** — on iOS Safari and some Chromium throttling configs, `fetch` doesn't throw immediately when offline; it hangs on the OS connectivity timeout for 5–15 s before rejecting. `apiFetch` first checks `navigator.onLine` and queues synchronously if it's already `false` (fast path). For the "navigator lies" case (`onLine = true` but fetch still hangs), queueable POSTs are wrapped in an `AbortController` that aborts after 5 s; the aborted fetch rejects through `handleNetworkFailure` and gets queued, unblocking the click handler within ~5 s instead of waiting for the OS timeout. Removing either path reintroduces the original "nothing happens when offline" UX bug.
+**`navigator.onLine` precheck + 5s `AbortController`** — precheck queues synchronously if already offline (fast path). For 'navigator lies' cases (fetch hangs despite `onLine = true`), queueable POSTs are wrapped in a 5s `AbortController`; the aborted fetch routes through `handleNetworkFailure` to the queue. Removing either path reintroduces the 'nothing happens when offline' bug.
 
-**Queue is identity-bound — `currentUsername` mirror from `SettingsContext` into `client.ts`** — `client.ts` keeps a module-level `currentUsername` that `SettingsContext` syncs via `setCurrentUsername()` on every username change (a `useEffect` in the provider). `apiFetch` stamps each enqueue with this value. `drainOfflineQueue` only replays items whose stamp matches the current session — items with a foreign or missing username are **deleted on sight as cleanup**, never replayed under the new user's credentials. This is the security boundary against cross-user replay on a shared device (the main deployment is multi-user, admin-registered). `usePendingEntries` also filters by current username so a freshly logged-in user never sees a previous session's queue.
+**Queue is identity-bound** — `client.ts` mirrors `currentUsername` from `SettingsContext` via `setCurrentUsername()`. Each enqueue stamped with this value. `drainOfflineQueue` replays only matching stamps; foreign/missing stamps deleted as cleanup (security boundary against cross-user replay on shared devices). `usePendingEntries` also filters by current user.
 
-**Logout-clear gated on `authChecked`** — see the Authentication section. Without the gate, the cold-start render (where `username` is initially `null` before the silent refresh resolves) would wipe the queue belonging to the user about to be authenticated. Real logout (username transitions to `null` *after* `authChecked = true`) still clears everything.
+**Logout-clear gated on `authChecked`** — prevents cold-start `username = null` (before silent refresh resolves) from wiping the queue. Real logout (username transitions to `null` after `authChecked = true`) still clears everything.
 
-**Pending entries hydrated from the queue, not TanStack optimistic updates (`hooks/usePendingEntries.ts`)** — `usePendingMutations` subscribes to `queueEvents.change` and re-reads via `listMutations()`. `usePendingAlcoholEntries(templates)` / `usePendingCaffeineEntries(templates)` parse each queued POST body, enrich with the linked template, and produce a synthetic `DrinkEntry` / `CaffeineEntry` with `id = pending-<queueId>`. **Both the adapter and `LogTab` prepend these to the server's entries list** — that's why pending entries appear in Unconfirmed and survive a PWA cold restart. **Do not add `onMutate`/`onError` optimistic logic back to `useCreateEntry` / `useCreateCaffeineEntry`** — they'd double-render every offline log (cache placeholder + queue hydration).
+**Pending entries hydrated from the queue, not TQ optimistic updates** (`hooks/usePendingEntries.ts`) — subscribes to `queueEvents.change`, parses queued POST bodies, produces synthetic entries with `id = pending-<queueId>`. Adapter and `LogTab` prepend these to server entries — that's why pending entries appear in Unconfirmed and survive PWA cold restart. **Do not add `onMutate`/`onError` optimistic logic to `useCreateEntry`** — it double-renders every offline log.
 
-**`isPending` flag in `TrackerEntry`** — derived from `id.startsWith('pending-')` via `isPendingId()` (exported from `hooks/usePendingEntries.ts`). `LogTab`'s `EntryRow` gives pending rows an amber background + spinning `ArrowPathIcon`, disables the edit button (no server id), and reroutes the trash icon to `removeMutation(id.slice(PENDING_ID_PREFIX.length))` so it dequeues instead of calling `DELETE /api/...`. `hasEligibleToConfirm` excludes pending entries because the server hasn't seen them; Confirm All can't affect them until drain completes.
+**`isPending` in `TrackerEntry`** — `id.startsWith('pending-')` via `isPendingId()`. `LogTab` gives pending rows amber background + spinner, disables edit (no server id), reroutes trash to `removeMutation()`. `hasEligibleToConfirm` excludes pending entries.
 
-**`HomeTab` snapshot must include `entries` in its refresh deps** — online logs bump `templates.usage_count` server-side, which used to be the only trigger for the snapshot recompute. Offline logs don't hit the server, so without `entries` in the dep array the Quick Log buttons would never reorder until reconnect. `templates` stays in the dep array (existing snapshot-refresh invariant); both are required.
+**`HomeTab` snapshot must include `entries` in its refresh deps** — offline logs don't bump `usage_count` server-side, so without `entries` in the dep array the Quick Log buttons never reorder until reconnect. Both `entries` and `templates` are required in that dep array.
 
-**Drain replays use the in-memory access token** — `drainOfflineQueue` fires on the `online` event and on login. It refreshes the token once on 401 via the existing `refreshPromise` lock (sharing with concurrent 401 retries from queries). On 4xx the item is dropped (server already rejected it); on 5xx or network error the drain bails out and retries on the next `online` event. After progress, `App.tsx` invalidates entries/templates queries so the synthetic pending rows are replaced by the real server entries.
+**Drain** — fires on `online` event and login. Refreshes token once on 401 via `refreshPromise` lock. Drops items on 4xx; bails on 5xx/network error (retries next `online` event). After progress, `App.tsx` invalidates entries/templates queries.
 
-**Confirm All is intentionally not queueable** — its semantics depend on the live unconfirmed set at the server, and queueing it would race with pending logs in the queue. `LogTab` disables the button + relabels it `"Confirm All (offline)"` via `useOnlineStatus()`. Do not add `confirm-all` to the `QUEUEABLE` set.
+**Confirm All is intentionally not queueable** — semantics depend on the live unconfirmed set at the server. `LogTab` disables the button and relabels it `"Confirm All (offline)"`. Do not add `confirm-all` to the `QUEUEABLE` set.
 
-**Toast text reflects offline state via `useOnlineStatus()`** — `HomeTab` derives `loggedMsg = isOnline ? "Logged: X" : "Saved offline: X"` and passes it through every `onLogged` callback. The closure captures `isOnline` at click time, so a click-while-offline followed by reconnect still shows "Saved offline: X" — accurate because the entry went through the queue.
+**Toast text** — `loggedMsg = isOnline ? "Logged: X" : "Saved offline: X"`. The closure captures `isOnline` at click time.
 
-**No idempotency keys (yet)** — there's no protection against double-logging if a request reaches the server but the response is lost in transit (e.g. flaky Tailscale link dropping the response packet). The common case (truly offline) is fine. If this becomes a real problem the fix is a client-generated `request_id` UUID on the entry POST payload with a backend uniqueness check.
+**No idempotency keys (yet)** — no protection against double-logging if a request reaches the server but the response is lost. The common case (truly offline) is fine. Fix if needed: client-generated `request_id` UUID with backend uniqueness check.
 
 ## iOS Safari Scroll/Touch Quirks
 
 These fixes are intentional — do not revert them:
 
-**`html, body { overflow: hidden }`** (`index.css`): Required on iOS. If body can scroll, iOS intercepts touch events at the document level and the inner scroll containers don't receive them reliably.
+**`html, body { overflow: hidden }`** (`index.css`): Required on iOS — if body can scroll, iOS intercepts touch events at the document level and inner scroll containers don't receive them.
 
-**Scroll containers** use `overflow-y-auto touch-pan-y` (not `overflow-y-scroll`). Each tab has a `data-dbg-zone="LIST"` div as its scrollable region. The `data-dbg-zone` attributes are also used for CSS targeting.
+**Scroll containers** use `overflow-y-auto touch-pan-y`. Each tab has a `data-dbg-zone="LIST"` div as scrollable region.
 
 **CSS rules tied to `data-dbg-zone`:**
-- `[data-dbg-zone="HEADER"], [data-dbg-zone="FOOTER"]` → `touch-action: manipulation` (eliminates 300ms tap delay without breaking scroll)
-- `[data-dbg-zone="LIST"] *` → `-webkit-user-select: none; -webkit-touch-callout: none` (prevents long-press callout from interrupting scrolls)
-- `[data-dbg-zone="LIST"] p, span` → `pointer-events: none` (prevents text nodes from entering iOS scroll-chain hit-test, which caused the scroll container to stop scrolling when a touch started on text)
+- `[data-dbg-zone="HEADER"], [data-dbg-zone="FOOTER"]` → `touch-action: manipulation` (eliminates 300ms tap delay)
+- `[data-dbg-zone="LIST"] *` → `-webkit-user-select: none; -webkit-touch-callout: none` (prevents long-press callout interrupting scrolls)
+- `[data-dbg-zone="LIST"] p, span` → `pointer-events: none` (prevents text nodes from entering iOS scroll-chain hit-test)
 
-**Do not add** `-webkit-overflow-scrolling: touch` (deprecated, causes conflicts) or broad `touch-action: pan-y` on children of the LIST zone (breaks tap recognition on list items).
+**Do not add** `-webkit-overflow-scrolling: touch` (deprecated, causes conflicts) or broad `touch-action: pan-y` on LIST children (breaks tap recognition).
 
-**Safe-area utilities** (`pt-safe`, `pb-safe`, `pb-safe-nav`) are defined in `index.css` using `env(safe-area-inset-*)`. The main app container uses `pt-safe pb-safe-nav`; the bottom nav uses `pb-4` (fixed 16px) rather than `pb-safe` — see note below.
+**Safe-area utilities** (`pt-safe`, `pb-safe`, `pb-safe-nav`) in `index.css` using `env(safe-area-inset-*)`. Bottom nav uses `pb-4` (fixed 16px), not `pb-safe`.
 
-**`viewport-fit=cover` is intentionally absent** from the viewport meta tag. In iOS standalone PWA mode the viewport always extends to the physical screen bottom regardless of this setting, so `env(safe-area-inset-bottom)` would return 34px and produce excessive space below the nav. Without `viewport-fit=cover` the env value is 0, and `pb-4` (16px) provides just enough clearance for the home indicator. Do not re-add `viewport-fit=cover` or replace `pb-4` with `pb-safe` on the nav.
+**`viewport-fit=cover` is intentionally absent** from the main app viewport meta tag. In iOS standalone PWA mode, `env(safe-area-inset-bottom)` returns 34px with it, producing excessive space. Without it the value is 0 and `pb-4` provides just enough clearance. Do not re-add it or replace `pb-4` with `pb-safe` on the nav.
 
 ## Settings & Dark Mode
 
-App-level settings live in `SettingsContext` (`frontend/src/contexts/SettingsContext.tsx`), persisted to `localStorage` under key `drinklog-settings`. Fields: `theme` (`'light' | 'dark' | 'system'`) and `activeModule` (`'alcohol' | 'caffeine'`, default `'alcohol'`). The context also holds `username: string | null` and `setUsername` as **session-only state** (not persisted to localStorage — see Authentication section). The context provides `openSettings()` used by the gear icon in every tab header. `SettingsModal` is rendered once in `App.tsx` inside `SettingsProvider` but outside `QueryClientProvider`.
+App-level settings in `SettingsContext` (`frontend/src/contexts/SettingsContext.tsx`), persisted to `localStorage` under `drinklog-settings`. Fields: `theme` (`'light' | 'dark' | 'system'`), `activeModule` (`'alcohol' | 'caffeine'`, default `'alcohol'`). Also holds `username: string | null` as session-only state (not persisted). Provides `openSettings()` used by gear icons in tab headers. `SettingsModal` rendered once in `App.tsx` inside `SettingsProvider` but outside `QueryClientProvider`.
 
-Tailwind uses `darkMode: 'class'` — the `dark` class is toggled on `<html>` by `SettingsContext`. **An inline script in `index.html`** applies the `dark` class synchronously before first render to prevent a flash of light mode on app launch. Do not remove it.
+Tailwind uses `darkMode: 'class'`. **An inline script in `index.html`** applies the `dark` class before first render to prevent flash of light mode. Do not remove it.
 
-**`theme-color` meta tag limitation:** iOS PWA only reads `theme-color` at launch — dynamic JS updates to it have no effect while the app is running. The status bar color therefore follows the OS preference (via two `media`-based meta tags) and only reflects the user's in-app theme choice after a full app restart.
+**`theme-color` meta tag:** iOS PWA only reads it at launch — JS updates have no effect while running.
 
 ## Refactoring and Simple Changes
 
-For mechanical changes where the "what" is already fully determined by the request — renames, URL changes, moving files, extracting constants, reformatting — implement directly without invoking brainstorming or planning workflows. These tasks need good execution, not a design ceremony.
+For mechanical changes where the "what" is fully determined — renames, URL changes, moving files, extracting constants — implement directly without brainstorming or planning workflows.
 
 Only use brainstorming/planning/subagent workflows when the task involves genuine design choices, multiple independent subsystems, or non-obvious trade-offs.
 
-Good code quality and refactoring are always welcome when touching existing code (cleaning up a function you're already editing, fixing an inconsistency you notice). Do not hold back on quality — just don't gate simple tasks behind unnecessary process.
+Good code quality and refactoring are always welcome when touching existing code. Do not hold back on quality — just don't gate simple tasks behind unnecessary process.
 
 ## Git Conventions
 
 - Conventional commit messages: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`
 - No `Co-Authored-By` lines in commits
-- **Never commit without explicit user instruction.** Do not commit after completing a task — always wait for the user to say "commit this" or similar before running any `git commit` command.
+- **Never commit without explicit user instruction.**
 
 ## Post-Implementation Workflow
 
-After completing an implementation and pushing the changes, walk through this sequence before considering the work done. Each step gates the next — do not advance past a step until the user has explicitly confirmed it, and do not run steps in parallel.
+After completing an implementation and pushing, follow this sequence. Each step gates the next — do not advance without explicit user confirmation. Do not run steps in parallel.
 
 ### 1. Testing confirmation
-
-Pause and wait for the user to confirm that they have tested the branch on the deployed app / their own setup, and that no further changes are needed. If the user identifies additional changes, implement them, push, and return to this step. Do not advance to the security review until the user explicitly says testing is complete and the branch is ready.
+Wait for the user to confirm they've tested on the deployed app and no further changes are needed. If issues arise, fix and return to this step.
 
 ### 2. Security review
-
-Once testing is confirmed, assess whether the changes warrant a security review. They do if the diff touches any of: authentication / authorization / session handling, secrets or env-var handling, user input parsing or validation, data exposed across user boundaries, network surface (new endpoints, headers, CORS, CSP), file or path handling, third-party APIs or untrusted external data, cryptography, or dependency additions. If any of those apply — or if the user explicitly requests one — invoke the `security-review` skill. Address findings before continuing. Wait for the user to explicitly confirm the security review is complete and satisfactory.
-
-If you assess that no security review is needed, briefly tell the user why and ask them to confirm skipping it before advancing.
+Changes warrant a review if they touch: auth/session/secrets, user input/validation, cross-user data, network surface (new endpoints/headers/CORS/CSP), file handling, third-party APIs, cryptography, or dependencies. If yes (or user requests it), invoke the `security-review` skill. If not needed, explain why and ask user to confirm before skipping.
 
 ### 3. CLAUDE.md review
-
-Once both prior steps are confirmed, review what was just implemented and update `CLAUDE.md` if any of the following were discovered:
-- **Architecture or patterns** – new conventions, abstractions, or structural decisions made
-- **Non-obvious technical decisions** – _why_ something was done a certain way (tradeoffs, constraints, gotchas)
-- **Reusable knowledge** – utilities, helpers, or APIs in this codebase a future context would benefit from knowing about
-- **Pitfalls to avoid** – things that were tried and didn't work, or footguns in this codebase
-- **Setup/env changes** – new dependencies, env vars, config, or tooling introduced
-
-**Do not add:**
-- Things already documented
-- Obvious or generic best practices
-- Step-by-step summaries of what was just built (that's git history)
-
-**If nothing meaningful was learned that a future context would need, make no changes.** Commit if any changes.
-
-Do not run any step of this workflow unprompted — each phase requires explicit user confirmation before proceeding to the next.
+Update `CLAUDE.md` (and/or `admin/CLAUDE.md`, `docs/deployment.md`) if any of the following were discovered: new conventions/patterns, non-obvious technical decisions (why, not what), reusable utilities a future context needs, pitfalls/footguns. **Do not add** things already documented, generic best practices, or step-by-step summaries. Commit if any changes.
 
 ## Security Constraints
 
-- **Never read, print, or suggest values from `.env`** — treat it as a secret file that must not be inspected or exposed under any circumstances.
-- **Never set `DEBUG=true` in any production config** — it bypasses JWT secret startup validation in both backends. `DEBUG=true` is only valid in test commands and `docker-compose.dev.yml`.
-- **Admin ports `:8001`/`:8002` are Tailscale-only** — they are restricted via host-level `DOCKER-USER` iptables rules. Never suggest binding them to `0.0.0.0` without those rules in place, exposing them through nginx, or making them reachable from the public internet.
-
-## Deployment Notes
-
-`docker-compose.yml` runs four services on an `internal` bridge network:
-- `backend` — FastAPI, no exposed ports, `DATABASE_URL` points to a named volume at `/data/drinklog.db`. Reads env vars from `.env` (via `env_file: .env`).
-- `frontend` — nginx on port **80**, serves the Vite build, proxies `/api/` to `backend:8000`.
-- `admin-backend` — FastAPI on port **8001**, shares the same `db_data` volume. Reads env vars from `.env`.
-- `admin-frontend` — nginx on port **8002**, serves the admin Vite build, proxies `/api/` to `admin-backend:8000`.
-
-Admin ports are bound to `0.0.0.0` but restricted to Tailscale peers only via `DOCKER-USER` iptables rules on the host:
-```bash
-iptables -I DOCKER-USER ! -i tailscale0 -m conntrack --ctorigdstport 8001 -p tcp -j DROP
-iptables -I DOCKER-USER ! -i tailscale0 -m conntrack --ctorigdstport 8002 -p tcp -j DROP
-```
-Persisted with `netfilter-persistent save`. **Do not use UFW rules or `127.0.0.1` binding to restrict Docker ports** — Docker bypasses UFW by writing iptables rules directly, and `127.0.0.1` binding also blocks Tailscale (Tailscale traffic arrives with the Tailscale IP as destination, not loopback). The `DOCKER-USER` chain with `--ctorigdstport` (matches the pre-DNAT port) is the correct mechanism.
-
-**`.env` and `.env.example`** — `.env` is the live deployment file (gitignored) that holds real secrets on the server. `.env.example` is the committed template. **Whenever a new env var is introduced, it must be added to `.env.example`** with a placeholder value and a short comment explaining what it is. Never read or suggest values from `.env` — treat it as a secret file that Claude should not inspect or expose.
-
-**Env vars** (set in `.env` on the server, documented in `.env.example`):
-- `DEBUG` — set to `true` to skip JWT secret validation at startup. `docker-compose.dev.yml` sets this automatically for `make dev`. Never set in production. Does **not** bypass the `ADMIN_MASTER_PASSWORD` check — that is always required regardless.
-- `ADMIN_SEED_USERNAME` / `ADMIN_SEED_PASSWORD` — bootstrap the first user on a fresh database. Ignored once any user exists. Backend refuses to start if the User table is empty and these are unset.
-- `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` — secrets for signing tokens. Both backends refuse to start if these are unset and `DEBUG` is not `true`. If unset in dev, random values are generated per process restart (all sessions invalidated on restart).
-- `ACCESS_TOKEN_EXPIRE_MINUTES` (default: 15) / `REFRESH_TOKEN_EXPIRE_DAYS` (default: 30) — optional overrides.
-- `ADMIN_MASTER_PASSWORD` — required unconditionally; admin backend refuses to start without it even in dev.
-- `ADMIN_JWT_SECRET` — admin backend refuses to start if unset and `DEBUG` is not `true`. If unset in dev, random secret generated per restart.
-
-**Non-root containers:**
-- Backend containers use a `gosu` entrypoint (`backend/entrypoint.sh`, `admin/backend/entrypoint.sh`) that runs as root, `chown -R app:app /data` (handles existing root-owned volumes), then `exec gosu app uvicorn` to drop privileges. Do not remove the `chown` — it is what allows existing databases to survive the transition.
-- Frontend containers use `nginxinc/nginx-unprivileged:alpine` (not `nginx:alpine`) — the standard image lacks pre-configured permissions for non-root operation and crashes with permission errors on `/var/cache/nginx`. nginx configs are copied with `COPY --chown=nginx:nginx` so the nginx entrypoint's envsubst step can overwrite them at startup.
-- Nginx listens on port **8080** internally; docker-compose maps host 80 → container 8080 and host 8002 → container 8080. Do not change `listen` back to 80 — the non-root nginx user cannot bind to privileged ports.
-- `docker-compose.dev.yml` overrides `user: "0"` on the frontend service — the Tailscale SSL cert key on the host (`/etc/ssl/`) is root-only readable, so dev must run as root. Production does not mount certs and stays non-root.
-
-`nginx.conf` is at the project root and is baked into the frontend image at build time (`frontend/Dockerfile`). `admin/nginx.conf` is baked into the admin-frontend image. To change proxy behavior or headers, edit the relevant config and rebuild with `docker compose up --build`.
-
-Both configs include security headers (CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`) and `client_max_body_size 64k`. **Do not tighten the CSP without accounting for these two constraints:**
-- `style-src 'unsafe-inline'` — required by Tailwind (injects inline styles at runtime)
-- `script-src 'wasm-unsafe-eval'` — required by the ZXing barcode scanner (uses WebAssembly); main app only, not admin
-
-HSTS is not set in nginx — it is handled by Cloudflare for the main app. Do not add it; Cloudflare and nginx both setting it causes duplicate headers.
-
-The Vite build uses `build:docker` script (skips `tsc`) inside Docker; the full `build` script (with type-checking) is for local CI.
-
-Service worker (`vite-plugin-pwa`, `registerType: 'autoUpdate'`) caches non-auth API responses with a NetworkFirst strategy. The `urlPattern` is `/^\/api\/(?!auth\/).*/` — auth endpoints (`/api/auth/*`) are deliberately excluded; caching them would allow a stale refresh response to bypass the login screen when offline. Timeout is 5s, max 50 entries, 5-minute expiration. Do not broaden the pattern back to `/^\/api\/.*/` or remove the negative lookahead.
-
-**`overrides` in `frontend/package.json`** — forces `serialize-javascript@^7.0.5` to resolve HIGH CVEs. The dependency chain `workbox-build` → `@rollup/plugin-terser@0.4.4` pins `serialize-javascript@6.x`; the override forces 7.x without upgrading the plugin. Do not remove it until `workbox-build` ships with `@rollup/plugin-terser ≥1.0.0`.
+- **Never read, print, or suggest values from `.env`** — treat as a secret file.
+- **Never set `DEBUG=true` in any production config** — bypasses JWT secret validation. Only valid in tests and `docker-compose.dev.yml`.
+- **Admin ports `:8001`/`:8002` are Tailscale-only** — restricted via `DOCKER-USER` iptables rules. Never suggest binding them to `0.0.0.0` without those rules, exposing through nginx, or making public.
