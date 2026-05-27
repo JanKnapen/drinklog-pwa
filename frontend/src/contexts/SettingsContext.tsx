@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
+import { setCurrentUsername } from '../api/client'
 
 export type Theme = 'light' | 'dark' | 'system'
 export type ActiveModule = 'alcohol' | 'caffeine'
@@ -42,6 +43,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(loadSettings)
   const [isOpen, setIsOpen] = useState(false)
   const [username, setUsername] = useState<string | null>(null)
+
+  // Mirror username into the api/client module so apiFetch and drainOfflineQueue can
+  // stamp queued mutations with their owner. See offline-queue.ts for the rationale.
+  useEffect(() => {
+    setCurrentUsername(username)
+  }, [username])
 
   useEffect(() => {
     const root = document.documentElement

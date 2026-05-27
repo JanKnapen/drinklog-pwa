@@ -70,4 +70,5 @@ export interface TrackerEntry {
   isMarked: boolean
   value: number
   displayInfo: string
+  isPending?: boolean
 }

@@ -48,6 +48,11 @@ export function useEntryRange() {
 export function useCreateEntry() {
   const qc = useQueryClient()
   return useMutation({
+    // networkMode: 'always' — TanStack Query v5 defaults to 'online', which PAUSES the
+    // mutationFn when navigator.onLine is false. That short-circuits apiFetch before our
+    // queueable precheck can write to IndexedDB. 'always' lets the mutationFn run
+    // regardless, so offline writes reach the queue immediately.
+    networkMode: 'always',
     mutationFn: (data: {
       template_id?: string
       custom_name?: string
