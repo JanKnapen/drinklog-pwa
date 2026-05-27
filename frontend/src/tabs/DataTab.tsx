@@ -55,8 +55,10 @@ function addByStep(d: Date, unit: StepUnit, sign: 1 | -1): Date {
   else r.setFullYear(r.getFullYear() + sign)
   return r
 }
-function formatLabel(d: Date): string {
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+function formatLabel(d: Date, showYear = false): string {
+  return d.toLocaleDateString(undefined, showYear
+    ? { month: 'short', day: 'numeric', year: '2-digit' }
+    : { month: 'short', day: 'numeric' })
 }
 function formatRangeLabel(start: Date, end: Date): string {
   const sameYear = start.getFullYear() === end.getFullYear()
@@ -137,15 +139,19 @@ export default function DataTab() {
     }
     // Slice to visible window
     const windowStartKey = toDateKey(windowStart)
+    const multiYear = windowStart.getFullYear() !== windowEnd.getFullYear()
     const result: { date: string; units: number; label: string }[] = []
     for (let i = 0; i < fullSeries.length; i++) {
       const { key, total } = fullSeries[i]
       if (key < windowStartKey) continue
       const value = avgWindow > 0 ? maSeries[i] : total
+      const d = parseDateKey(key)
+      // In multi-year views, show year on Jan 1 and the first visible data point
+      const showYear = multiYear && (result.length === 0 || (d.getMonth() === 0 && d.getDate() === 1))
       result.push({
         date: key,
         units: parseFloat(value.toFixed(2)),
-        label: formatLabel(parseDateKey(key)),
+        label: formatLabel(d, showYear),
       })
     }
     return result
@@ -273,7 +279,13 @@ export default function DataTab() {
           <SummaryCard
             title="Heaviest Day"
             value={stats.heaviest ? stats.heaviest.total.toFixed(1) : '—'}
-            subtitle={stats.heaviest ? parseDateKey(stats.heaviest.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : undefined}
+            subtitle={stats.heaviest ? (() => {
+              const d = parseDateKey(stats.heaviest.date)
+              const showYear = d.getFullYear() !== new Date().getFullYear()
+              return d.toLocaleDateString(undefined, showYear
+                ? { month: 'short', day: 'numeric', year: 'numeric' }
+                : { month: 'short', day: 'numeric' })
+            })() : undefined}
           />
         </div>
       </div>
