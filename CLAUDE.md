@@ -104,6 +104,8 @@ The `/summary` endpoints accept either `start`+`end` (ISO `YYYY-MM-DD`, inclusiv
 
 Composite index `ix_{drink,caffeine}_entries_user_id_timestamp` created by `_migrate()`.
 
+**Recharts custom tick `fill` in dark mode** — Do not use `fill="currentColor"` on SVG `<text>` elements inside a custom recharts tick component. The recharts SVG container has no dark-mode `color` override, so `currentColor` resolves to the browser default (black) on dark backgrounds. Instead, accept the `fill` prop that recharts automatically passes to custom tick components (defaults to `#666666`, matching built-in tick appearance). Pattern: `function CustomTick({ x, y, payload, fill }: { ...; fill?: string }) { ... <text fill={fill}>...</text> }`.
+
 ### Home tab quick-log button logic
 
 Shows exactly 5 buttons total, filled in order:
