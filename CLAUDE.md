@@ -193,11 +193,7 @@ Application-level checks (the `if db.query(...).filter(...user_id...).first()` b
 
 ### Barcode lookup endpoint
 
-`GET /api/barcode/{code}?module=alcohol|caffeine&strategy=1|2|3` — searches local DB first, then external API on miss. Response includes `module` field for local matches; `null` for external/not-found.
-
-### Retrieval strategies (temporary)
-
-Three strategies (OFF+/AH/Hybrid) exist for A/B/C comparison — **to be removed** per `backlog/changes/05-remove-retrieval-alternatives.md`. `barcodeStrategy` in `SettingsContext` and `StrategyPill` in `NewAlcohol/CaffeineModal` are part of this dev-testing UI. Regex helpers in `backend/routers/parsers.py`.
+`GET /api/barcode/{code}?module=alcohol|caffeine` — searches local DB first, then Open Food Facts on miss. Response includes `module` field for local matches; `null` for external/not-found. Regex helpers in `backend/routers/parsers.py`.
 
 ### Scan flow invariants
 
