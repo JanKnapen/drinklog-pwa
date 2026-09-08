@@ -13,6 +13,35 @@ export function Field({ label, children }: { label: string; children: React.Reac
   )
 }
 
+const dashedCls = ' border-dashed border-2 border-neutral-400 dark:border-neutral-500'
+
+// Numeric text input for ml/abv/mg fields. Normalizes a locale decimal comma ("7,5") to a
+// dot before it ever reaches state — inputMode="decimal" opens a comma-separator keypad on
+// most non-US locales, and parseFloat("7,5") silently truncates to 7 with no error. Fixing
+// it here (once, at the input boundary) means every downstream parseFloat/display already
+// gets a canonical value instead of every call site having to remember to normalize.
+export function DecimalField({ label, value, onChange, placeholder, disabled, dashed }: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  disabled?: boolean
+  dashed?: boolean
+}) {
+  return (
+    <Field label={label}>
+      <input
+        className={inputCls + (dashed ? dashedCls : '') + (disabled ? ' opacity-50 cursor-not-allowed' : '')}
+        inputMode="decimal"
+        placeholder={placeholder}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value.replace(',', '.'))}
+      />
+    </Field>
+  )
+}
+
 export function UnitPreview({ ml, abv }: { ml: string; abv: string }) {
   const config = useAppConfig()
   const mlNum = parseFloat(ml)
