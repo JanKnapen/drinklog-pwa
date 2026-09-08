@@ -3,7 +3,7 @@ import { TrashIcon, PencilIcon, CheckCircleIcon, Cog6ToothIcon, ArrowPathIcon } 
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
 import TimestampPicker from '../components/TimestampPicker'
-import { Field, UnitPreview, inputCls, primaryBtn } from '../components/FormFields'
+import { Field, UnitPreview, DecimalField, inputCls, primaryBtn } from '../components/FormFields'
 import { groupByDate, localMidnightISO, todayKey, toLocalDateKey } from '../utils'
 import type { TrackerEntry, DrinkEntry, CaffeineEntry } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
@@ -363,12 +363,8 @@ function EditAlcoholEntryForm({ entry, onClose }: { entry: DrinkEntry; onClose: 
                 <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} />
               </Field>
             )}
-            <Field label="Amount (ml)">
-              <input className={inputCls} inputMode="decimal" value={ml} onChange={(e) => setMl(e.target.value)} />
-            </Field>
-            <Field label="ABV (%)">
-              <input className={inputCls} inputMode="decimal" value={abv} onChange={(e) => setAbv(e.target.value)} />
-            </Field>
+            <DecimalField label="Amount (ml)" value={ml} onChange={setMl} />
+            <DecimalField label="ABV (%)" value={abv} onChange={setAbv} />
             <UnitPreview ml={ml} abv={abv} />
           </>
         )}
@@ -418,9 +414,7 @@ function EditCaffeineEntryForm({ entry, onClose }: { entry: CaffeineEntry; onClo
                 <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} />
               </Field>
             )}
-            <Field label="Caffeine (mg)">
-              <input className={inputCls} inputMode="decimal" value={mg} onChange={(e) => setMg(e.target.value)} />
-            </Field>
+            <DecimalField label="Caffeine (mg)" value={mg} onChange={setMg} />
           </>
         )}
         <button onClick={handleSave} disabled={!isValid || updateEntry.isPending} className={primaryBtn}>Save</button>

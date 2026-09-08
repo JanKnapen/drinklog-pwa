@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { PlusIcon, PencilIcon, TrashIcon, Cog6ToothIcon, BarsArrowUpIcon, BarsArrowDownIcon } from '@heroicons/react/24/outline'
 import Modal from '../components/Modal'
 import EmptyState from '../components/EmptyState'
-import { Field, inputCls, primaryBtn } from '../components/FormFields'
+import { Field, DecimalField, inputCls, primaryBtn } from '../components/FormFields'
 import type { TrackerTemplate } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
 import { useModuleAdapter } from '../hooks/useModuleAdapter'
@@ -215,14 +215,8 @@ function EditAlcoholTemplate({ open, templateId, onClose }: {
         <Field label="Name">
           <input className={inputCls} value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
         </Field>
-        <Field label={`Amount (ml)${mlAbvLocked ? ' — locked' : ''}`}>
-          <input className={inputCls + (mlAbvLocked ? ' opacity-50 cursor-not-allowed' : '')}
-            inputMode="decimal" value={ml} onChange={(e) => setMl(e.target.value)} disabled={mlAbvLocked} />
-        </Field>
-        <Field label={`ABV (%)${mlAbvLocked ? ' — locked' : ''}`}>
-          <input className={inputCls + (mlAbvLocked ? ' opacity-50 cursor-not-allowed' : '')}
-            inputMode="decimal" value={abv} onChange={(e) => setAbv(e.target.value)} disabled={mlAbvLocked} />
-        </Field>
+        <DecimalField label={`Amount (ml)${mlAbvLocked ? ' — locked' : ''}`} value={ml} onChange={setMl} disabled={mlAbvLocked} />
+        <DecimalField label={`ABV (%)${mlAbvLocked ? ' — locked' : ''}`} value={abv} onChange={setAbv} disabled={mlAbvLocked} />
         {mlAbvLocked && <p className="text-xs text-neutral-400">ml and ABV are locked because this template has confirmed entries.</p>}
         {isEdit && template.barcode && (
           confirmDisconnect ? (
@@ -314,10 +308,7 @@ export function EditCaffeineTemplate({ open, templateId, onClose }: {
         <Field label="Name">
           <input className={inputCls} value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
         </Field>
-        <Field label={`Caffeine (mg)${mgLocked ? ' — locked' : ''}`}>
-          <input className={inputCls + (mgLocked ? ' opacity-50 cursor-not-allowed' : '')}
-            inputMode="decimal" value={mg} onChange={(e) => setMg(e.target.value)} disabled={mgLocked} />
-        </Field>
+        <DecimalField label={`Caffeine (mg)${mgLocked ? ' — locked' : ''}`} value={mg} onChange={setMg} disabled={mgLocked} />
         {mgLocked && <p className="text-xs text-neutral-400">Caffeine amount is locked because this template has confirmed entries.</p>}
         {isEdit && template.barcode && (
           confirmDisconnect ? (

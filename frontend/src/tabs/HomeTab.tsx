@@ -9,7 +9,7 @@ import { Cog6ToothIcon } from '@heroicons/react/24/outline'
 import Modal from '../components/Modal'
 import BarcodeScanner from '../components/BarcodeScanner'
 import TimestampPicker from '../components/TimestampPicker'
-import { Field, UnitPreview, inputCls, primaryBtn } from '../components/FormFields'
+import { Field, UnitPreview, DecimalField, inputCls, primaryBtn } from '../components/FormFields'
 import { toLocalDateKey, todayKey } from '../utils'
 import type { TrackerTemplate, TrackerEntry } from '../types'
 import { useSettings } from '../contexts/SettingsContext'
@@ -360,7 +360,6 @@ function NewAlcoholModal({ open, onClose, templates, pendingDrinks, prefill, bar
 
   const mlMissing = prefill && prefill.ml == null
   const abvMissing = prefill && prefill.abv == null
-  const dashedCls = ' border-dashed border-2 border-neutral-400 dark:border-neutral-500'
   const fraction = half ? 0.5 : undefined
 
   async function handleSubmit() {
@@ -413,12 +412,8 @@ function NewAlcoholModal({ open, onClose, templates, pendingDrinks, prefill, bar
             <Field label="Drink name">
               <input className={inputCls} placeholder="e.g. Lager, House Wine…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
             </Field>
-            <Field label="Amount (ml)">
-              <input className={inputCls + (mlMissing ? dashedCls : '')} inputMode="decimal" placeholder="330" value={ml} onChange={(e) => setMl(e.target.value)} />
-            </Field>
-            <Field label="ABV (%)">
-              <input className={inputCls + (abvMissing ? dashedCls : '')} inputMode="decimal" placeholder="5.0" value={abv} onChange={(e) => setAbv(e.target.value)} />
-            </Field>
+            <DecimalField label="Amount (ml)" placeholder="330" value={ml} onChange={setMl} dashed={!!mlMissing} />
+            <DecimalField label="ABV (%)" placeholder="5.0" value={abv} onChange={setAbv} dashed={!!abvMissing} />
             <UnitPreview ml={ml} abv={abv} />
           </div>
         </div>
@@ -464,7 +459,6 @@ export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, pref
   const isValid = name.trim().length > 0 && !isNaN(parseFloat(mg))
 
   const mgMissing = prefill && prefill.mg == null
-  const dashedCls = ' border-dashed border-2 border-neutral-400 dark:border-neutral-500'
   const fraction = half ? 0.5 : undefined
 
   async function handleSubmit() {
@@ -517,9 +511,7 @@ export function NewCaffeineModal({ open, onClose, templates, pendingDrinks, pref
             <Field label="Drink name">
               <input className={inputCls} placeholder="e.g. Coffee, Energy Drink…" value={name} onChange={(e) => { setName(e.target.value); setError(null) }} />
             </Field>
-            <Field label="Caffeine (mg)">
-              <input className={inputCls + (mgMissing ? dashedCls : '')} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
-            </Field>
+            <DecimalField label="Caffeine (mg)" placeholder="80" value={mg} onChange={setMg} dashed={!!mgMissing} />
           </div>
         </div>
         <div className="flex gap-2">
@@ -638,7 +630,6 @@ function NewScanModal({
   const mlMissing = currentPrefill != null && currentPrefill.ml == null && selectedModule === 'alcohol'
   const abvMissing = currentPrefill != null && currentPrefill.abv == null && selectedModule === 'alcohol'
   const mgMissing = currentPrefill != null && currentPrefill.mg == null && selectedModule === 'caffeine'
-  const dashedCls = ' border-dashed border-2 border-neutral-400 dark:border-neutral-500'
   const fraction = half ? 0.5 : undefined
   const isPending = createAlcoholTemplate.isPending || createAlcoholEntry.isPending ||
     createCaffeineTemplate.isPending || createCaffeineEntry.isPending ||
@@ -896,18 +887,12 @@ function NewScanModal({
               </div>
               {selectedModule === 'alcohol' ? (
                 <>
-                  <Field label="Amount (ml)">
-                    <input className={inputCls + (mlMissing ? dashedCls : '')} inputMode="decimal" placeholder="330" value={ml} onChange={(e) => setMl(e.target.value)} />
-                  </Field>
-                  <Field label="ABV (%)">
-                    <input className={inputCls + (abvMissing ? dashedCls : '')} inputMode="decimal" placeholder="5.0" value={abv} onChange={(e) => setAbv(e.target.value)} />
-                  </Field>
+                  <DecimalField label="Amount (ml)" placeholder="330" value={ml} onChange={setMl} dashed={!!mlMissing} />
+                  <DecimalField label="ABV (%)" placeholder="5.0" value={abv} onChange={setAbv} dashed={!!abvMissing} />
                   <UnitPreview ml={ml} abv={abv} />
                 </>
               ) : (
-                <Field label="Caffeine (mg)">
-                  <input className={inputCls + (mgMissing ? dashedCls : '')} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
-                </Field>
+                <DecimalField label="Caffeine (mg)" placeholder="80" value={mg} onChange={setMg} dashed={!!mgMissing} />
               )}
             </div>
             <div className="flex gap-2">
@@ -949,12 +934,8 @@ function EnterAlcoholModal({ open, onClose, onLogged }: { open: boolean; onClose
         <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
-        <Field label="Amount (ml)">
-          <input className={inputCls} inputMode="decimal" placeholder="330" value={ml} onChange={(e) => setMl(e.target.value)} />
-        </Field>
-        <Field label="ABV (%)">
-          <input className={inputCls} inputMode="decimal" placeholder="5.0" value={abv} onChange={(e) => setAbv(e.target.value)} />
-        </Field>
+        <DecimalField label="Amount (ml)" placeholder="330" value={ml} onChange={setMl} />
+        <DecimalField label="ABV (%)" placeholder="5.0" value={abv} onChange={setAbv} />
         <UnitPreview ml={ml} abv={abv} />
         <button onClick={handleSubmit} disabled={!isValid} className={primaryBtn}>Log</button>
       </div>
@@ -985,9 +966,7 @@ export function EnterCaffeineModal({ open, onClose, onLogged }: { open: boolean;
         <Field label="When (month · day · hour)">
           <TimestampPicker value={ts} onChange={setTs} />
         </Field>
-        <Field label="Caffeine (mg)">
-          <input className={inputCls} inputMode="decimal" placeholder="80" value={mg} onChange={(e) => setMg(e.target.value)} />
-        </Field>
+        <DecimalField label="Caffeine (mg)" placeholder="80" value={mg} onChange={setMg} />
         <button onClick={handleSubmit} disabled={!isValid} className={primaryBtn}>Log</button>
       </div>
     </Modal>
